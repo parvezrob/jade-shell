@@ -1,0 +1,62 @@
+# Built by scripts/build-packages.sh, which stages build/stage first.
+name: jade-shell
+arch: all
+platform: linux
+version: ${JADE_VERSION}
+release: 1
+section: gnome
+priority: optional
+maintainer: parvezrob <parvezrob@users.noreply.github.com>
+vendor: Jade Shell
+homepage: https://github.com/parvezrob/jade-shell
+license: GPL-3.0-or-later
+description: |
+  Omarchy's look and theme switching for GNOME.
+  A GNOME Shell extension and the `jade` command: a Shell theme built from
+  Omarchy's palettes, a theme picker that re-colors the desktop, terminals,
+  launcher, prompt and editor, workspaces, a light system monitor and
+  Claude/Codex usage in the top bar. Run `jade setup` after installing.
+
+contents:
+  - src: build/stage/lib/
+    dst: /usr/share/jade-shell/
+    type: tree
+  - src: build/stage/extension/
+    dst: /usr/share/gnome-shell/extensions/jade-shell@parvezrob.github.io/
+    type: tree
+  - src: packaging/jade
+    dst: /usr/bin/jade
+    file_info:
+      mode: 0755
+  - src: LICENSE
+    dst: /usr/share/licenses/jade-shell/LICENSE
+    packager: rpm
+  - src: LICENSE
+    dst: /usr/share/doc/jade-shell/copyright
+    packager: deb
+  - src: THIRD_PARTY_LICENSES.md
+    dst: /usr/share/doc/jade-shell/THIRD_PARTY_LICENSES.md
+
+scripts:
+  postinstall: packaging/postinstall.sh
+  preremove: packaging/preremove.sh
+
+overrides:
+  rpm:
+    depends:
+      - gnome-shell >= 50
+      - python3 >= 3.11
+      - python3-gobject
+      - gdk-pixbuf2
+      - sassc
+      - jetbrains-mono-fonts
+    recommends:
+      - gnome-shell-extension-dash-to-dock
+  deb:
+    depends:
+      - gnome-shell (>= 50)
+      - python3 (>= 3.11)
+      - python3-gi
+      - gir1.2-gdkpixbuf-2.0
+      - sassc
+      - fonts-jetbrains-mono

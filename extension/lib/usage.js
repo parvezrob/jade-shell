@@ -267,9 +267,10 @@ export class Usage {
         this._alive = false;
         this._cancellable.cancel();
         this._cancellable = null;
-        for (const id of ['_tick', '_reloadSoon'])
+        for (const id of ['_tick', '_reloadSoon']) {
             if (this[id])
                 GLib.source_remove(this[id]);
+        }
         this._tick = this._reloadSoon = null;
         if (this._monitor) {
             this._monitor.disconnect(this._monitorChanged);

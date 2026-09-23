@@ -63,10 +63,11 @@ def make_thumbnail(theme, width=320, height=200):
     gi.require_version('GdkPixbuf', '2.0')
     from gi.repository import GdkPixbuf
     source = theme.fetch_wallpaper(0)
-    info, w, h = GdkPixbuf.Pixbuf.get_file_info(str(source))
+    _format, w, h = GdkPixbuf.Pixbuf.get_file_info(str(source))
     scale = max(width / w, height / h)
     # Scale to at least the preview size on both axes (aspect kept by `scale`), then crop.
-    image = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(source), max(width, math.ceil(w * scale)), max(height, math.ceil(h * scale)), False)
+    size = max(width, math.ceil(w * scale)), max(height, math.ceil(h * scale))
+    image = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(source), *size, False)
     x = (image.get_width() - width) // 2
     y = (image.get_height() - height) // 2
     out = thumbnail_path(theme.id)

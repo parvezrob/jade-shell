@@ -14,10 +14,10 @@ import sys
 import gi
 
 gi.require_version('Gio', '2.0')
-from gi.repository import Gio, GLib  # noqa: E402
+from gi.repository import Gio, GLib
 
-from . import engine, shelltheme, themes  # noqa: E402
-from .store import Setting, config_home, data_home, write_text  # noqa: E402
+from . import engine, shelltheme, themes
+from .store import Setting, config_home, data_home, write_text
 
 UUID = 'jade-shell@parvezrob.github.io'
 SHELL = 'org.gnome.shell'
@@ -218,10 +218,13 @@ def setup(ctx, theme_id='osaka-jade'):
             except Exception as error:  # a preview is not worth failing setup over
                 say(f'  no preview for {tid}: {error}')
 
-    if not engine.current().get('theme'):
-        theme = themes.load(theme_id)
-        engine.apply(theme, ctx)
-        say(f'Applied {theme.name}.')
+    # The current theme (or the starting one), applied everywhere: this also
+    # builds anything a new version of Jade Shell adds, and changes nothing else.
+    state = engine.current()
+    theme = themes.load(state['theme'] if state.get('theme') in themes.ids() else theme_id)
+    ctx.wallpaper_index = state.get('wallpaper') or 0
+    changes, _backup = engine.apply(theme, ctx)
+    say(f'{theme.name}: {len(changes)} change{"" if len(changes) == 1 else "s"} applied.')
 
     state = extension_state(UUID)
     if state in ('unknown', None) and os.environ.get('XDG_SESSION_TYPE') == 'wayland':

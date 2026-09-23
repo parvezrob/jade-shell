@@ -12,7 +12,7 @@ ACCENTS = {
 
 def nearest_accent(color):
     target = pal.rgb(color)
-    return min(ACCENTS, key=lambda name: sum((a - b) ** 2 for a, b in zip(pal.rgb(ACCENTS[name]), target)))
+    return min(ACCENTS, key=lambda name: sum((a - b) ** 2 for a, b in zip(pal.rgb(ACCENTS[name]), target, strict=True)))
 
 
 class Gnome:

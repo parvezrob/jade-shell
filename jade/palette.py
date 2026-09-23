@@ -26,15 +26,15 @@ def rgb(hex_color):
 
 
 def to_hex(channels):
-    return '#%02x%02x%02x' % tuple(channels)
+    return '#' + ''.join(f'{int(c):02x}' for c in channels)
 
 
 def mix(start, end, amount):
-    """Blend `amount` (0–1, or a '30%' string) of `end` into `start`."""
+    """Blend `amount` (0 to 1, or a '30%' string) of `end` into `start`."""
     if isinstance(amount, str):
         amount = float(amount.rstrip('%')) / (100 if amount.endswith('%') else 1)
     amount = max(0.0, min(1.0, amount))
-    return to_hex(int(s * (1 - amount) + e * amount + 0.5) for s, e in zip(rgb(start), rgb(end)))
+    return to_hex(int(s * (1 - amount) + e * amount + 0.5) for s, e in zip(rgb(start), rgb(end), strict=True))
 
 
 def resolve(raw):

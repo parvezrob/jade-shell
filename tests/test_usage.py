@@ -11,7 +11,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jade.usage import collect as update  # noqa: E402
+from jade.usage import collect as update
 
 
 def load(name):
@@ -27,7 +27,7 @@ codex = load('codex')
 
 
 def iso(hours):
-    return (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=hours)).isoformat()
+    return (datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=hours)).isoformat()
 
 
 class CarryLimits(unittest.TestCase):
@@ -113,7 +113,8 @@ class CodexLimits(unittest.TestCase):
             'initialize': {},
             'account/read': {'result': {'account': {'planType': 'pro'}}},
             'account/rateLimits/read': {'result': {
-                'rateLimits': {'planType': 'pro', 'primary': {'usedPercent': 100, 'windowDurationMins': 10080, 'resetsAt': 1790240188}},
+                'rateLimits': {'planType': 'pro',
+                               'primary': {'usedPercent': 100, 'windowDurationMins': 10080, 'resetsAt': 1790240188}},
                 'rateLimitResetCredits': {'credits': [{'status': 'available'}, {'status': 'redeemed'}]},
             }},
         }

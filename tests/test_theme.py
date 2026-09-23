@@ -16,10 +16,10 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jade import palette, shelltheme, themes  # noqa: E402
-from jade.setup import REPLACED, UUID  # noqa: E402
-from jade.targets.apps import jsonc, managed_block, set_theme_names  # noqa: E402
-from jade.targets.gnome import nearest_accent  # noqa: E402
+from jade import palette, shelltheme, themes
+from jade.setup import REPLACED, UUID
+from jade.targets.apps import jsonc, managed_block, set_theme_names
+from jade.targets.gnome import nearest_accent
 
 needs_compiler = unittest.skipUnless(shelltheme.compiler_available(), 'sassc (or python libsass) is not installed')
 

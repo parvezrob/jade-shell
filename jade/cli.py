@@ -3,7 +3,7 @@ import argparse
 import json
 import sys
 
-from . import engine, setup, themes
+from . import __version__, engine, setup, themes
 from .store import File, Settings, read_text
 from .usage import collect
 
@@ -158,6 +158,7 @@ def run_restore(args, ctx):
 
 def parser():
     top = argparse.ArgumentParser(prog='jade', description=__doc__)
+    top.add_argument('--version', action='version', version=f'jade {__version__}')
     commands = top.add_subparsers(dest='command', required=True, metavar='command')
 
     theme = commands.add_parser('theme', help='list, preview and switch themes').add_subparsers(
@@ -174,7 +175,7 @@ def parser():
     theme.add_parser('undo', help='restore what the last switch changed')
     theme.add_parser('reload', help='ask every app to reload the current theme')
     fetch = theme.add_parser('fetch', help='download wallpapers')
-    fetch.add_argument('theme', choices=themes.ids() + ['all'])
+    fetch.add_argument('theme', choices=[*themes.ids(), 'all'])
     fetch.add_argument('--every', action='store_true', help="all of a theme's wallpapers, not just the first")
     theme.add_parser('thumbs', help='make the picker previews').add_argument(
         '--refresh', action='store_true', help='rebuild previews that already exist')

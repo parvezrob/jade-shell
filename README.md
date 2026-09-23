@@ -1,54 +1,74 @@
 # Jade Shell
 
-Omarchy's theme switching, for GNOME. Pick one of Omarchy's 17 dark themes and the whole desktop follows: the wallpaper, GNOME's accent, the OpenBar top bar and menus, the dock, workspaces bar, quick settings, Astra Monitor and Jade AI Usage, plus your terminals, launcher, prompt and editor.
+Omarchy's look on the GNOME you already run. One install gives Fedora or Ubuntu Omarchy's themes, a theme picker that re-colors the whole desktop at once, workspace buttons, a light system monitor and your Claude and Codex usage in the top bar. No new OS, no tiling window manager to learn.
 
-**Status: early, GNOME 50 only.** Built and tested on Fedora 44.
+**Status: early (0.9), GNOME 50 only.** Tested on Fedora 44 and Ubuntu 26.04.
 
-![The Jade Shell theme picker: 17 Omarchy themes as wallpaper previews](docs/picker.png)
+![The Jade Shell theme picker: Omarchy's themes as wallpaper previews](docs/picker.png)
 
 ## Install
 
 ```bash
-git clone https://github.com/parvezrob/jade-shell.git
-cd jade-shell
-bash scripts/install.sh
+curl -fsSL https://raw.githubusercontent.com/parvezrob/jade-shell/main/install.sh | bash
 ```
 
-Run as your desktop user, without sudo, then log out and back in to load the extension. The installer puts `jade-theme` in `~/.local/bin` and downloads each theme's first wallpaper to make the picker previews (about 15 MB). It does not change your theme; nothing changes until you pick one.
+Run it as your desktop user. It downloads the latest `.rpm` or `.deb` release, checks it against the release checksums, installs it with `dnf` or `apt` (asking for your password), then runs `jade setup`, which:
+
+- turns off extensions that do the same jobs (OpenBar, User Themes, Simple Workspaces Bar, Blur My Shell, Astra Monitor and a few more; `setup` names each one it turns off),
+- sets up the dock (Dash to Dock on Fedora, Ubuntu Dock on Ubuntu),
+- starts the usage collector if you have Claude Code or Codex,
+- applies Osaka Jade.
+
+Log out and back in once to start the extension. `jade doctor` checks everything is in place.
 
 ## Use
 
-- **Picker:** click the palette icon in the top bar, or press **Super+Ctrl+Shift+Space**. Arrow keys move, Enter applies. The menu stays open, so you can try several themes in a row.
+- **Picker:** click the palette icon in the top bar, or press **Super+Ctrl+Shift+Space**. Arrow keys move, Enter applies. The menu stays open while you try themes.
 - **Command line:**
 
   ```bash
-  jade-theme list                 # themes; * marks the current one
-  jade-theme plan tokyo-night     # show exactly what would change, change nothing
-  jade-theme set tokyo-night      # switch
-  jade-theme wallpaper            # next wallpaper of the current theme
-  jade-theme undo                 # restore what the last switch changed
+  jade theme list                 # themes; * marks the current one
+  jade theme plan tokyo-night     # show exactly what would change, change nothing
+  jade theme set tokyo-night      # switch
+  jade theme wallpaper            # next wallpaper of the current theme
+  jade theme undo                 # restore what the last switch changed
   ```
 
-  `--only` and `--skip` limit a switch to some targets, e.g. `jade-theme set nord --skip vscode,kitty`.
+  `--only` and `--skip` limit a switch to some targets, e.g. `jade theme set nord --skip vscode,kitty`.
+- **Settings:** open the extension's preferences (Extensions app, or Settings in the AI usage menu) to turn parts of the top bar on or off, change the clock format or the app grid size.
 
-Every switch first saves the value of each setting and file it will change, in `~/.local/state/jade-shell/backups/`. `undo` puts those back, and repeated `undo` walks further back, to the look you had before Jade Shell.
-
-## What a switch changes
+## What a theme switch changes
 
 | Target | How |
 |---|---|
-| GNOME | dark style, nearest named accent color, wallpaper (desktop and lock screen) |
-| OpenBar | bar, menu, highlight and dock colors, then OpenBar regenerates its stylesheet |
-| Dash to Dock, App Grid Tuner, Astra Monitor | their color settings (Astra's profile copy too) |
-| Shell styles | a generated stylesheet for the workspaces bar, quick settings, the picker and Jade AI Usage, reloaded live by the extension |
+| GNOME Shell | a Shell theme compiled from GNOME's own theme sources with the Omarchy palette and the theme's exact accent: top bar, menus, quick settings, calendar, notifications, dialogs, lock screen |
+| GNOME | dark style, the nearest named accent for apps, wallpaper (desktop and lock screen) |
+| Dock | Dash to Dock or Ubuntu Dock colors |
 | Ptyxis | an Omarchy palette file, selected in every profile |
-| Vicinae | an `omarchy-<theme>` theme file, selected in its config |
 | Kitty | `jade-theme.conf`, included at the end of `kitty.conf` (your own colors stay, overridden); kitty reloads |
+| Vicinae | an `omarchy-<theme>` theme, selected in its config |
 | Starship | a `jade` palette block (Catppuccin color names mapped to the theme) |
 | btop | a `jade` theme; btop reloads |
 | VS Code | one local extension providing every theme as "Jade · Name"; switching sets `workbench.colorTheme` |
 
-Everything applies live except that newly opened GTK apps pick up the accent as they start. A target that isn't installed is skipped.
+Everything applies live; newly opened GTK apps pick up the accent as they start. Apps you don't have are skipped.
+
+Every switch first saves the value of each setting and file it will change, in `~/.local/state/jade-shell/backups/`. `jade theme undo` puts those back, and repeated undos walk further back.
+
+## In the top bar
+
+- **Workspaces** replace Activities: numbered, the current one filled with the accent. Click the current one for the overview; scroll to move between them.
+- **System monitor:** CPU, memory, GPU and CPU temperature. It reads `/proc` and sysfs every two seconds, and on NVIDIA keeps one `nvidia-smi` running instead of starting one per update. It never polls the GPU on battery. Click it for your system monitor app.
+- **AI usage:** Claude and Codex limits, with Omarchy's usage panel as its menu (limits, tokens by day and by model). It uses Omarchy's own collectors, run every ten minutes by a user timer.
+- **Clock** as "Tuesday 14:05", and GNOME starts on the desktop instead of the overview.
+
+## Remove
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/parvezrob/jade-shell/main/install.sh | bash -s -- --uninstall
+```
+
+This runs `jade restore`, which undoes every theme switch and every setting `jade setup` changed (the extensions it turned off come back), then removes the package.
 
 ## Personal overrides
 
@@ -57,12 +77,18 @@ Pin any color, or reuse wallpapers you already have, in `~/.config/jade-shell/th
 ## Development
 
 ```bash
-python3 -m unittest discover -s tests       # includes a full switch/undo run in a sandbox
-bin/jade-theme plan osaka-jade              # dry run against your desktop
+python3 -m unittest discover -s tests   # unit tests, plus full switch/undo and setup/restore runs in a sandbox
+bin/jade theme plan osaka-jade          # dry run against your desktop
+scripts/dev-install.sh                  # this checkout for your user, then: jade setup
+scripts/build-packages.sh               # dist/jade-shell.rpm and .deb (needs nfpm)
+scripts/test-packages.sh                # install, set up, restore, remove on fresh Fedora and Ubuntu containers
+npm ci && npm run lint                  # ESLint for the extension; Python uses ruff
 ```
 
-The sandbox test uses its own HOME, XDG dirs and GSettings keyfile, so it never touches your desktop. If you test the extension in a nested or headless `gnome-shell`, give it its own `XDG_RUNTIME_DIR` too: GNOME keeps a crash marker there, and a test shell that leaves it behind makes your next login disable all extensions.
+The sandbox tests use their own HOME, XDG dirs and GSettings keyfile, so they never touch your desktop. If you run the extension in a nested or headless `gnome-shell`, give it its own `XDG_RUNTIME_DIR` too: GNOME keeps a crash marker there, and a test shell that leaves it behind makes your next login disable all extensions.
 
-## License
+## Credits
 
-GPL-3.0-or-later. Omarchy's palettes and templates are MIT; see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md). Not affiliated with Omarchy or GNOME.
+Jade Shell stands on other people's work: [Omarchy](https://github.com/basecamp/omarchy)'s themes, templates and usage collectors (MIT), GNOME Shell's theme sources (GPL-2.0-or-later), and ideas and code from [Simple Workspaces Bar](https://gitlab.com/null-git/simple-workspaces-bar), [Panel Date Format](https://github.com/KEIII/gnome-shell-panel-date-format), Just Perfection, App Grid Tuner, TopHat and Vitals. Details in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+
+GPL-3.0-or-later. Not affiliated with Omarchy, Basecamp or GNOME.

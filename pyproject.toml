@@ -1,0 +1,22 @@
+[project]
+name = "jade-shell"
+dynamic = ["version"]
+description = "Omarchy's look and theme switching for GNOME"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 130
+target-version = "py311"
+# Omarchy's usage collectors, vendored as they are (see THIRD_PARTY_LICENSES.md).
+extend-exclude = ["jade/usage/claude.py", "jade/usage/codex.py"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["E402"]  # gi.require_version() must run before gi.repository imports
+
+[tool.ruff.lint.isort]
+known-first-party = ["jade"]
+
+[tool.ruff.format]
+quote-style = "single"

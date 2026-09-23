@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        name: The tag matches jade/__init__.py
+        run: |
+          version=$(python3 -c 'import jade; print(jade.__version__)')
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME, code $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  ci:
+    needs: check
+    uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ needs.check.outputs.version }}
+
+  publish:
+    needs: ci
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v5
+        with:
+          name: packages
+          path: dist
+      - name: GitHub release with the packages the installer downloads
+        run: gh release create "$GITHUB_REF_NAME" dist/jade-shell.rpm dist/jade-shell.deb dist/SHA256SUMS --title "Jade Shell $GITHUB_REF_NAME" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

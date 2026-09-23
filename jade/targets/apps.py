@@ -3,6 +3,7 @@ import json
 import pathlib
 import re
 import subprocess
+from typing import ClassVar
 
 from .. import shelltheme, themes
 from ..store import File, Setting, config_home, data_home, read_text, state_home
@@ -164,7 +165,7 @@ class Starship:
     name = 'starship'
     label = 'Starship prompt'
     # The prompt refers to Catppuccin color names; give each a theme color.
-    NAMES = {
+    NAMES: ClassVar[dict] = {
         'rosewater': 'bright_foreground', 'mauve': 'magenta', 'red': 'red', 'peach': 'orange',
         'yellow': 'yellow', 'green': 'green', 'teal': 'cyan', 'sapphire': 'accent', 'blue': 'blue',
         'overlay1': 'dark_foreground', 'overlay0': 'muted',
@@ -245,7 +246,8 @@ class VSCode:
         if not any(e.get('identifier', {}).get('id') == self.ID for e in entries):
             entries.append({
                 'identifier': {'id': self.ID}, 'version': self.VERSION,
-                'location': {'$mid': 1, 'fsPath': str(folder), 'external': folder.as_uri(), 'path': str(folder), 'scheme': 'file'},
+                'location': {'$mid': 1, 'fsPath': str(folder), 'external': folder.as_uri(),
+                             'path': str(folder), 'scheme': 'file'},
                 'relativeLocation': folder.name,
             })
             out.append(File(registry, json.dumps(entries)))

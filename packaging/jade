@@ -1,0 +1,4 @@
+#!/bin/sh
+# /usr/bin/jade, as installed by the Jade Shell package.
+export JADE_BIN=/usr/bin/jade
+PYTHONPATH="/usr/share/jade-shell${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m jade "$@"

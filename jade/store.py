@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import gi
 
 gi.require_version('Gio', '2.0')
-from gi.repository import Gio, GLib  # noqa: E402
+from gi.repository import Gio, GLib
 
 
 @dataclass(frozen=True)

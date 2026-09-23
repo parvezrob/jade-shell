@@ -75,7 +75,7 @@ def point_at_palette(text, variables, name):
     """Replace each `$var: …;` definition; every one must be found exactly once."""
     for variable, value in variables.items():
         pattern = re.compile(rf'^\${re.escape(variable)}:[^;]*;', re.M)
-        text, count = pattern.subn(lambda _m: f'${variable}: {value};', text)
+        text, count = pattern.subn(f'${variable}: {value};'.replace('\\', r'\\'), text)
         if count != 1:
             raise BuildError(f'{name}: expected one ${variable}, found {count}')
     return text

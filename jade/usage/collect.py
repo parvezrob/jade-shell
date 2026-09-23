@@ -43,7 +43,7 @@ def window_open(limit, now):
     except ValueError:
         return True
     if reset.tzinfo is None:
-        reset = reset.replace(tzinfo=datetime.timezone.utc)
+        reset = reset.replace(tzinfo=datetime.UTC)
     return reset > now
 
 
@@ -55,8 +55,8 @@ def carry_limits(record, previous):
     """
     if record.get("limits") or not record.get("usageStatusText") or not previous:
         return record
-    now = datetime.datetime.now(datetime.timezone.utc)
-    kept = [l for l in previous.get("limits") or [] if isinstance(l, dict) and window_open(l, now)]
+    now = datetime.datetime.now(datetime.UTC)
+    kept = [limit for limit in previous.get("limits") or [] if isinstance(limit, dict) and window_open(limit, now)]
     if kept:
         record = dict(record, limits=kept, limitsStale=True)
     return record

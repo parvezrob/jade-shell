@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from . import targets as registry
 from . import themes
-from .store import File, Settings, Setting, read_text, state_home, write_text
+from .store import File, Setting, Settings, read_text, state_home, write_text
 
 
 @dataclass
@@ -53,6 +53,8 @@ def plan(theme, ctx, only=None, skip=None):
 
 def apply(theme, ctx, only=None, skip=None):
     changes = plan(theme, ctx, only, skip)
+    if not changes:
+        return changes, None  # nothing to change, so nothing to undo
     if ctx.wallpaper_index is not None:
         theme.fetch_wallpaper(ctx.wallpaper_index)
     backup = state_dir() / 'backups' / datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
