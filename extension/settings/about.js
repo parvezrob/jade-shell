@@ -43,6 +43,16 @@ export function aboutPage(settings, metadata, switchRow) {
         runChecks.sensitive = true;
     });
 
+    const help = new Adw.PreferencesGroup({
+        title: 'Report a Problem',
+        description: 'Collects the details a bug report needs (versions, the checks above, recent errors), ' +
+            'without your name or home folder, and opens a new GitHub issue with them.',
+    });
+    page.add(help);
+    const report = new Adw.ButtonRow({title: 'Report a Problem…', end_icon_name: 'adw-external-link-symbolic'});
+    report.connect('activated', () => reportProblem(report));
+    help.add(report);
+
     const restore = new Adw.PreferencesGroup({
         title: 'Restore',
         description: 'Put back the theme, dock, extensions and settings you had before Jade Shell, and turn Jade Shell off. ' +
@@ -112,6 +122,21 @@ async function checkRows() {
     });
     summary.add_css_class('heading');
     return [summary, ...rows];
+}
+
+async function reportProblem(row) {
+    row.sensitive = false;
+    const jade = jadeCommand();
+    const {ok, stdout} = jade ? await capture([jade, 'debug', '--issue']) : {ok: false, stdout: ''};
+    row.sensitive = true;
+    const dialog = new Adw.AlertDialog({
+        heading: ok ? 'Almost Done' : 'Could Not Collect the Details',
+        body: ok ? 'A new issue opened in your browser. Say what happened, then attach ' +
+            `${stdout.match(/Saved to (\S+)/)?.[1] ?? '~/jade-debug.txt'}: it has the full details.`
+            : 'Try "jade debug" in a terminal, or open an issue yourself.',
+    });
+    dialog.add_response('close', 'Close');
+    dialog.present(row.get_root());
 }
 
 function confirmRestore(row) {

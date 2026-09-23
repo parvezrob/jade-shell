@@ -10,7 +10,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio
 
-from . import __version__, engine, setup, themes, update
+from . import __version__, debug, engine, setup, themes, update
 from . import targets as registry
 from .setup import join
 from .store import File, Settings, read_text
@@ -260,6 +260,10 @@ def run_doctor(args, ctx):
     return setup.doctor(ctx, as_json=args.json)
 
 
+def run_debug(args, ctx):
+    return debug.debug(print_only=args.print, save_to=args.save, open_issue=args.issue)
+
+
 def run_update(args, ctx):
     return update.update(check_only=args.check, as_json=args.json)
 
@@ -323,6 +327,10 @@ def parser():
     p.add_argument('--after-update', action='store_true', help=argparse.SUPPRESS)  # run by the extension at login
     commands.add_parser('doctor', help='check that everything Jade Shell needs is in place').add_argument(
         '--json', action='store_true', help='print the checks as JSON (for the settings window)')
+    p = commands.add_parser('debug', help='the details a bug report needs, without your name or home folder')
+    p.add_argument('--print', action='store_true', help='only print them')
+    p.add_argument('--save', metavar='FILE', help='save them (default ~/jade-debug.txt with --issue)')
+    p.add_argument('--issue', action='store_true', help='save them and open a new GitHub issue with them')
     p = commands.add_parser('update', help='install the latest Jade Shell release')
     p.add_argument('--check', action='store_true', help="only say whether there's a newer version")
     p.add_argument('--json', action='store_true', help='print the check as JSON (for the extension)')
@@ -338,6 +346,7 @@ HANDLERS = {
     ('usage', 'collect'): usage_collect,
     ('apps', None): apps_list, ('apps', 'list'): apps_list, ('apps', 'off'): apps_off, ('apps', 'on'): apps_on,
     ('setup', None): run_setup, ('doctor', None): run_doctor, ('update', None): run_update, ('restore', None): run_restore,
+    ('debug', None): run_debug,
 }
 
 

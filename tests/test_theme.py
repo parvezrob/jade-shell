@@ -20,7 +20,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jade import __version__, engine, migrations, palette, restore_offer, setup, shelltheme, store, themes, update
+from jade import __version__, debug, engine, migrations, palette, restore_offer, setup, shelltheme, store, themes, update
 from jade.setup import REPLACED, UUID
 from jade.targets.apps import VSCode, jsonc, managed_block, restore_theme_names, revert_block, revert_line, set_theme_names
 from jade.targets.gnome import Gnome, nearest_accent
@@ -652,6 +652,17 @@ class Sandbox(unittest.TestCase):
         self.jade('restore', '--yes')
         self.assertEqual(kitty.read_text(), self.originals[kitty])
         self.assertEqual(starship.read_text(), self.originals[starship] + 'command_timeout = 900\n')
+
+    def test_debug_report_names_no_one(self):
+        import getpass
+        import socket
+        out = self.jade('debug', '--print')
+        self.assertIn('# Jade Shell debug report', out)
+        self.assertIn('## jade doctor', out)
+        self.assertNotIn(str(self.home), out)
+        for secret in (getpass.getuser(), socket.gethostname()):
+            self.assertNotIn(secret.lower(), out.lower())
+        self.assertLess(len(debug.issue_url(out)), 8000)
 
     @needs_compiler
     def test_an_update_leaves_an_extension_turned_back_on(self):
