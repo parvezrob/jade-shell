@@ -15,6 +15,7 @@ runtime=$(mktemp -d /tmp/jade-rt.XXXX)  # short: a Wayland socket path must fit 
 chmod 700 "$runtime"
 cleanup() {
     [[ -n ${shell_pid:-} ]] && kill -- -"$shell_pid" 2>/dev/null
+    chmod -R u+w "$work" 2>/dev/null
     rm -rf "$work" "$runtime"
 }
 trap cleanup EXIT
@@ -31,6 +32,9 @@ ln -s "$root/bin/jade" "$home/.local/bin/jade"
 for dir in .local/state/jade-shell/thumbs .local/share/jade-shell/backgrounds .cache/jade-shell/usage/records; do
     if [[ -d $HOME/$dir ]]; then mkdir -p "$(dirname "$home/$dir")"; cp -a "$HOME/$dir" "$home/$dir"; fi
 done
+if [[ -n ${JADE_RECORDS:-} ]]; then  # usage records to show, e.g. from an older install
+    mkdir -p "$home/.cache/jade-shell/usage"; cp -a "$JADE_RECORDS" "$home/.cache/jade-shell/usage/records"
+fi
 [[ -d $home/.cache/jade-shell/usage/records ]] && chmod -R a-w "$home/.cache/jade-shell/usage/records"  # no refresh without sign-in
 printf "[org/gnome/shell]\nenabled-extensions=['jade-shell@parvezrob.github.io', 'jade-shell-harness@local']\ndisable-user-extensions=false\nwelcome-dialog-last-shown-version='999'\n" \
     > "$home/.config/glib-2.0/settings/keyfile"
