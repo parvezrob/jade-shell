@@ -19,7 +19,10 @@ export class Clock {
     enable() {
         const dateMenu = Main.panel.statusArea.dateMenu;
         this._display = dateMenu._clockDisplay;
-        this._label = new St.Label({style_class: 'clock', y_align: Clutter.ActorAlign.CENTER});
+        // The label fills the bar's height and centers its text, as GNOME's
+        // does: the clock's highlight is drawn on the label.
+        this._label = new St.Label({style_class: 'clock'});
+        this._label.clutter_text.y_align = Clutter.ActorAlign.CENTER;
         this._label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
         this._display.get_parent().insert_child_below(this._label, this._display);
         this._display.hide();

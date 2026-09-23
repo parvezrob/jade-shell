@@ -75,6 +75,24 @@ async function panel(role, name, settle = 1600) {
     await wait(400);
 }
 
+// A top-bar button at rest, hovered and with its menu open, cropped to its box.
+async function states(role, name) {
+    const button = Main.panel.statusArea[role];
+    if (!button)
+        return;
+    const box = button.get_parent().get_parent();
+    await shoot(`${name}-rest`, box);
+    button.add_style_pseudo_class('hover');
+    await wait(300);
+    await shoot(`${name}-hover`, box);
+    button.remove_style_pseudo_class('hover');
+    button.menu.open(false);
+    await wait(300);
+    await shoot(`${name}-open`, box);
+    button.menu.close(false);
+    await wait(300);
+}
+
 // ------------------------------------------------------------------ timing
 //
 // For each Jade menu and, as a baseline, GNOME's clock and quick settings:
@@ -652,6 +670,8 @@ export default class Harness extends Extension {
             }
             await shoot(`${theme}-desktop`);
             await shoot(`${theme}-bar`, Main.panel);
+            await states('dateMenu', `${theme}-clock`);
+            await states('jade-monitor', `${theme}-monitor-button`);
             await panel('jade-picker', `${theme}-picker`);
             await panel('jade-monitor', `${theme}-monitor`, 3000);
             await panel('jade-usage', `${theme}-usage`);

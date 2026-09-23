@@ -33,7 +33,16 @@ $jade-strong: if(lightness($jade-light_foreground) > lightness($jade-foreground)
 
     .system-status-icon { icon-size: 16px; }
 
-    &.clock-display .clock { border-radius: 5px; padding: 0 8px; }
+    // GNOME draws the clock's highlight on its label, in stronger tints;
+    // these are the same as every other button's.
+    &.clock-display {
+      .clock { border-radius: 5px; padding: 0 8px; }
+      &:focus, &:hover { .clock { @include panel_button_fill(transparentize($jade-foreground, .91)); } }
+      &:active, &:checked {
+        .clock { @include panel_button_fill(transparentize($jade-foreground, .84)); }
+        &:hover .clock { @include panel_button_fill(transparentize($jade-foreground, .80)); }
+      }
+    }
   }
 
   .panel-status-menu-box { spacing: 8px; }
