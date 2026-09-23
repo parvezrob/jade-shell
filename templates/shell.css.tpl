@@ -62,3 +62,70 @@
 .popup-menu-content .quick-toggle-has-menu .quick-toggle-menu-button.icon-button:checked:focus {
     box-shadow: inset 0 0 0 1px rgba({{ foreground_rgb }}, 0.5) !important;
 }
+
+/* Jade Shell theme picker: framed like an Omarchy panel. The doubled class
+ * outranks panel themers (OpenBar) that restyle every popup with !important. */
+.popup-menu-content.jade-picker {
+    background-color: {{ background }} !important;
+    border: 2px solid {{ accent }} !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+}
+.jade-picker { color: {{ foreground }}; }
+.jade-picker .jade-title { color: {{ light_foreground }}; }
+.jade-picker .jade-meta,
+.jade-picker .jade-section,
+.jade-picker .jade-status { color: {{ secondary_text }}; }
+.jade-picker .jade-status.jade-error { color: {{ bright_red }}; }
+.jade-picker .jade-hero-icon { color: {{ accent }}; }
+.jade-picker .jade-divided { border-top: 1px solid {{ selection }}; }
+.jade-picker .jade-tile { border: 2px solid rgba({{ foreground_rgb }}, 0.12); background-color: {{ dark_background }}; }
+.jade-picker .jade-tile:hover { border-color: rgba({{ foreground_rgb }}, 0.6); }
+.jade-picker .jade-tile:focus { border-color: {{ foreground }}; }
+.jade-picker .jade-tile.jade-current { border-color: {{ accent }}; }
+.jade-picker .jade-tile-name { color: {{ foreground }}; }
+.jade-picker .jade-tile.jade-current .jade-tile-name { color: {{ light_foreground }}; }
+.jade-picker .jade-action { border: 1px solid rgba({{ foreground_rgb }}, 0.4); color: {{ foreground }}; }
+.jade-picker .jade-action:hover { background-color: {{ selection }}; border-color: {{ foreground }}; color: {{ light_foreground }}; }
+.jade-picker .jade-action:focus { box-shadow: inset 0 0 0 1px {{ dark_foreground }}; }
+
+/* Jade AI Usage (osaka-ai-usage@local). One class more specific than its own
+ * Osaka Jade stylesheet, so these win whichever extension loaded last. Its
+ * painted meters read colors.json instead. */
+#panel .panel-button.osaka-ai-panel .ai-panel-text,
+#panel .panel-button.osaka-ai-panel .ai-panel-icon { color: {{ foreground }}; }
+#panel .panel-button.osaka-ai-panel .ai-panel-icon.ai-alarm { color: {{ bright_red }}; }
+.popup-menu-boxpointer .popup-menu-content.osaka-ai-menu {
+    background-color: {{ background }} !important;
+    border: 2px solid {{ accent }} !important;
+}
+.popup-menu-boxpointer .osaka-ai-menu { color: {{ foreground }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-text { color: {{ foreground }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-caption,
+.popup-menu-boxpointer .osaka-ai-menu .ai-section,
+.popup-menu-boxpointer .osaka-ai-menu .ai-hero-meta,
+.popup-menu-boxpointer .osaka-ai-menu .ai-day-name,
+.popup-menu-boxpointer .osaka-ai-menu .ai-day-value,
+.popup-menu-boxpointer .osaka-ai-menu .ai-model-value { color: {{ secondary_text }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-urgent,
+.popup-menu-boxpointer .osaka-ai-menu .ai-value.ai-urgent,
+.popup-menu-boxpointer .osaka-ai-menu .ai-hero-meta.ai-urgent,
+.popup-menu-boxpointer .osaka-ai-menu .ai-action.ai-failed { color: {{ bright_red }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-jade,
+.popup-menu-boxpointer .osaka-ai-menu .ai-hero-icon { color: {{ dark_foreground }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-hero-title,
+.popup-menu-boxpointer .osaka-ai-menu .ai-value,
+.popup-menu-boxpointer .osaka-ai-menu .ai-today .ai-day-name,
+.popup-menu-boxpointer .osaka-ai-menu .ai-today .ai-day-value,
+.popup-menu-boxpointer .osaka-ai-menu .ai-model-row:hover .ai-model-value { color: {{ light_foreground }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-divided,
+.popup-menu-boxpointer .osaka-ai-menu .ai-footer-item { border-top-color: {{ selection }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-chip,
+.popup-menu-boxpointer .osaka-ai-menu .ai-action { border-color: rgba({{ foreground_rgb }}, 0.4); color: {{ foreground }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-chip:hover { background-color: rgba({{ foreground_rgb }}, 0.08); }
+.popup-menu-boxpointer .osaka-ai-menu .ai-chip:checked,
+.popup-menu-boxpointer .osaka-ai-menu .ai-action:hover { background-color: {{ selection }}; border-color: {{ foreground }}; color: {{ light_foreground }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-chip:focus,
+.popup-menu-boxpointer .osaka-ai-menu .ai-action:focus { box-shadow: inset 0 0 0 1px {{ dark_foreground }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-action:insensitive { color: {{ secondary_text }}; }
+.popup-menu-boxpointer .osaka-ai-menu .ai-card { border-color: rgba({{ bright_red_rgb }}, 0.35); background-color: rgba({{ bright_red_rgb }}, 0.08); }

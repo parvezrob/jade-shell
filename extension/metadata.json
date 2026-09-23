@@ -1,0 +1,10 @@
+{
+  "uuid": "jade-shell@parvezrob.github.io",
+  "name": "Jade Shell",
+  "description": "Omarchy themes for GNOME: a theme picker that re-colors the desktop and apps, and live theme styles for the Shell.",
+  "shell-version": [
+    "50"
+  ],
+  "settings-schema": "org.gnome.shell.extensions.jade-shell",
+  "url": "https://github.com/parvezrob/jade-shell"
+}

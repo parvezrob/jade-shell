@@ -37,6 +37,7 @@ def cmd_list(args, ctx):
             'wallpaper': str(wallpaper) if wallpaper else None,
             'wallpaperReady': bool(wallpaper and wallpaper.exists()),
             'wallpapers': len(theme.backgrounds),
+            'thumbnail': str(themes.thumbnail_path(theme.id)) if themes.thumbnail_path(theme.id).exists() else None,
         })
     if args.json:
         print(json.dumps(rows))
@@ -109,6 +110,13 @@ def cmd_fetch(args, ctx):
     return 0
 
 
+def cmd_thumbs(args, ctx):
+    for theme_id in themes.ids():
+        if args.refresh or not themes.thumbnail_path(theme_id).exists():
+            print(themes.make_thumbnail(themes.load(theme_id)))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='jade-theme', description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
@@ -126,6 +134,8 @@ def main(argv=None):
     fetch = sub.add_parser('fetch', help='download wallpapers')
     fetch.add_argument('theme', choices=themes.ids() + ['all'])
     fetch.add_argument('--every', action='store_true', help='all of a theme\'s wallpapers, not just the first')
+    sub.add_parser('thumbs', help='download first wallpapers and make picker previews').add_argument(
+        '--refresh', action='store_true', help='rebuild previews that already exist')
     args = parser.parse_args(argv)
     ctx = engine.Context(Settings())
     return globals()[f'cmd_{args.command}'](args, ctx)

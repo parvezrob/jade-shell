@@ -1,4 +1,5 @@
 """Themes: Omarchy palettes plus the GNOME shades derived from them."""
+import math
 import pathlib
 import re
 import tomllib
@@ -6,7 +7,7 @@ import urllib.request
 from dataclasses import dataclass
 
 from . import palette as pal
-from .store import config_home, data_home
+from .store import config_home, data_home, state_home
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 THEMES = ROOT / 'themes'
@@ -50,6 +51,28 @@ class Theme:
                 out.write(response.read())
             tmp.replace(path)
         return path
+
+
+def thumbnail_path(theme_id):
+    return state_home() / 'jade-shell/thumbs' / f'{theme_id}.png'
+
+
+def make_thumbnail(theme, width=320, height=200):
+    """A small center-cropped preview, so the picker never decodes 4K images."""
+    import gi
+    gi.require_version('GdkPixbuf', '2.0')
+    from gi.repository import GdkPixbuf
+    source = theme.fetch_wallpaper(0)
+    info, w, h = GdkPixbuf.Pixbuf.get_file_info(str(source))
+    scale = max(width / w, height / h)
+    # Scale to at least the preview size on both axes (aspect kept by `scale`), then crop.
+    image = GdkPixbuf.Pixbuf.new_from_file_at_scale(str(source), max(width, math.ceil(w * scale)), max(height, math.ceil(h * scale)), False)
+    x = (image.get_width() - width) // 2
+    y = (image.get_height() - height) // 2
+    out = thumbnail_path(theme.id)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    image.new_subpixbuf(x, y, width, height).savev(str(out), 'png', [], [])
+    return out
 
 
 def ids():

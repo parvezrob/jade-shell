@@ -1,0 +1,24 @@
+/* Layout only. Colors come from the generated theme stylesheet
+ * (~/.local/state/jade-shell/shell.css), so the picker re-themes itself. */
+.jade-picker { padding: 12px 6px; font-family: "JetBrains Mono", monospace; font-size: 10pt; }
+.jade-picker .jade-item { padding: 6px 12px; border-radius: 0; }
+.jade-picker .jade-item:hover,
+.jade-picker .jade-item:focus,
+.jade-picker .jade-item:selected { background-color: transparent !important; box-shadow: none !important; }
+
+.jade-picker .jade-hero { spacing: 12px; }
+.jade-picker .jade-hero-icon { icon-size: 28px; }
+.jade-picker .jade-title { font-size: 12pt; font-weight: 700; }
+.jade-picker .jade-meta { font-size: 8.5pt; font-weight: 700; letter-spacing: 1px; }
+
+.jade-picker .jade-grid { spacing: 10px; padding-top: 12px; }
+.jade-picker .jade-row { spacing: 10px; }
+.jade-picker .jade-tile { padding: 0; border-radius: 0; }
+.jade-picker .jade-tile-thumb { width: 116px; height: 72px; background-size: cover; background-position: center; }
+.jade-picker .jade-tile-name { font-size: 8.5pt; padding: 4px 6px 5px 6px; }
+
+.jade-picker .jade-footer { spacing: 8px; padding-top: 12px; }
+.jade-picker .jade-status { font-size: 8.5pt; }
+.jade-picker .jade-action { padding: 6px 10px; border-radius: 0; }
+.jade-picker .jade-action-content { spacing: 6px; }
+.jade-picker .jade-action-label { font-size: 9pt; }
