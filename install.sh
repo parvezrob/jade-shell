@@ -12,10 +12,13 @@
 # puts your desktop back and removes the package (add --yes after --uninstall
 # to skip the question, e.g. without a terminal).
 # `bash install.sh path/to/jade-shell.rpm` installs a package you built.
+# JADE_RELEASE=<url> downloads from there instead of the latest release (any
+# URL curl reads, file:// too), with the same checksum check: for testing a
+# build the way users install it (scripts/test-install-vm.sh).
 set -euo pipefail
 
 REPO=parvezrob/jade-shell
-RELEASE=https://github.com/$REPO/releases/latest/download
+RELEASE=${JADE_RELEASE:-https://github.com/$REPO/releases/latest/download}
 UUID='jade-shell@parvezrob.github.io'
 
 say() { printf '\033[1;32m::\033[0m %s\n' "$*"; }
