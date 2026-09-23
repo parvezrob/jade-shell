@@ -65,9 +65,20 @@ package_install() {
     fi
 }
 
+# dnf also removes the dependencies nothing else needs. apt only suggests
+# autoremove, which would take every leftover on the system: remove just the
+# ones Jade Shell pulled in (sassc, its library, the font) if they are unneeded.
 package_remove() {
     [[ -n $(installed_version) ]] || return 0
-    if [[ $kind == rpm ]]; then sudo dnf remove -y jade-shell; else sudo apt-get remove -y jade-shell; fi
+    if [[ $kind == rpm ]]; then
+        sudo dnf remove -y jade-shell
+        return
+    fi
+    sudo apt-get remove -y jade-shell
+    local -a unneeded
+    mapfile -t unneeded < <(apt-get -s autoremove 2>/dev/null \
+        | awk '$1 == "Remv" && ($2 == "sassc" || $2 ~ /^libsass[0-9]/ || $2 == "fonts-jetbrains-mono") { print $2 }')
+    if (( ${#unneeded[@]} )); then sudo apt-get remove -y "${unneeded[@]}"; fi
 }
 
 # Copies in your home folder, from the installer before the packages or from

@@ -7,7 +7,13 @@ case "$1" in
     *) exit 0 ;;
 esac
 find /usr/share/jade-shell -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
-# install.sh --uninstall has already restored the desktop by now; this is for
-# a removal straight through dnf, apt or Software, which cannot reach it.
-echo "If you removed Jade Shell without 'install.sh --uninstall': its settings stay"
-echo "in each user's home folder. To put a desktop back, reinstall and run 'jade restore'."
+# install.sh --uninstall restores the desktop first, and `jade restore` removes
+# setup.json. A removal straight through dnf, apt or Software cannot, so say it
+# only when some user's desktop is still set up by Jade Shell.
+left=$(awk -F: '$3 >= 1000 && $3 < 65534 { print $6 }' /etc/passwd | while read -r home; do
+    if [ -f "$home/.local/state/jade-shell/setup.json" ]; then echo "$home"; fi
+done)
+if [ -n "$left" ]; then
+    echo "Jade Shell's look stays on these desktops until it is restored: $(echo "$left" | tr '\n' ' ')"
+    echo "To put a desktop back, reinstall Jade Shell and run 'jade restore' as that user."
+fi
