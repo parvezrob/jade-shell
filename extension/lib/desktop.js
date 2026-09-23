@@ -30,7 +30,8 @@ export class Desktop {
         if (this._gridAfterStartup)
             Main.layoutManager.disconnect(this._gridAfterStartup);
         this._gridAfterStartup = null;
-        this._gridChanged.forEach(id => this._settings.disconnect(id));
+        this._gridChanged?.forEach(id => this._settings.disconnect(id));
+        this._gridChanged = null;
         this._restoreGrid();
     }
 
@@ -76,6 +77,7 @@ export class Desktop {
             grid.setGridModes(this._originalGrid.modes);
         const size = this._settings.get_int('app-grid-icon-size');
         grid.layout_manager.fixedIconSize = size > 0 ? size : this._originalGrid.fixedIconSize;
+        this._refreshGrid(grid);
         this._relayout();
     }
 
@@ -87,7 +89,24 @@ export class Desktop {
             grid.setGridModes(this._originalGrid.modes);
         grid.layout_manager.fixedIconSize = this._originalGrid.fixedIconSize;
         this._originalGrid = null;
+        this._refreshGrid(grid);
         this._relayout();
+    }
+
+    // GNOME only re-picks the mode when the mode index changes (with one mode
+    // it is always "0"), and only re-runs the icon-size pass when the page
+    // size changes. Force both so a new size takes effect without a restart.
+    _refreshGrid(grid) {
+        grid._currentMode = -1;
+        const layout = grid.layout_manager;
+        const width = layout.pageWidth, height = layout.pageHeight;
+        if (width > 0 && height > 0) {
+            // Rows and columns first, so the icon-size pass uses them.
+            grid._findBestModeForSize(width, height);
+            layout._pageWidth = layout._pageHeight = 0;
+            layout.adaptToSize(width, height);
+        }
+        grid.queue_relayout();
     }
 
     _relayout() {

@@ -1,11 +1,15 @@
 """jade: Omarchy's look and theme switching for GNOME."""
 import argparse
+import contextlib
 import json
 import sys
 
 from . import __version__, engine, setup, themes
+from . import targets as registry
 from .store import File, Settings, read_text
 from .usage import collect
+
+TARGETS = [t.name for t in registry.ALL]
 
 SWATCH = ['background', 'foreground', 'accent', 'selection', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan']
 
@@ -82,8 +86,11 @@ def theme_plan(args, ctx):
 def theme_set(args, ctx):
     theme = themes.load(args.theme)
     ctx.wallpaper_index = args.wallpaper
-    changes, _backup = engine.apply(theme, ctx, args.only, args.skip)
-    print(f'{theme.name}: {plural(len(changes), "change")} applied (undo: jade theme undo)')
+    changes, backup = engine.apply(theme, ctx, args.only, args.skip)
+    if backup is None:  # no backup was made, so `undo` would revert an older switch
+        print(f'{theme.name}: already applied')
+    else:
+        print(f'{theme.name}: {plural(len(changes), "change")} applied (undo: jade theme undo)')
     print_skipped(ctx)
     return 0
 
@@ -96,6 +103,9 @@ def theme_wallpaper(args, ctx):
     theme = themes.load(state['theme'])
     ctx.wallpaper_index = (state.get('wallpaper') or 0) + 1
     engine.apply(theme, ctx, only=['gnome'])
+    if ctx.wallpaper_error:  # the picker shows this line
+        print(f'Wallpaper not changed: {ctx.wallpaper_error}', file=sys.stderr)
+        return 1
     print(theme.wallpaper(ctx.wallpaper_index).name)
     return 0
 
@@ -107,6 +117,12 @@ def theme_undo(args, ctx):
         return 1
     before = (manifest.get('before') or {}).get('theme') or 'your previous look'
     print(f'Restored {before}')
+    for path in manifest.get('merged', []):
+        print(f"Took Jade Shell's part out of {path}; your edits since stay")
+    for path in manifest['kept']:
+        print(f'Kept {path}: it changed after the switch, so it was left as it is')
+    for item in manifest['skipped']:
+        print(f'Skipped {item}')
     return 0
 
 
@@ -139,6 +155,11 @@ def theme_thumbs(args, ctx):
 # ------------------------------------------------------------------ usage
 
 def usage_collect(args, ctx):
+    # The timer can outlive the switch (prefs could not reach systemd, say):
+    # with AI usage off, a timer run collects nothing.
+    if args.mode is None and ctx.settings.has(setup.JADE_SCHEMA, 'show-usage') \
+            and not ctx.settings.get(setup.JADE_SCHEMA).get_boolean('show-usage'):
+        return 0
     return collect.collect_all(args.mode)
 
 
@@ -156,6 +177,15 @@ def run_restore(args, ctx):
     return setup.restore(ctx, assume_yes=args.yes)
 
 
+def target_list(text):
+    names = [name.strip() for name in text.split(',') if name.strip()]
+    unknown = [name for name in names if name not in TARGETS]
+    if unknown or not names:
+        raise argparse.ArgumentTypeError(f'unknown target {", ".join(unknown) or repr(text)}; '
+                                         f'targets are: {", ".join(TARGETS)}')
+    return names
+
+
 def parser():
     top = argparse.ArgumentParser(prog='jade', description=__doc__)
     top.add_argument('--version', action='version', version=f'jade {__version__}')
@@ -169,8 +199,8 @@ def parser():
         p = theme.add_parser(name, help=text)
         p.add_argument('theme', choices=themes.ids())
         p.add_argument('--wallpaper', type=int, default=0, help="which of the theme's wallpapers (default 0)")
-        p.add_argument('--only', type=lambda s: s.split(','), help='comma-separated targets')
-        p.add_argument('--skip', type=lambda s: s.split(','), help='comma-separated targets')
+        p.add_argument('--only', type=target_list, metavar='T,...', help=f'only these targets: {", ".join(TARGETS)}')
+        p.add_argument('--skip', type=target_list, metavar='T,...', help='skip these targets (same names as --only)')
     theme.add_parser('wallpaper', help='next wallpaper of the current theme')
     theme.add_parser('undo', help='restore what the last switch changed')
     theme.add_parser('reload', help='ask every app to reload the current theme')
@@ -188,7 +218,8 @@ def parser():
     mode.add_argument('--limits-only', dest='mode', action='store_const', const='limits-only',
                       help='re-probe limits, reuse recent scans')
 
-    p = commands.add_parser('setup', help='set up this desktop for Jade Shell (safe to run again)')
+    p = commands.add_parser('setup', help='set up this desktop for Jade Shell (safe to run again; keeps your dock and '
+                                          'top bar choices)')
     p.add_argument('--theme', choices=themes.ids(), default='osaka-jade', help='theme to start with')
     commands.add_parser('doctor', help='check that everything Jade Shell needs is in place')
     p = commands.add_parser('restore', help='put back the desktop you had before Jade Shell')
@@ -205,7 +236,18 @@ HANDLERS = {
 }
 
 
+# Commands that change the desktop or the undo history, or download wallpapers
+# (a switch downloads them too, to the same files): one at a time.
+EXCLUSIVE = {('theme', 'set'), ('theme', 'wallpaper'), ('theme', 'undo'), ('theme', 'reload'),
+             ('theme', 'fetch'), ('theme', 'thumbs'), ('setup', None), ('restore', None)}
+
+
 def main(argv=None):
     args = parser().parse_args(argv)
-    handler = HANDLERS[args.command, getattr(args, 'action', None)]
-    return handler(args, engine.Context(Settings()))
+    command = args.command, getattr(args, 'action', None)
+    try:
+        with engine.exclusive() if command in EXCLUSIVE else contextlib.nullcontext():
+            return HANDLERS[command](args, engine.Context(Settings()))
+    except (engine.Busy, themes.WallpaperUnavailable) as error:  # a sentence, not a traceback
+        print(f'jade: {error}', file=sys.stderr)
+        return 1

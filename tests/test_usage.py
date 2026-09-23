@@ -1,4 +1,5 @@
 """The usage collector: Omarchy's collectors plus our publishing wrapper."""
+import argparse
 import datetime
 import importlib.util
 import json
@@ -11,6 +12,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from jade import cli, engine
 from jade.usage import collect as update
 
 
@@ -52,9 +54,10 @@ class Publish(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()
         self.records = pathlib.Path(self.dir.name)
-        patcher = mock.patch.object(update, 'records_dir', return_value=self.records)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for name, value in (('records_dir', self.records), ('present', True)):
+            patcher = mock.patch.object(update, name, return_value=value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.addCleanup(self.dir.cleanup)
 
     def test_records_are_published_without_leftover_temp_files(self):
@@ -78,6 +81,14 @@ class Publish(unittest.TestCase):
         self.assertEqual(json.loads((self.records / 'codex.json').read_text()), {'id': 'codex', 'limits': []})
         self.assertTrue((self.records / 'claude.json').exists())
 
+    def test_only_installed_tools_are_collected(self):
+        (self.records / 'codex.json').write_text('{"id":"codex","usageStatusText":"Codex unavailable"}')
+        with mock.patch.object(update, 'present', side_effect=lambda p: p == 'claude'), \
+             mock.patch.object(update, 'collect', side_effect=lambda p, _f: {'id': p}) as collect:
+            self.assertEqual(update.collect_all(), 0)
+        collect.assert_called_once_with('claude', [])
+        self.assertFalse((self.records / 'codex.json').exists())  # no stale tab for a removed tool
+
     def test_timer_run_skips_while_another_run_holds_the_lock(self):
         self.records.mkdir(exist_ok=True)
         with (self.records / '.lock').open('w') as held:
@@ -85,6 +96,34 @@ class Publish(unittest.TestCase):
             with mock.patch.object(update, 'collect') as collect:
                 self.assertEqual(update.collect_all(), 0)
             collect.assert_not_called()
+
+
+class UsageOff(unittest.TestCase):
+    """With AI usage turned off in the preferences, a timer run collects nothing."""
+
+    class Settings:
+        def __init__(self, show):
+            self.show = show
+
+        def has(self, schema, key=None):
+            return schema == 'org.gnome.shell.extensions.jade-shell'
+
+        def get(self, schema):
+            return mock.Mock(get_boolean=lambda key: self.show)
+
+    def run_collect(self, show, mode):
+        with mock.patch.object(cli.collect, 'collect_all', return_value=0) as collect_all:
+            self.assertEqual(cli.usage_collect(argparse.Namespace(mode=mode), engine.Context(self.Settings(show))), 0)
+        return collect_all
+
+    def test_timer_run_skips_while_usage_is_off(self):
+        self.run_collect(False, None).assert_not_called()
+
+    def test_timer_run_collects_while_usage_is_on(self):
+        self.run_collect(True, None).assert_called_once_with(None)
+
+    def test_asking_from_the_menu_still_collects(self):
+        self.run_collect(False, 'force').assert_called_once_with('force')
 
 
 class ClaudeLimits(unittest.TestCase):

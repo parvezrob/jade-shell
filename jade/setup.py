@@ -7,6 +7,7 @@ so `restore` can return the desktop to exactly how it was.
 import json
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 import sys
@@ -16,14 +17,18 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
-from . import engine, shelltheme, themes
+from . import __version__, engine, shelltheme, themes
 from .store import Setting, config_home, data_home, write_text
+from .usage import collect
 
 UUID = 'jade-shell@parvezrob.github.io'
 SHELL = 'org.gnome.shell'
 DOCK_SCHEMA = 'org.gnome.shell.extensions.dash-to-dock'
 DASH_TO_DOCK = 'dash-to-dock@micxgx.gmail.com'
 UBUNTU_DOCK = 'ubuntu-dock@ubuntu.com'
+JADE_SCHEMA = 'org.gnome.shell.extensions.jade-shell'
+# Opinionated defaults the user may change later: setup sets each key only once.
+PREFERENCE_SCHEMAS = (DOCK_SCHEMA, JADE_SCHEMA)
 
 # Extensions whose job Jade Shell now does. Running both would fight over the
 # same part of the Shell (or just do the work twice).
@@ -39,6 +44,7 @@ REPLACED = {
     'osaka-ai-usage@local': 'AI usage (Jade AI Usage is now part of Jade Shell)',
 }
 OLD_UNITS = ['osaka-ai-usage.timer']
+SYSTEM_EXTENSIONS = pathlib.Path('/usr/share/gnome-shell/extensions')
 
 # The dock as Jade Shell ships it: small, at the bottom, out of the way.
 DOCK_LAYOUT = {
@@ -66,6 +72,8 @@ DOCK_LAYOUT = {
 
 USAGE_SERVICE = '''[Unit]
 Description=Collect Claude and Codex usage for Jade Shell
+# Removed with dnf or apt before `jade restore`: skip quietly instead of failing every run.
+ConditionFileIsExecutable={jade}
 
 [Service]
 Type=oneshot
@@ -114,11 +122,47 @@ def jade_command():
 
 def extension_installed(uuid):
     return any((base / uuid / 'metadata.json').exists()
-               for base in (data_home() / 'gnome-shell/extensions', pathlib.Path('/usr/share/gnome-shell/extensions')))
+               for base in (data_home() / 'gnome-shell/extensions', SYSTEM_EXTENSIONS))
 
 
-def extension_state(uuid):
-    """The running Shell's view: 'active', 'inactive', 'unknown' (needs a new login) or None (no Shell)."""
+def leftovers():
+    """Copies in the home folder that get in the package's way, and old versions' files.
+
+    Returns (paths to remove, units to disable). Only ever reported: they may
+    be someone's development checkout, so nothing here deletes them.
+    """
+    home, extensions = pathlib.Path.home(), data_home() / 'gnome-shell/extensions'
+    paths = []
+    # GNOME Shell loads a user extension before the package's, and ~/.local/bin
+    # comes first on PATH: a dev or pre-package copy would keep running instead.
+    if (extensions / UUID).exists() and (SYSTEM_EXTENSIONS / UUID).exists():
+        paths.append(extensions / UUID)
+        lib = data_home() / 'jade-shell/lib'
+        if lib.exists():
+            paths.append(lib)
+        link = home / '.local/bin/jade'
+        if link.is_symlink() and link.resolve().is_relative_to(lib):
+            paths.append(link)
+    # From before Jade Shell and Jade AI Usage merged.
+    old = [home / '.local/lib/jade-shell', home / '.local/lib/osaka-ai-usage', home / '.local/bin/jade-theme',
+           extensions / 'osaka-ai-usage@local']
+    paths += [path for path in old if path.exists() or path.is_symlink()]
+    units = [unit for unit in OLD_UNITS if systemctl('is-enabled', unit).stdout.strip() == 'enabled']
+    return paths, units
+
+
+def leftover_commands(paths, units):
+    commands = []
+    if paths:
+        commands.append('rm -rf ' + ' '.join(shlex.quote(str(path)) for path in paths))
+    if units:
+        commands.append('systemctl --user disable --now ' + ' '.join(units))
+    return commands
+
+
+def extension_info(uuid):
+    """What the running Shell loaded for this extension: {} when it has not
+    seen it (a new login needed), None when no Shell answers."""
     try:
         bus = Gio.bus_get_sync(Gio.BusType.SESSION)
         info = bus.call_sync('org.gnome.Shell.Extensions', '/org/gnome/Shell/Extensions',
@@ -126,14 +170,26 @@ def extension_state(uuid):
                              None, Gio.DBusCallFlags.NONE, 2000, None).unpack()[0]
     except GLib.Error:
         return None
+    return info
+
+
+def extension_state(uuid):
+    """The running Shell's view: 'active', 'inactive', 'unknown' (needs a new login) or None (no Shell)."""
+    info = extension_info(uuid)
+    if info is None:
+        return None
     if not info:
         return 'unknown'
     return 'active' if info.get('state') == 1 else 'inactive'
 
 
 def usage_wanted():
-    home = pathlib.Path.home()
-    return any(shutil.which(cli) for cli in ('claude', 'codex')) or (home / '.claude').exists() or (home / '.codex').exists()
+    return any(collect.present(provider) for provider in collect.PROVIDERS)
+
+
+def usage_shown(ctx):
+    """The AI usage switch in the preferences; with it off, nothing runs in the background."""
+    return not ctx.settings.has(JADE_SCHEMA, 'show-usage') or ctx.settings.get(JADE_SCHEMA).get_boolean('show-usage')
 
 
 # ------------------------------------------------------------------ setup
@@ -154,8 +210,8 @@ def planned_settings(ctx):
     ]
     if settings.has(DOCK_SCHEMA):
         out += [Setting(DOCK_SCHEMA, key, value) for key, value in DOCK_LAYOUT.items() if settings.has(DOCK_SCHEMA, key)]
-    if settings.has('org.gnome.shell.extensions.jade-shell', 'show-usage'):
-        out.append(Setting('org.gnome.shell.extensions.jade-shell', 'show-usage', usage_wanted()))
+    if settings.has(JADE_SCHEMA, 'show-usage'):
+        out.append(Setting(JADE_SCHEMA, 'show-usage', usage_wanted()))
     return out
 
 
@@ -168,7 +224,7 @@ def record(ctx, manifest, changes):
                                          'old': ctx.settings.user_value(change)})
 
 
-def install_usage_timer(manifest):
+def install_usage_timer(manifest, enable=True):
     jade = jade_command()
     if not jade:
         return 'jade is not on PATH'
@@ -181,9 +237,20 @@ def install_usage_timer(manifest):
             if unit not in manifest['disabled_units']:
                 manifest['disabled_units'].append(unit)
     systemctl('daemon-reload')
+    if not enable:
+        # Turned off in the preferences: the units stay for the switch to turn back on.
+        systemctl('disable', '--now', 'jade-usage.timer')
+        return None
     result = systemctl('enable', '--now', 'jade-usage.timer')
     systemctl('start', '--no-block', 'jade-usage.service')
     return None if result.returncode == 0 else result.stderr.strip()
+
+
+def sticks(change):
+    """Whether setup's value is set once and then left to the person. AI usage
+    turned off only because neither Claude Code nor Codex was here is not a
+    choice anyone made: it turns on at the first setup after one appears."""
+    return not (change.key == 'show-usage' and change.value is False)
 
 
 def setup(ctx, theme_id='osaka-jade'):
@@ -197,26 +264,41 @@ def setup(ctx, theme_id='osaka-jade'):
         return 1
 
     manifest = load_manifest()
-    changes = planned_settings(ctx)
+    planned = planned_settings(ctx)
+    if 'defaulted' not in manifest:
+        # Set up by an older version, which has already applied these once.
+        manifest['defaulted'] = ([[c.schema, c.path, c.key] for c in planned if c.schema in PREFERENCE_SCHEMAS and sticks(c)]
+                                 if manifest_path().exists() else [])
+    done = {tuple(key) for key in manifest['defaulted']}
+    changes = [c for c in planned if c.schema not in PREFERENCE_SCHEMAS or (c.schema, c.path, c.key) not in done]
     record(ctx, manifest, changes)
+    manifest['defaulted'] += [[c.schema, c.path, c.key] for c in changes if c.schema in PREFERENCE_SCHEMAS and sticks(c)]
     write_text(manifest_path(), json.dumps(manifest, indent=2))
     enabled_before = set(ctx.settings.get(SHELL).get_strv('enabled-extensions'))
     ctx.settings.write(changes)
     for uuid in sorted(enabled_before & set(REPLACED)):
         say(f'Turned off {uuid}: Jade Shell now does {REPLACED[uuid]}.')
 
-    problem = install_usage_timer(manifest)
-    write_text(manifest_path(), json.dumps(manifest, indent=2))
-    if problem:
-        say(f'AI usage collector not started: {problem}')
+    if usage_wanted():
+        # Read after the settings above are written: a first setup turns it on, and a
+        # later one keeps a person's "off" (the key is set only once).
+        problem = install_usage_timer(manifest, enable=usage_shown(ctx))
+        write_text(manifest_path(), json.dumps(manifest, indent=2))
+        if problem:
+            say(f'AI usage collector not started: {problem}')
+    elif (config_home() / 'systemd/user/jade-usage.timer').exists():
+        systemctl('disable', '--now', 'jade-usage.timer')  # neither Claude Code nor Codex is here any more
 
     say('Preparing theme previews…')
     for tid in themes.ids():
         if not themes.thumbnail_path(tid).exists():
             try:
                 themes.make_thumbnail(themes.load(tid))
-            except Exception as error:  # a preview is not worth failing setup over
-                say(f'  no preview for {tid}: {error}')
+            except themes.WallpaperUnavailable as error:  # offline: the rest would fail the same way
+                say(f'  no previews ({error}); the picker shows colors until you run: jade theme thumbs')
+                break
+            except Exception as error:  # a preview is not worth failing setup over; the picker shows colors
+                say(f'  no preview for {tid}: {str(error).splitlines()[0]}')
 
     # The current theme (or the starting one), applied everywhere: this also
     # builds anything a new version of Jade Shell adds, and changes nothing else.
@@ -225,6 +307,16 @@ def setup(ctx, theme_id='osaka-jade'):
     ctx.wallpaper_index = state.get('wallpaper') or 0
     changes, _backup = engine.apply(theme, ctx)
     say(f'{theme.name}: {len(changes)} change{"" if len(changes) == 1 else "s"} applied.')
+    for name, reason in ctx.skipped.items():
+        say(f'  skipped {name}: {reason}')
+
+    commands = leftover_commands(*leftovers())
+    if commands:
+        # Never removed here: it may be someone's development copy.
+        say('Your home folder has files from an older or development copy of Jade Shell '
+            '(an extension there runs instead of the package\'s). Remove them with:')
+        for command in commands:
+            say(f'    {command}')
 
     state = extension_state(UUID)
     if state in ('unknown', None) and os.environ.get('XDG_SESSION_TYPE') == 'wayland':
@@ -236,6 +328,30 @@ def setup(ctx, theme_id='osaka-jade'):
 
 
 # ------------------------------------------------------------------ restore
+
+def merged_extensions(ctx, entry):
+    """An extension list with only setup's own change undone.
+
+    Extensions enabled or disabled since setup stay as the user left them.
+    Returns the list, and whether it is just the default again.
+    """
+    shell = ctx.settings.get(SHELL)
+    key = entry['key']
+    default = shell.get_default_value(key).unpack()
+    old = default if entry['old'] is None else GLib.Variant.parse(None, entry['old'], None, None).unpack()
+    now = shell.get_strv(key)
+    if key == 'enabled-extensions':
+        added = {UUID} | ({DASH_TO_DOCK} if DASH_TO_DOCK not in old else set())
+        keep = [uuid for uuid in now if uuid not in added]
+        back = [uuid for uuid in old if uuid in REPLACED]  # the ones setup turned off
+    else:  # disabled-extensions: setup took Jade Shell and Dash to Dock out of it
+        keep = now
+        back = [uuid for uuid in old if uuid in (UUID, DASH_TO_DOCK)]
+    wanted = set(keep) | set(back)
+    # What was there before keeps its old place; anything newer goes at the end.
+    result = list(dict.fromkeys([u for u in old if u in wanted] + [u for u in keep if u not in old]))
+    return result, entry['old'] is None and result == list(default)
+
 
 def restore(ctx, assume_yes=False):
     manifest = load_manifest()
@@ -250,19 +366,42 @@ def restore(ctx, assume_yes=False):
         answer = input(f'Undo {len(history)} theme switch(es) and Jade Shell setup? [y/N] ')
         if answer.strip().lower() not in ('y', 'yes'):
             return 1
-    while engine.undo(ctx):
-        pass
+    kept, merged, skipped, stuck = [], [], [], []
+    # A broken backup that could not be set aside stays where it is: go on past it.
+    while (undone := engine.undo(ctx, ignore=stuck)) is not None:
+        kept += undone['kept']
+        merged += undone.get('merged', [])
+        skipped += undone['skipped']
+        if undone.get('stuck'):
+            stuck.append(undone['stuck'])
+
+    rest = []
     for entry in reversed(manifest['settings']):
-        ctx.settings.restore(entry['schema'], entry['path'], entry['key'], entry['old'])
-    Gio.Settings.sync()
+        if entry['schema'] == SHELL and entry['key'] in ('enabled-extensions', 'disabled-extensions'):
+            value, is_default = merged_extensions(ctx, entry)
+            shell = ctx.settings.get(SHELL)
+            if is_default:
+                shell.reset(entry['key'])
+            else:
+                shell.set_strv(entry['key'], value)
+        else:
+            rest.append(entry)
+    skipped += ctx.settings.restore_all(rest)  # also flushes the extension lists
     units = config_home() / 'systemd/user'
     systemctl('disable', '--now', 'jade-usage.timer')
     for name in ('jade-usage.service', 'jade-usage.timer'):
         (units / name).unlink(missing_ok=True)
+    shutil.rmtree(units / 'jade-usage.timer.d', ignore_errors=True)  # the refresh interval set in prefs
     systemctl('daemon-reload')
     for unit in manifest['disabled_units']:
         systemctl('enable', '--now', unit)
     manifest_path().unlink(missing_ok=True)
+    for path in dict.fromkeys(merged):
+        say(f'Took Jade Shell\'s part out of {path}; your edits since stay.')
+    for path in dict.fromkeys(kept):
+        say(f'Kept {path}: it changed after Jade Shell wrote it, so it was left as it is.')
+    for item in skipped:
+        say(f'Skipped {item}')
     say('Restored the desktop you had before Jade Shell. Log out and back in to finish.')
     return 0
 
@@ -292,9 +431,19 @@ def doctor(ctx):
     if state is not None:
         check(state == 'active', f'Jade Shell running in GNOME Shell ({state})',
               'Log out and back in' if state == 'unknown' else 'Check: journalctl --user -b | grep -i jade')
+    # Packages stamp their version into the extension; the Shell keeps running
+    # the code it loaded at login until the next one.
+    running = (extension_info(UUID) or {}).get('version-name')
+    if running:
+        check(running == __version__, f'GNOME Shell runs this version of the extension ({running})',
+              f'The Shell still runs {running}; log out and back in to load {__version__}')
     clashing = [uuid for uuid in enabled if uuid in REPLACED]
     check(not clashing, 'No extensions doing the same job', f'Run: jade setup (turns off {", ".join(clashing)})')
-    check(ctx.settings.has(DOCK_SCHEMA), 'Dock (Dash to Dock or Ubuntu Dock)', 'Install Dash to Dock')
+    paths, units = leftovers()
+    check(not paths and not units, 'No older or development copies in your home folder',
+          '\n    '.join(['Remove them with:', *leftover_commands(paths, units)]))
+    if not ctx.settings.has(DOCK_SCHEMA):  # optional: the look is complete without it, just dockless
+        say('· No dock installed (optional). For the full look, install Dash to Dock.')
 
     current = engine.current().get('theme')
     check(bool(current), f'Theme: {current or "none applied"}', 'Run: jade setup')

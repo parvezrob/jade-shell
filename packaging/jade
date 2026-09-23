@@ -1,4 +1,6 @@
 #!/bin/sh
-# /usr/bin/jade, as installed by the Jade Shell package.
+# /usr/bin/jade, as installed by the Jade Shell package. The system python3 is
+# the one the package's python3-gobject/python3-gi is for (not a venv's), and
+# -P keeps a jade.py or jade/ in the current directory from being imported.
 export JADE_BIN=/usr/bin/jade
-PYTHONPATH="/usr/share/jade-shell${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m jade "$@"
+PYTHONPATH="/usr/share/jade-shell${PYTHONPATH:+:$PYTHONPATH}" exec /usr/bin/python3 -P -m jade "$@"

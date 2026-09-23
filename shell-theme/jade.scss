@@ -7,6 +7,9 @@ $jade-panel-font: "JetBrains Mono", monospace;
 $jade-muted-text: $jade-secondary_text;
 $jade-urgent: $jade-bright_red;
 $jade-divider: $jade-selection;
+// Emphasis: the brighter of the two foregrounds. Some themes (Matte Black)
+// define light_foreground dimmer than foreground.
+$jade-strong: if(lightness($jade-light_foreground) > lightness($jade-foreground), $jade-light_foreground, $jade-foreground);
 
 // ------------------------------------------------------------------ top bar
 
@@ -45,7 +48,7 @@ $jade-divider: $jade-selection;
   color: $jade-muted;
   font-weight: 400;
 
-  &:hover { color: $jade-light_foreground; }
+  &:hover { color: $jade-strong; }
   &.occupied { color: $jade-foreground; }
   &.active {
     color: $jade-accent_fg;
@@ -71,8 +74,6 @@ $jade-divider: $jade-selection;
 
 // ------------------------------------------------------------------ menus
 
-.popup-menu-content { border-radius: 6px; }
-
 // App grid: a quiet accent tile under the pointer.
 .overview-tile:hover,
 .overview-tile:focus {
@@ -95,14 +96,14 @@ $jade-divider: $jade-selection;
   background-color: transparent;
   color: $jade-foreground;
 
-  &:hover { background-color: $jade-selection; border-color: $jade-foreground; color: $jade-light_foreground; }
+  &:hover { background-color: $jade-selection; border-color: $jade-foreground; color: $jade-strong; }
   &:focus { box-shadow: inset 0 0 0 1px $jade-dark_foreground; }
   &:insensitive { color: $jade-muted-text; }
 }
 
 // Theme picker.
 .jade-picker {
-  .jade-title { color: $jade-light_foreground; }
+  .jade-title { color: $jade-strong; }
   .jade-meta, .jade-status { color: $jade-muted-text; }
   .jade-status.jade-error { color: $jade-urgent; }
   .jade-hero-icon { color: $jade-accent; }
@@ -117,7 +118,7 @@ $jade-divider: $jade-selection;
     &.jade-current { border-color: $jade-accent; }
   }
   .jade-tile-name { color: $jade-foreground; }
-  .jade-tile.jade-current .jade-tile-name { color: $jade-light_foreground; }
+  .jade-tile.jade-current .jade-tile-name { color: $jade-strong; }
   .jade-action { @include jade-outline-button; }
 }
 
@@ -130,13 +131,13 @@ $jade-divider: $jade-selection;
   .ai-jade, .ai-hero-icon { color: $jade-dark_foreground; }
   .ai-hero-title, .ai-value,
   .ai-today .ai-day-name, .ai-today .ai-day-value,
-  .ai-model-row:hover .ai-model-value { color: $jade-light_foreground; }
+  .ai-model-row:hover .ai-model-value { color: $jade-strong; }
   .ai-divided, .ai-footer-item { border-top: 1px solid $jade-divider; }
 
   .ai-chip {
     @include jade-outline-button;
     &:hover { background-color: transparentize($jade-foreground, .92); border-color: transparentize($jade-foreground, .6); color: $jade-foreground; }
-    &:checked { background-color: $jade-selection; border-color: $jade-foreground; color: $jade-light_foreground; }
+    &:checked { background-color: $jade-selection; border-color: $jade-foreground; color: $jade-strong; }
   }
   .ai-action { @include jade-outline-button; }
   .ai-card {
@@ -144,3 +145,252 @@ $jade-divider: $jade-selection;
     background-color: transparentize($jade-urgent, .92);
   }
 }
+
+// System monitor panel.
+.jade-monitor-panel {
+  .jm-title, .jm-section-title, .jm-section-value, .jm-disk-name, .jm-core-value { color: $jade-strong; }
+  .jm-hero-icon, .jm-section-icon { color: $jade-foreground; }
+  .jm-meta, .jm-caption, .jm-core-name { color: mix($jade-foreground, $jade-background, 70%); }
+  .jm-tagline { color: mix($jade-foreground, $jade-background, 70%); letter-spacing: 1.2px; }
+  .jm-divided { border-top: 1px solid transparentize($jade-foreground, .88); }
+  .jade-action { @include jade-outline-button; }
+}
+
+// ------------------------------------------------------------------ Omarchy panels
+// Calendar, notifications and quick settings in the language of Omarchy's own
+// shell (shell/Commons/Style.qml and friends): square, monospace, no shadows,
+// a 2px accent frame outside and quiet foreground tints inside. "On" is a
+// foreground tint, not the accent; the accent stays on the frame.
+
+$om-fg-04: transparentize($jade-foreground, .96);  // control at rest
+$om-fg-08: transparentize($jade-foreground, .92);  // hover
+$om-fg-12: transparentize($jade-foreground, .88);  // dividers, tracks
+$om-fg-18: transparentize($jade-foreground, .82);  // checked
+$om-fg-22: transparentize($jade-foreground, .78);  // pressed
+$om-fg-25: transparentize($jade-foreground, .75);  // hover outline
+$om-fg-40: transparentize($jade-foreground, .60);  // control outline
+$om-dim: mix($jade-foreground, $jade-background, 70%);   // Qt.darker(fg, 1.4)
+$om-dimmer: mix($jade-foreground, $jade-background, 50%);
+
+@mixin om-control {
+  background-color: $om-fg-04;
+  border: 1px solid $om-fg-40;
+  border-radius: 0;
+  box-shadow: none;
+  color: $jade-foreground;
+  &:hover, &:focus { background-color: $om-fg-08; border-color: $om-fg-25; box-shadow: none; }
+  &:active { background-color: $om-fg-22; }
+  &:checked { background-color: $om-fg-18; border-color: transparent; color: $jade-strong; }
+  &:checked:hover, &:checked:focus { background-color: $om-fg-22; }
+}
+
+@mixin om-flat-button {
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: $jade-foreground;
+  &:hover, &:focus { background-color: $om-fg-08; border-color: $om-fg-25; box-shadow: none; }
+  &:active { background-color: $om-fg-22; }
+}
+
+@mixin om-caps { font-size: 8pt; font-weight: bold; letter-spacing: 1.2px; color: $om-dim; }
+
+// Every menu: Omarchy's panel frame, all monospace.
+.popup-menu-content,
+.candidate-popup-content {
+  font-family: $jade-panel-font;
+  background-color: $jade-background;
+  border: 2px solid $jade-accent;
+  border-radius: 0;
+  box-shadow: none;
+}
+.popup-menu-item {
+  border-radius: 0;
+  &:hover, &:focus, &:selected { background-color: $om-fg-08; }
+  &:checked { background-color: $om-fg-18; }
+}
+.popup-sub-menu { background-color: $om-fg-04; border-radius: 0; }
+.popup-separator-menu-item .popup-separator-menu-item-separator { background-color: $om-fg-12; }
+
+// ---- calendar and notifications (the clock's menu)
+.datemenu-popover {
+  font-family: $jade-panel-font;
+  padding: 10px;
+}
+#calendarArea { padding: 4px; }
+.datemenu-calendar-column { spacing: 12px; }
+
+.datemenu-today-button {
+  @include om-flat-button;
+  background-color: transparent;
+  padding: 4px 8px 10px;
+  // No letter-spacing here: St measures labels without it and would cut the day off.
+  .day-label { font-size: 8pt; font-weight: bold; color: $om-dim; }
+  .date-label { font-size: 17pt; font-weight: bold; color: $jade-strong; }
+}
+
+.calendar {
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  .calendar-month-header {
+    .calendar-month-label {
+      font-size: 9pt; font-weight: bold; letter-spacing: 1px;
+      color: $om-dim !important;
+      border-radius: 0;
+      &:hover, &:focus { background-color: $om-fg-08; }
+    }
+    .pager-button { @include om-flat-button; width: 2.2em; height: 2.2em; }
+  }
+  .calendar-day-heading {
+    font-size: 7.5pt; font-weight: bold; letter-spacing: 1px;
+    color: $om-dimmer;
+    border-radius: 0;
+    background-color: transparent;
+  }
+  .calendar-day {
+    @include om-flat-button;
+    border-radius: 0;
+    width: 2.9em;
+    height: 2.4em;
+    margin: 1px;
+    font-weight: normal;
+    font-size: 9pt;
+    &.calendar-weekend { color: mix($jade-foreground, $jade-background, 69%); }
+    &.calendar-other-month, &.calendar-other-month.calendar-weekend { color: mix($jade-foreground, $jade-background, 45%); }
+    // Today: an outline and a bold number; no fill, no accent.
+    &.calendar-today, &.calendar-today:hover, &.calendar-today:focus {
+      background-color: transparent;
+      border: 1px solid $om-fg-40;
+      color: $jade-strong !important;
+      font-weight: bold;
+      box-shadow: none;
+    }
+    &.calendar-today:hover { background-color: $om-fg-08; }
+    // A day with events keeps a small mark under the number.
+    &.calendar-day-with-events, &.calendar-today.calendar-day-with-events { background-image: none !important; font-weight: bold; }
+  }
+  .calendar-week-number { background-color: transparent; color: $om-dimmer; border-radius: 0; }
+}
+
+.events-button, .world-clocks-button, .weather-button {
+  @include om-flat-button;
+  background-color: transparent;
+  border: 0;
+  border-top: 1px solid $om-fg-12;
+  padding: 10px 8px;
+  .events-title, .world-clocks-header, .weather-header { @include om-caps; }
+  .event-placeholder { color: $om-dimmer; font-style: normal; font-size: 9pt; }
+  .event-summary { font-weight: bold; }
+  .event-time, .world-clocks-timezone { color: $om-dim; }
+}
+
+// Notifications: rows, not cards. App name in the accent, time dimmed,
+// title in the foreground, body smaller and dimmer.
+.message-list {
+  border-color: $om-fg-12;
+  .message-list-placeholder {
+    font-size: 10pt; font-weight: normal; color: $om-dimmer;
+    > StIcon { icon-size: 32px; margin-bottom: 10px; }
+  }
+}
+.message-view .message { border-radius: 0; margin-bottom: 4px !important; }
+.message-list-controls {
+  font-size: 9pt;
+  .message-list-clear-button { @include om-control; padding: 4px 12px; font-weight: bold; }
+}
+.message-notification-group .message-group-header {
+  .message-group-title { @include om-caps; }
+  .message-collapse-button { @include om-flat-button; }
+}
+.message {
+  // Opaque: GNOME stacks a group's messages on top of each other.
+  background-color: $jade-background;
+  border: 1px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  &:hover, &:focus { background-color: mix($jade-foreground, $jade-background, 5%); border-color: $om-fg-12; }
+  &:second-in-stack, &:lower-in-stack { background-color: mix($jade-foreground, $jade-background, 5%); border-color: $om-fg-12; box-shadow: none; }
+  .message-header {
+    color: $om-dim;
+    .message-source-icon { color: $jade-accent; }
+    .message-header-content {
+      .message-source-title { color: $jade-accent; font-weight: bold; font-size: 9pt; }
+      .event-time { color: $om-dim; font-size: 8pt; }
+    }
+    .message-expand-button, .message-close-button { @include om-flat-button; color: $om-dim; }
+  }
+  .message-box {
+    .message-icon.message-themed-icon { border-radius: 0; background-color: $om-fg-08; }
+    .message-content {
+      .message-title { color: $jade-strong; font-weight: bold; font-size: 10pt; }
+      .message-body { color: $om-dim; font-size: 9pt; }
+    }
+  }
+  .message-action-bin .button, .notification-button { @include om-control; }
+}
+// Pop-up banners: the same card, framed like every Omarchy panel.
+.notification-banner {
+  background-color: $jade-background;
+  border: 2px solid $jade-accent;
+  border-radius: 0;
+  box-shadow: none;
+  font-family: $jade-panel-font;
+  &:hover { background-color: $jade-background; }
+}
+
+// ---- quick settings
+.quick-settings {
+  font-family: $jade-panel-font;
+  padding: 14px;
+  .icon-button, .button { border-radius: 0; }
+}
+.quick-settings-system-item .icon-button { @include om-flat-button; border-color: $om-fg-12; }
+.quick-settings-grid { spacing-rows: 6px; spacing-columns: 6px; }
+
+.quick-toggle { @include om-control; border-radius: 0; min-height: 44px; }
+.quick-toggle .quick-toggle-title { font-weight: bold; font-size: 9.5pt; color: $jade-foreground; }
+.quick-toggle .quick-toggle-icon { color: $jade-foreground; }
+.quick-toggle:checked .quick-toggle-title, .quick-toggle:checked .quick-toggle-icon { color: $jade-strong; }
+.quick-toggle .quick-toggle-subtitle { font-size: 8pt; color: $om-dim; }
+.quick-toggle:checked .quick-toggle-subtitle { color: $jade-foreground; }
+.quick-toggle-has-menu {
+  border-radius: 0;
+  & .quick-toggle, & .quick-toggle:ltr, & .quick-toggle:rtl,
+  & .quick-toggle:ltr:last-child, & .quick-toggle:rtl:last-child { border-radius: 0; }
+  & .quick-toggle-menu-button,
+  & .quick-toggle-menu-button:ltr, & .quick-toggle-menu-button:rtl { @include om-control; border-radius: 0; border-left-width: 0; }
+  & .quick-toggle-separator, &:checked .quick-toggle-separator { background-color: $om-fg-25; }
+}
+
+.quick-toggle-menu {
+  // Drawn in its own layer, so it does not inherit the menu's font.
+  font-family: $jade-panel-font;
+  background-color: $om-fg-04;
+  border: 1px solid $om-fg-12;
+  border-radius: 0;
+  box-shadow: none;
+  & .header {
+    & .icon { border-radius: 0; background-color: $om-fg-08;
+      &.active { background-color: $om-fg-18; color: $jade-strong; } }
+    & .title { font-weight: bold; font-size: 11pt; color: $jade-strong; }
+    & .subtitle { @include om-caps; }
+  }
+}
+.quick-slider .slider-bin { border-radius: 0; }
+
+// Sliders: a thin track, filled with the foreground, a small round knob.
+.slider {
+  color: $jade-foreground;
+  -barlevel-height: 4px;
+  -barlevel-background-color: $om-fg-18;
+  -barlevel-active-background-color: $jade-foreground;
+  -slider-handle-radius: 7px;
+  -slider-handle-border-width: 2px;
+  -slider-handle-border-color: $jade-background;
+}
+
+// Toggle switches in menus: square, foreground tints.
+.toggle-switch { border-radius: 0; }

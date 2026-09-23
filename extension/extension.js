@@ -2,12 +2,15 @@
 //
 // The Shell theme is loaded in every session mode, so the lock screen keeps
 // the theme's colors. Everything in the top bar exists only in the normal
-// user session and is torn down while the screen is locked.
+// user session and is torn down while the screen is locked. The Desktop part
+// (app grid and startup) stays on too: it changes nothing on the lock screen,
+// and rebuilding the app grid on every lock and unlock is wasted work.
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {Clock} from './lib/clock.js';
 import {Desktop} from './lib/desktop.js';
+import {SimpleCalendar} from './lib/datemenu.js';
 import {Monitor} from './lib/monitor.js';
 import {Picker} from './lib/picker.js';
 import {ShellTheme} from './lib/theme.js';
@@ -21,10 +24,11 @@ export default class JadeShell extends Extension {
         this._shellTheme.enable();
         // Parts the user can turn off; null key means always on.
         this._parts = [
-            {key: null, make: () => new Desktop(this._settings)},
+            {key: null, keepWhileLocked: true, make: () => new Desktop(this._settings)},
             {key: 'show-workspaces', make: () => new Workspaces()},
             {key: 'show-clock-format', make: () => new Clock(this._settings)},
-            {key: 'show-monitor', make: () => new Monitor(this._settings)},
+            {key: 'simple-calendar', make: () => new SimpleCalendar()},
+            {key: 'show-monitor', make: () => new Monitor(this, this._settings, this._shellTheme)},
             {key: 'show-usage', make: () => new Usage(this, this._settings, this._shellTheme)},
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
         ];
@@ -51,7 +55,8 @@ export default class JadeShell extends Extension {
     }
 
     _syncPart(part) {
-        const wanted = !Main.sessionMode.isLocked && (!part.key || this._settings.get_boolean(part.key));
+        const allowed = part.keepWhileLocked || !Main.sessionMode.isLocked;
+        const wanted = allowed && (!part.key || this._settings.get_boolean(part.key));
         if (wanted && !part.instance) {
             part.instance = part.make();
             try {
@@ -59,8 +64,10 @@ export default class JadeShell extends Extension {
             } catch (e) {
                 // One part failing (say, a Shell internal it relies on moved)
                 // must not take the rest of the top bar down with it.
+                // Undo whatever it did before failing (disable() copes with a
+                // half-done enable), so no half-built part is left behind.
                 console.error(`Jade Shell: ${part.instance.constructor.name} failed to start: ${e.message}`);
-                part.instance = null;
+                this._stopPart(part);
             }
         } else if (!wanted) {
             this._stopPart(part);

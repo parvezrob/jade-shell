@@ -24,6 +24,11 @@
       <summary>Clock format</summary>
       <description>A GLib.DateTime format, such as %A %H:%M for "Tuesday 14:05".</description>
     </key>
+    <key name="simple-calendar" type="b">
+      <default>true</default>
+      <summary>Calendar without world clocks and weather</summary>
+      <description>Like Omarchy's clock panel: the date and the month only.</description>
+    </key>
     <key name="start-on-desktop" type="b">
       <default>true</default>
       <summary>Start on the desktop instead of the overview</summary>
@@ -46,12 +51,17 @@
 
     <key name="show-monitor" type="b">
       <default>true</default>
-      <summary>Show CPU, memory, GPU and temperature in the top bar</summary>
+      <summary>Show the system monitor in the top bar</summary>
+    </key>
+    <key name="monitor-show-values" type="b">
+      <default>false</default>
+      <summary>Show CPU, memory, GPU and temperature as numbers in the top bar</summary>
+      <description>Off: an icon that opens the monitor panel, measuring only while it is open.</description>
     </key>
     <key name="monitor-gpu" type="b">
       <default>true</default>
       <summary>Include GPU usage</summary>
-      <description>Never polled on battery-powered machines, where it would keep a discrete GPU awake.</description>
+      <description>Not polled while the machine runs on battery, where polling would keep a discrete GPU awake.</description>
     </key>
 
     <key name="show-usage" type="b">

@@ -24,12 +24,12 @@ class Gnome:
 
     def changes(self, theme, ctx):
         c = theme.colors
-        out = [
-            Setting('org.gnome.desktop.interface', 'color-scheme', 'prefer-dark'),
-            Setting('org.gnome.desktop.interface', 'accent-color', nearest_accent(c['accent'])),
-        ]
+        out = [Setting('org.gnome.desktop.interface', 'color-scheme', 'prefer-dark')]
+        if ctx.settings.has('org.gnome.desktop.interface', 'accent-color'):  # GNOME 47 and later
+            out.append(Setting('org.gnome.desktop.interface', 'accent-color', nearest_accent(c['accent'])))
         wallpaper = theme.wallpaper(ctx.wallpaper_index)
-        if wallpaper:
+        # Not downloaded (offline): keep the current wallpaper rather than point at a missing file.
+        if wallpaper and not ctx.wallpaper_error:
             uri = wallpaper.as_uri()
             out += [
                 Setting('org.gnome.desktop.background', 'picture-uri', uri),

@@ -15,6 +15,7 @@ import fcntl
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -76,6 +77,21 @@ def collect(provider, flags):
     return record
 
 
+def search_path():
+    # The same places the collectors look, for CLIs installed per user.
+    home = pathlib.Path.home()
+    extra = [home / ".local/bin", home / ".npm-global/bin", home / ".local/share/mise/shims"]
+    return os.pathsep.join([os.environ.get("PATH", ""), *map(str, extra)])
+
+
+def present(provider):
+    """Whether this machine has the tool, installed or signed in, at all."""
+    if shutil.which(provider, path=search_path()):
+        return True
+    variable, default = {"claude": ("CLAUDE_CONFIG_DIR", "~/.claude"), "codex": ("CODEX_HOME", "~/.codex")}[provider]
+    return pathlib.Path(os.path.expanduser(os.environ.get(variable) or default)).exists()
+
+
 def records_dir():
     cache = pathlib.Path(os.environ.get("XDG_CACHE_HOME") or pathlib.Path.home() / ".cache")
     return cache / "jade-shell" / "usage" / "records"
@@ -117,9 +133,17 @@ def collect_all(mode=None):
         # A person asking for fresh numbers waits for it, then asks again.
         if not acquire(lock, wait=bool(flags)):
             return 0
+        # A tool this machine doesn't have would only publish an "unavailable"
+        # record, and the top bar would show it forever.
+        wanted = [p for p in PROVIDERS if present(p)]
+        for provider in PROVIDERS:
+            if provider not in wanted:
+                (records / f"{provider}.json").unlink(missing_ok=True)
+        if not wanted:
+            return 0
         failed = False
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(PROVIDERS)) as pool:
-            jobs = {p: pool.submit(collect, p, flags) for p in PROVIDERS}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(wanted)) as pool:
+            jobs = {p: pool.submit(collect, p, flags) for p in wanted}
             for provider, job in jobs.items():
                 try:
                     record = job.result()

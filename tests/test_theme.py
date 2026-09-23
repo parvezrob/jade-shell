@@ -5,6 +5,7 @@ session bus, and stand-ins for gnome-shell, pkill, systemctl and vicinae on
 PATH, so nothing reaches the real desktop.
 """
 import configparser
+import json
 import os
 import pathlib
 import shutil
@@ -12,14 +13,15 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jade import palette, shelltheme, themes
+from jade import engine, palette, setup, shelltheme, store, themes
 from jade.setup import REPLACED, UUID
-from jade.targets.apps import jsonc, managed_block, set_theme_names
-from jade.targets.gnome import nearest_accent
+from jade.targets.apps import VSCode, jsonc, managed_block, restore_theme_names, revert_block, revert_line, set_theme_names
+from jade.targets.gnome import Gnome, nearest_accent
 
 needs_compiler = unittest.skipUnless(shelltheme.compiler_available(), 'sassc (or python libsass) is not installed')
 
@@ -66,9 +68,173 @@ class Helpers(unittest.TestCase):
         self.assertEqual(jsonc(changed)['theme']['dark']['name'], 'omarchy-nord')
         self.assertEqual(jsonc(changed)['extensions']['name'], 'keep')
 
+    def test_fresh_vicinae_config_gets_a_theme_entry(self):
+        changed = set_theme_names('// merged with the defaults\n\n{}', 'omarchy-nord')
+        self.assertTrue(changed.startswith('// merged with the defaults'))
+        self.assertEqual(jsonc(changed)['theme'], {'dark': {'name': 'omarchy-nord'}, 'light': {'name': 'omarchy-nord'}})
+
     def test_nearest_accent(self):
         self.assertEqual(nearest_accent('#509475'), 'green')
         self.assertEqual(nearest_accent('#7aa2f7'), 'blue')
+
+    def test_no_accent_color_where_gnome_has_none(self):
+        class OldGnome:
+            def has(self, schema, key=None):
+                return key != 'accent-color'
+        changes = Gnome().changes(themes.load('nord'), engine.Context(OldGnome()))
+        self.assertNotIn('accent-color', [c.key for c in changes])
+        self.assertIn('color-scheme', [c.key for c in changes])
+
+
+class TargetedRevert(unittest.TestCase):
+    """Taking only Jade Shell's part out of a config edited after a switch."""
+
+    def test_block_goes_or_gets_its_old_contents_back(self):
+        old = 'font_size 11\n'
+        edited = managed_block(old, 'include jade-theme.conf') + 'font_family Iosevka\n'
+        self.assertEqual(revert_block(edited, old), 'font_size 11\nfont_family Iosevka\n')
+        earlier = managed_block(old, 'red = "#111111"')
+        edited = managed_block(earlier, 'red = "#222222"').replace('font_size 11', 'font_size 12')
+        self.assertEqual(revert_block(edited, earlier), earlier.replace('font_size 11', 'font_size 12'))
+        self.assertIsNone(revert_block('no block here\n', old))
+
+    def test_line_goes_back_only_while_it_is_ours(self):
+        old = 'color_theme = "nord"\nx = 1\n'
+        self.assertEqual(revert_line('color_theme = "jade"\nx = 2\n', old, 'color_theme', 'jade'),
+                         'color_theme = "nord"\nx = 2\n')
+        self.assertIsNone(revert_line('color_theme = "gruvbox"\n', old, 'color_theme', 'jade'))
+        self.assertEqual(revert_line('palette = "jade"\nformat = "$all"\n', 'format = "$all"\n', 'palette', 'jade'),
+                         'format = "$all"\n')
+
+    def test_vscode_settings_and_registry(self):
+        vscode = VSCode()
+        settings = vscode.settings_path()
+        old = '{\n    "editor.fontSize": 14\n}\n'
+        now = '{\n    "workbench.colorTheme": "Jade · Nord",\n    "editor.fontSize": 16\n}\n'
+        self.assertEqual(vscode.revert(settings, now, old), '{\n    "editor.fontSize": 16\n}\n')
+        old = '{\n    "workbench.colorTheme": "Dark Modern",\n    "editor.fontSize": 14\n}\n'
+        self.assertEqual(vscode.revert(settings, now, old), now.replace('Jade · Nord', 'Dark Modern'))
+        self.assertIsNone(vscode.revert(settings, now.replace('Jade · Nord', 'Monokai'), old))
+        other = {'identifier': {'id': 'someone.else'}}
+        registry = json.dumps([other, {'identifier': {'id': VSCode.ID}}, {'identifier': {'id': 'new.one'}}])
+        self.assertEqual(json.loads(vscode.revert(vscode.registry_path(), registry, json.dumps([other]))),
+                         [other, {'identifier': {'id': 'new.one'}}])
+
+    def test_vicinae_theme_names(self):
+        old = '// vicinae\n{\n  "theme": { "dark": { "name": "a" }, "light": { "name": "a" } },\n  "x": 1\n}'
+        now = set_theme_names(old, 'omarchy-nord').replace('"x": 1', '"x": 2')
+        self.assertEqual(restore_theme_names(now, old), old.replace('"x": 1', '"x": 2'))
+        fresh = '// vicinae\n{}'
+        now = set_theme_names(fresh, 'omarchy-nord')
+        self.assertNotIn('theme', jsonc(restore_theme_names(now, fresh)))
+        self.assertIsNone(restore_theme_names(set_theme_names(old, 'picked-in-vicinae'), old))
+
+
+class NoSettings:
+    def restore_all(self, entries):
+        return []
+
+    def write(self, changes):
+        pass
+
+
+class History(unittest.TestCase):
+    """Backups on disk, without GSettings: pruning keeps undo exact."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = pathlib.Path(self.tmp.name)
+        patcher = mock.patch.dict(os.environ, XDG_STATE_HOME=str(self.dir / 'state'))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def switch(self, path, content):
+        """What engine.apply records for one file, then the write itself."""
+        backup = engine.state_dir() / 'backups' / engine.new_backup_name(engine.backups())
+        old = store.read_bytes(path)
+        saved = None
+        if old is not None:
+            saved = 'files/0'
+            store.write_bytes(backup / saved, old)
+        manifest = {'before': {}, 'theme': 'x', 'settings': [], 'targets': [],
+                    'files': [{'path': str(path), 'saved': saved, 'written': [store.digest(store.encode(content))]}]}
+        store.write_text(backup / 'manifest.json', json.dumps(manifest))
+        store.write_text(path, content)
+
+    def test_pruned_history_still_undoes_to_the_original(self):
+        conf, extra = self.dir / 'app.conf', self.dir / 'extra.conf'
+        conf.write_text('mine\n')
+        for n in range(engine.KEEP + 6):
+            self.switch(conf, f'theme {n}\n')
+            if n == 3:
+                self.switch(extra, 'made by jade\n')  # a file only a pruned switch touched
+            engine.prune()
+        self.assertEqual(len(engine.backups()), engine.KEEP + 1)
+        ctx = engine.Context(NoSettings())
+        while (undone := engine.undo(ctx)) is not None:
+            self.assertEqual(undone['kept'], [])
+        self.assertEqual(conf.read_text(), 'mine\n')
+        self.assertFalse(extra.exists())
+
+    def test_a_failed_prune_does_not_fail_the_switch(self):
+        conf = self.dir / 'app.conf'
+        target = mock.Mock()
+        target.name = 'fake'
+        with mock.patch.object(engine, 'plan', return_value=[(target, store.File(conf, 'new\n'))]), \
+             mock.patch.object(engine, 'prune', side_effect=RuntimeError('disk on fire')), \
+             mock.patch('sys.stderr') as stderr:
+            _changes, backup = engine.apply(mock.Mock(id='x'), engine.Context(NoSettings()))
+        self.assertIsNotNone(backup)
+        self.assertEqual(conf.read_text(), 'new\n')
+        self.assertIn('disk on fire', ''.join(str(c) for c in stderr.write.call_args_list))
+
+    def test_restore_goes_past_a_broken_backup_it_cannot_set_aside(self):
+        conf = self.dir / 'app.conf'
+        conf.write_text('mine\n')
+        self.switch(conf, 'theme\n')
+        broken = engine.state_dir() / 'backups' / engine.new_backup_name(engine.backups())
+        store.write_text(broken / 'manifest.json', 'not json')
+        said = []
+        with mock.patch.dict(os.environ, XDG_CONFIG_HOME=str(self.dir / 'config')), \
+             mock.patch.object(engine, 'set_aside', side_effect=PermissionError(13, 'Permission denied')), \
+             mock.patch.object(setup, 'systemctl'), mock.patch.object(setup, 'say', side_effect=said.append):
+            self.assertEqual(setup.restore(engine.Context(NoSettings()), assume_yes=True), 0)
+        self.assertEqual(conf.read_text(), 'mine\n')
+        self.assertTrue(any('could not set it aside (Permission denied)' in line for line in said), said)
+        self.assertTrue(broken.exists())
+
+    def test_names_keep_their_order_after_old_local_time_ones(self):
+        folder = engine.state_dir() / 'backups'
+        for name in ('20261231-235959-000000', '000002-20260101T000000Z', '000010-20250101T000000Z'):
+            store.write_text(folder / name / 'manifest.json', '{}')
+        (folder / '.partial-x').mkdir()
+        (folder / 'no-manifest').mkdir()
+        names = [p.name for p in engine.backups()]
+        self.assertEqual(names, ['20261231-235959-000000', '000002-20260101T000000Z', '000010-20250101T000000Z'])
+        self.assertTrue(engine.new_backup_name(engine.backups()).startswith('000011-'))
+
+
+class Leftovers(unittest.TestCase):
+    def test_a_home_copy_hiding_the_package_and_old_versions_are_found(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home, system = pathlib.Path(tmp) / 'home', pathlib.Path(tmp) / 'usr'
+            mine = home / '.local/share/gnome-shell/extensions' / UUID
+            old = [home / '.local/lib/jade-shell', home / '.local/share/gnome-shell/extensions/osaka-ai-usage@local']
+            for folder in (mine, system / UUID, *old):
+                folder.mkdir(parents=True)
+            enabled = mock.Mock(stdout='enabled\n')
+            with mock.patch.dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / '.local/share')), \
+                 mock.patch.object(setup, 'SYSTEM_EXTENSIONS', system), \
+                 mock.patch.object(setup, 'systemctl', return_value=enabled):
+                paths, units = setup.leftovers()
+            self.assertEqual(paths, [mine, *old])
+            self.assertEqual(setup.leftover_commands(paths, units)[1], 'systemctl --user disable --now osaka-ai-usage.timer')
+            (system / UUID).rmdir()  # a development copy alone is not in anyone's way
+            with mock.patch.dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / '.local/share')), \
+                 mock.patch.object(setup, 'SYSTEM_EXTENSIONS', system), \
+                 mock.patch.object(setup, 'systemctl', return_value=mock.Mock(stdout='disabled\n')):
+                self.assertEqual(setup.leftovers(), (old, []))
 
 
 class ShellTheme(unittest.TestCase):
@@ -104,6 +270,8 @@ class Sandbox(unittest.TestCase):
                         XDG_CACHE_HOME=str(self.home / '.cache'), GSETTINGS_BACKEND='keyfile', PYTHONPATH=pythonpath,
                         DBUS_SESSION_BUS_ADDRESS='unix:path=/nonexistent', JADE_BIN='/usr/bin/jade')
         self.env.pop('XDG_SESSION_TYPE', None)
+        for name in ('no_proxy', 'NO_PROXY'):
+            self.env.pop(name, None)
         bin_dir = t / 'bin'
         bin_dir.mkdir()
         fakes = {'pkill': 'exit 0', 'vicinae': 'exit 0', 'gnome-shell': 'echo "GNOME Shell 50.4"',
@@ -141,9 +309,11 @@ class Sandbox(unittest.TestCase):
             thumb.parent.mkdir(parents=True, exist_ok=True)
             thumb.write_bytes(b'png')
 
+    def run_jade(self, *args):
+        return subprocess.run([sys.executable, '-m', 'jade', *args], env=self.env, capture_output=True, text=True, cwd=ROOT)
+
     def jade(self, *args):
-        result = subprocess.run([sys.executable, '-m', 'jade', *args], env=self.env,
-                                capture_output=True, text=True, cwd=ROOT)
+        result = self.run_jade(*args)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout
 
@@ -191,22 +361,156 @@ class Sandbox(unittest.TestCase):
         self.assertNotIn('accent-color', self.keyfile().get('org/gnome/desktop/interface', {}))
         self.assertIn('none', self.jade('theme', 'current'))
 
+    def test_undo_takes_only_jades_part_out_of_an_edited_config(self):
+        skip = self.skip_shell_unless_compiler()
+        self.jade('theme', 'set', 'tokyo-night', *skip)
+        config = self.home / '.config'
+        kitty, starship, btop = config / 'kitty/kitty.conf', config / 'starship.toml', config / 'btop/btop.conf'
+        kitty.write_text(kitty.read_text() + 'font_family Iosevka\n')
+        starship.write_text(starship.read_text() + '\n[character]\nsuccess_symbol = ">"\n')
+        # Jade's part can't come out cleanly: a theme picked in btop since, and an edit to Jade's own file.
+        btop.write_text(btop.read_text().replace('color_theme = "jade"', 'color_theme = "nord"'))
+        theme_conf = config / 'kitty/jade-theme.conf'
+        theme_conf.write_text(theme_conf.read_text() + '# mine\n')
+        out = self.jade('theme', 'undo')
+        self.assertIn(f"Took Jade Shell's part out of {kitty}", out)
+        self.assertEqual(kitty.read_text(), self.originals[kitty] + 'font_family Iosevka\n')
+        self.assertEqual(starship.read_text(), self.originals[starship] + '\n[character]\nsuccess_symbol = ">"\n')
+        self.assertIn(f'Kept {btop}', out)
+        self.assertIn('color_theme = "nord"', btop.read_text())
+        self.assertIn(f'Kept {theme_conf}', out)
+        vscode = config / 'Code/User/settings.json'
+        self.assertEqual(vscode.read_text(), self.originals[vscode])
+
+    def test_an_edit_survives_undoing_two_switches(self):
+        self.jade('theme', 'set', 'tokyo-night', '--only', 'starship,kitty')
+        self.jade('theme', 'set', 'nord', '--only', 'starship,kitty')
+        starship = self.home / '.config/starship.toml'
+        starship.write_text(starship.read_text().replace('palette = "jade"\n', 'palette = "jade"\nadd_newline = false\n'))
+        self.assertIn(f"Took Jade Shell's part out of {starship}", self.jade('theme', 'undo'))
+        self.assertIn(themes.load('tokyo-night').colors['red'], starship.read_text())
+        self.jade('theme', 'undo')
+        self.assertEqual(starship.read_text(), self.originals[starship].replace(
+            'palette = "catppuccin_mocha"\n', 'palette = "catppuccin_mocha"\nadd_newline = false\n'))
+
+    def test_an_edit_between_pruned_switches_survives_restore(self):
+        self.jade('theme', 'set', 'tokyo-night', '--only', 'starship')
+        starship = self.home / '.config/starship.toml'
+        starship.write_text(starship.read_text().replace('palette = "jade"\n', 'palette = "jade"\nadd_newline = false\n'))
+        self.jade('theme', 'set', 'nord', '--only', 'starship')
+        # Pruning folds the second switch into the first, as after 30 more switches.
+        fold = 'from jade import engine; h = engine.backups(); engine.fold(h[0], h[1]); import shutil; shutil.rmtree(h[1])'
+        subprocess.run([sys.executable, '-c', fold], env=self.env, cwd=ROOT, check=True)
+        self.jade('theme', 'undo')
+        self.assertEqual(starship.read_text(), self.originals[starship].replace(
+            'palette = "catppuccin_mocha"\n', 'palette = "catppuccin_mocha"\nadd_newline = false\n'))
+
+    def test_doctor_reports_old_copies(self):
+        old = self.home / '.local/lib/osaka-ai-usage'
+        old.mkdir(parents=True)
+        result = self.run_jade('doctor')
+        self.assertIn('✗ No older or development copies in your home folder', result.stdout)
+        self.assertTrue(any(line.strip().startswith('rm -rf ') and str(old) in line
+                            for line in result.stdout.splitlines()), result.stdout)
+        self.assertTrue(old.exists())
+
+    def test_symlinked_dotfile_stays_a_link(self):
+        kitty = self.home / '.config/kitty/kitty.conf'
+        dotfiles = self.home / 'dotfiles/kitty.conf'
+        dotfiles.parent.mkdir()
+        kitty.rename(dotfiles)
+        kitty.symlink_to(dotfiles)
+        self.jade('theme', 'set', 'nord', '--only', 'kitty')
+        self.assertTrue(kitty.is_symlink())
+        self.assertIn('include jade-theme.conf', dotfiles.read_text())
+        self.jade('theme', 'undo')
+        self.assertTrue(kitty.is_symlink())
+        self.assertEqual(dotfiles.read_text(), self.originals[kitty])
+
+    def test_offline_switch_keeps_the_current_wallpaper(self):
+        # Nothing listens on port 9, so every download fails at once.
+        self.env.update(https_proxy='http://127.0.0.1:9', HTTPS_PROXY='http://127.0.0.1:9')
+        nord = themes.load('nord')
+        (self.home / '.local/share/jade-shell/backgrounds/nord' / nord.backgrounds[0]).unlink()
+        out = self.jade('theme', 'set', 'nord', '--only', 'gnome')
+        self.assertIn('skipped wallpaper: could not download the Nord wallpaper', out)
+        self.assertEqual(self.gsettings('get', 'org.gnome.desktop.interface', 'color-scheme'), "'prefer-dark'")
+        self.assertNotIn('nord', self.gsettings('get', 'org.gnome.desktop.background', 'picture-uri'))
+        result = self.run_jade('theme', 'wallpaper')
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('Wallpaper not changed: could not download', result.stderr)
+        self.assertNotIn('Traceback', result.stderr)
+
+    def test_mistyped_target_is_refused(self):
+        result = self.run_jade('theme', 'plan', 'nord', '--only', 'kity')
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('unknown target kity; targets are: gnome, dock, shell', result.stderr)
+
+    def test_restore_skips_settings_whose_app_is_gone(self):
+        self.jade('theme', 'set', 'tokyo-night', '--only', 'gnome,kitty')
+        backup = self.home / '.local/state/jade-shell/backups'
+        manifest_path = next(backup.glob('*/manifest.json'))
+        manifest = json.loads(manifest_path.read_text())
+        manifest['settings'] += [
+            {'schema': 'org.example.uninstalled', 'path': None, 'key': 'palette', 'old': "'x'"},
+            {'schema': 'org.gnome.desktop.interface', 'path': None, 'key': 'no-such-key', 'old': None},
+        ]
+        manifest_path.write_text(json.dumps(manifest))
+        setup_manifest = {'settings': [{'schema': 'org.gnome.shell.extensions.dash-to-dock', 'path': None,
+                                        'key': 'dock-position', 'old': "'LEFT'"}], 'disabled_units': []}
+        (self.home / '.local/state/jade-shell/setup.json').write_text(json.dumps(setup_manifest))
+        out = self.jade('restore', '--yes')
+        self.assertIn('Skipped org.example.uninstalled palette (no longer installed)', out)
+        self.assertIn('Skipped org.gnome.shell.extensions.dash-to-dock dock-position', out)
+        kitty = self.home / '.config/kitty/kitty.conf'
+        self.assertEqual(kitty.read_text(), self.originals[kitty])
+        self.assertNotIn('accent-color', self.keyfile().get('org/gnome/desktop/interface', {}))
+        self.assertIn('none', self.jade('theme', 'current'))
+
     @needs_compiler
+    @needs_compiler
+    def test_ai_usage_turns_on_once_claude_arrives(self):
+        # Neither CLI on PATH (the real ~/.local/bin has them on the developer's machine).
+        self.env['PATH'] = f'{self.env["PATH"].split(os.pathsep)[0]}:/usr/bin:/bin'
+        self.jade('setup')
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'show-usage'), 'false')
+        (self.home / '.claude').mkdir(parents=True)
+        self.jade('setup')
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'show-usage'), 'true')
+
     def test_setup_then_restore_gives_the_old_desktop_back(self):
         replaced = next(iter(REPLACED))
         self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{replaced}', 'keep@me']")
+        (self.home / '.claude').mkdir(parents=True)  # so setup starts the usage collector
+        old_copy = self.home / '.local/bin/jade-theme'  # from before Jade Shell merged with Jade AI Usage
+        old_copy.parent.mkdir(parents=True)
+        old_copy.write_text('#!/bin/sh\n')
         before = self.keyfile()
 
-        self.jade('setup')
+        out = self.jade('setup')
+        # (With the package installed on this machine, the sandbox's own extension copy is named too.)
+        self.assertTrue(any(line.strip().startswith('rm -rf ') and str(old_copy) in line for line in out.splitlines()), out)
+        self.assertTrue(old_copy.exists())  # said, never deleted
         enabled = self.gsettings('get', 'org.gnome.shell', 'enabled-extensions')
         self.assertEqual(enabled, f"['keep@me', '{UUID}']")
         self.assertIn('osaka-jade', self.jade('theme', 'current'))
         units = self.home / '.config/systemd/user'
         self.assertIn('ExecStart=/usr/bin/jade usage collect', (units / 'jade-usage.service').read_text())
         self.assertIn('enable --now jade-usage.timer', self.systemctl_log.read_text())
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'show-usage'), 'true')
+        # Choices made after setup: a running setup again keeps them, and so does restore.
+        self.gsettings('set', 'org.gnome.shell.extensions.jade-shell', 'show-usage', 'false')
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['keep@me', '{UUID}', 'later@me']")
+        self.systemctl_log.unlink()
         self.jade('setup')  # again: nothing new to record, nothing breaks
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'show-usage'), 'false')
+        # AI usage off stays off: the collector is stopped, not started again.
+        self.assertIn('disable --now jade-usage.timer', self.systemctl_log.read_text())
+        self.assertNotIn('--user enable --now jade-usage.timer', self.systemctl_log.read_text().splitlines())
 
         self.jade('restore', '--yes')
+        before['org/gnome/shell']['enabled-extensions'] = f"['{replaced}', 'keep@me', 'later@me']"
+        before['org/gnome/shell/extensions/jade-shell'] = {'show-usage': 'false'}  # setup never changed it
         self.assertEqual(self.keyfile(), before)
         for path, text in self.originals.items():
             self.assertEqual(path.read_text(), text, path)

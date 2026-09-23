@@ -11,6 +11,21 @@ rm -rf build/stage dist
 mkdir -p build/stage/lib dist
 cp -a jade themes templates shell-theme build/stage/lib/
 cp -a extension build/stage/extension
+# The package version as the extension's version-name, so `jade doctor` can
+# tell when the Shell still runs an extension from before an upgrade. Only the
+# staged copy: the repo's metadata.json has none, as a checkout has no release.
+python3 - build/stage/extension/metadata.json <<'EOF'
+import json
+import os
+import sys
+
+path = sys.argv[1]
+with open(path) as f:
+    metadata = json.load(f)
+metadata['version-name'] = os.environ['JADE_VERSION']
+with open(path, 'w') as f:
+    f.write(json.dumps(metadata, indent=2) + '\n')
+EOF
 glib-compile-schemas --strict build/stage/extension/schemas
 find build/stage -name __pycache__ -prune -exec rm -rf {} +
 

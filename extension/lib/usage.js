@@ -1,6 +1,7 @@
 // Claude and Codex usage in the top bar, with Omarchy's agent usage panel as
 // its menu. `jade usage collect` (Omarchy's collectors) writes one record per
 // provider; this draws whatever records exist.
+// The menu ports Omarchy's agent usage panel (MIT, https://github.com/omacom/omarchy).
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';

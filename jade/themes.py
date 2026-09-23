@@ -2,7 +2,10 @@
 import math
 import pathlib
 import re
+import shutil
+import time
 import tomllib
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
@@ -15,12 +18,23 @@ TEMPLATES = ROOT / 'templates'
 OMARCHY_COMMIT = 'd3cfd53b997f8bdcf776b8db68bf0d735e7a065d'
 WALLPAPER_URL = f'https://raw.githubusercontent.com/omacom/omarchy/{OMARCHY_COMMIT}/themes/{{theme}}/backgrounds/{{file}}'
 NAMES = {'retro-82': 'Retro 82', 'last-horizon': 'Last Horizon', 'matte-black': 'Matte Black'}
+RETRY_DELAYS = (1, 2)  # seconds between download attempts
+
+
+class WallpaperUnavailable(Exception):
+    """A wallpaper that is not on disk could not be downloaded."""
+
+
+def transient(error):
+    # A server hiccup or a dropped connection may pass; a missing file will not.
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code == 429 or error.code >= 500
+    return True
 
 # Shades GNOME needs that Omarchy has no key for. A user override file can pin
 # any of them (or any palette key) to a hand-tuned value.
 DERIVED = {
     'dock_background': lambda c: pal.mix(c['background'], c['foreground'], 0.10),
-    'quick_toggle_hover': lambda c: pal.mix(c['selection'], c['foreground'], 0.12),
     'secondary_text': lambda c: pal.mix(c['foreground'], c['dark_foreground'], 0.35),
 }
 
@@ -47,9 +61,19 @@ class Theme:
             path.parent.mkdir(parents=True, exist_ok=True)
             url = WALLPAPER_URL.format(theme=self.id, file=path.name)
             tmp = path.with_suffix(path.suffix + '.part')
-            with urllib.request.urlopen(url, timeout=60) as response, tmp.open('wb') as out:
-                out.write(response.read())
-            tmp.replace(path)
+            for attempt in range(len(RETRY_DELAYS) + 1):
+                try:
+                    with urllib.request.urlopen(url, timeout=20) as response, tmp.open('wb') as out:
+                        shutil.copyfileobj(response, out)
+                    tmp.replace(path)
+                    break
+                except OSError as error:  # URLError, HTTPError and timeouts are all OSErrors
+                    tmp.unlink(missing_ok=True)
+                    if attempt == len(RETRY_DELAYS) or not transient(error):
+                        reason = getattr(error, 'reason', None) or error
+                        raise WallpaperUnavailable(
+                            f'could not download the {self.name} wallpaper ({reason})') from None
+                    time.sleep(RETRY_DELAYS[attempt])
         return path
 
 

@@ -36,21 +36,24 @@ export class Workspaces {
         this._rebuild();
     }
 
+    // Also undoes an enable() that failed partway: Activities comes back first.
     disable() {
-        this._disconnectWorkspaces();
-        for (const id of this._managerSignals)
-            global.workspace_manager.disconnect(id);
-        this._names.disconnect(this._namesChanged);
-        this._names = null;
-        this._button.destroy();
-        this._button = this._box = null;
         if (!Main.sessionMode.isLocked)
             this._activities?.container.show();
         this._activities = null;
+        this._disconnectWorkspaces();
+        for (const id of this._managerSignals ?? [])
+            global.workspace_manager.disconnect(id);
+        this._managerSignals = null;
+        if (this._namesChanged)
+            this._names.disconnect(this._namesChanged);
+        this._names = this._namesChanged = null;
+        this._button?.destroy();
+        this._button = this._box = null;
     }
 
     _disconnectWorkspaces() {
-        for (const [workspace, ids] of this._workspaceSignals)
+        for (const [workspace, ids] of this._workspaceSignals ?? [])
             ids.forEach(id => workspace.disconnect(id));
         this._workspaceSignals = [];
     }

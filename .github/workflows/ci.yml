@@ -17,38 +17,46 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - run: pipx run ruff check .
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - run: pipx run ruff==0.16.8 check .  # pinned so a new ruff rule cannot fail a release; bump deliberately
       - run: shellcheck install.sh scripts/*.sh tests/*.sh packaging/*.sh packaging/jade bin/jade
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444  # v5.0.0
         with:
           node-version: 24
       - run: npm ci && npm run lint
 
   test:
     runs-on: ubuntu-24.04
+    # GNOME 50's schemas: the runner's own (GNOME 46) lack keys jade sets, such as accent-color.
+    container: ubuntu:26.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
       - name: Dependencies (GObject, GSettings schemas, the Shell theme compiler)
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq python3-gi gir1.2-gdkpixbuf-2.0 sassc \
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-gi gir1.2-gdkpixbuf-2.0 sassc \
             gsettings-desktop-schemas gnome-shell-common libglib2.0-bin
       - run: python3 -m unittest discover -s tests -v
 
   packages:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
       - name: nfpm
+        env:
+          NFPM_VERSION: 2.47.0
+          # From the release's checksums.txt: the packages users install as root are built with it.
+          NFPM_SHA256: 0660ca602b2d2d2ae4781a06c692b3eeb9d437ffea05b831d76e41f4a3188783
         run: |
-          curl -fsSL https://github.com/goreleaser/nfpm/releases/download/v2.47.0/nfpm_2.47.0_Linux_x86_64.tar.gz \
-            | tar xz -C /usr/local/bin nfpm
+          curl -fsSLo "$RUNNER_TEMP/nfpm.tar.gz" \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz"
+          echo "${NFPM_SHA256}  $RUNNER_TEMP/nfpm.tar.gz" | sha256sum --check --strict
+          sudo tar xzf "$RUNNER_TEMP/nfpm.tar.gz" -C /usr/local/bin nfpm
       - run: sudo apt-get install -y -qq libglib2.0-bin
       - run: scripts/build-packages.sh
         env:
           JADE_VERSION: ${{ inputs.version }}
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4  # v5.0.0
         with:
           name: packages
           path: dist/
@@ -59,12 +67,18 @@ jobs:
       matrix:
         image: ['registry.fedoraproject.org/fedora:44', 'ubuntu:26.04']
     runs-on: ubuntu-24.04
-    container: ${{ matrix.image }}
+    container:
+      image: ${{ matrix.image }}
+      options: --privileged  # image loading (glycin) sandboxes itself with bwrap, as on a desktop
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0  # v5.0.0
         with:
           name: packages
           path: /pkg
+      - name: Allow unprivileged user namespaces (glycin's bwrap sandbox; Ubuntu 24.04 runners restrict them)
+        run: |
+          f=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          if [ -e "$f" ]; then echo 0 > "$f"; fi
       - name: Install, set up, restore and remove on a fresh system
         run: bash tests/package-smoke.sh

@@ -1,4 +1,5 @@
 """The two kinds of change a target can ask for: a GSettings key or a file."""
+import hashlib
 import os
 import pathlib
 import tempfile
@@ -87,12 +88,44 @@ class Settings:
             settings.apply()
         Gio.Settings.sync()
 
-    def restore(self, schema, path, key, printed):
-        settings = self.get(schema, path)
-        if printed is None:
-            settings.reset(key)
-        else:
-            settings.set_value(key, GLib.Variant.parse(None, printed, None, None))
+    def restore_all(self, entries):
+        """Put recorded keys back, one batch per schema, and flush them to disk.
+
+        Returns a line for each key that could not be put back because its app,
+        schema or key is gone (or its type changed), so a removed app never
+        blocks undo or restore.
+        """
+        skipped, groups = [], {}
+        for entry in entries:
+            schema, path, key, printed = entry['schema'], entry['path'], entry['key'], entry['old']
+            found = self._source.lookup(schema, True)
+            where = f'{schema}{" " + path if path else ""} {key}'
+            if not found or not found.has_key(key):
+                skipped.append(f'{where} (no longer installed)')
+                continue
+            value = None
+            if printed is not None:
+                schema_key = found.get_key(key)
+                try:
+                    value = GLib.Variant.parse(schema_key.get_value_type(), printed, None, None)
+                except GLib.Error:
+                    value = None
+                if value is None or not schema_key.range_check(value):
+                    skipped.append(f'{where} (its type or allowed values changed)')
+                    continue
+            groups.setdefault((schema, path), []).append((key, value))
+        for (schema, path), group in groups.items():
+            settings = Gio.Settings.new_full(self._source.lookup(schema, True), None, path)
+            settings.delay()
+            for key, value in group:
+                if value is None:
+                    settings.reset(key)
+                else:
+                    settings.set_value(key, value)
+            settings.apply()
+        # Written before the caller deletes the record of the old values.
+        Gio.Settings.sync()
+        return skipped
 
     def flip(self, schema, key):
         settings = self.get(schema)
@@ -100,18 +133,72 @@ class Settings:
         Gio.Settings.sync()
 
 
-def read_text(path):
+def read_bytes(path):
     try:
-        return path.read_text()
+        return pathlib.Path(path).read_bytes()
     except FileNotFoundError:
         return None
 
 
-def write_text(path, content):
+def encode(text):
+    # surrogateescape round-trips bytes that are not UTF-8, so an odd comment
+    # in someone's config is kept as it was instead of failing the switch.
+    return text.encode('utf-8', 'surrogateescape')
+
+
+def read_text(path):
+    data = read_bytes(path)
+    return None if data is None else data.decode('utf-8', 'surrogateescape')
+
+
+def digest(data):
+    return None if data is None else hashlib.sha256(data).hexdigest()
+
+
+def default_mode():
+    mask = os.umask(0)
+    os.umask(mask)
+    return 0o666 & ~mask
+
+
+def real_path(path):
+    """Where a write lands: through a symlinked dotfile to the file it points at."""
+    return pathlib.Path(os.path.realpath(path))
+
+
+def read_only_reason(path):
+    """Why a write to `path` would fail, or None (for example a link into /nix/store)."""
+    real = real_path(path)
+    folder = real.parent
+    while not folder.exists():
+        folder = folder.parent
+    if os.access(folder, os.W_OK) and (not real.exists() or os.access(real, os.W_OK)):
+        return None
+    link = f' (a link to {real})' if real != pathlib.Path(path) else ''
+    return f'{path}{link} is read-only; change it where it is managed'
+
+
+def write_bytes(path, data, mode=None):
+    """Replace a file atomically, writing through a symlink so the link survives.
+
+    An existing file keeps its mode; a new one gets `mode`, or the umask default.
+    """
+    path = real_path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    mode = path.stat().st_mode & 0o777 if path.exists() else 0o644
+    if path.exists():
+        mode = path.stat().st_mode & 0o777
+    elif mode is None:
+        mode = default_mode()
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f'.{path.name}.')
-    with os.fdopen(fd, 'w') as f:
-        f.write(content)
-    os.chmod(tmp, mode)
-    os.replace(tmp, path)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        pathlib.Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def write_text(path, content, mode=None):
+    write_bytes(path, encode(content), mode)

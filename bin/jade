@@ -2,4 +2,7 @@
 # Run jade from wherever this checkout or install lives.
 root=$(dirname "$(dirname "$(readlink -f "$0")")")
 export JADE_BIN="$0"
-PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m jade "$@"
+# The system Python has gi (a venv's may not); -P keeps the current directory off sys.path.
+py=/usr/bin/python3
+[[ -x $py ]] || py=python3
+PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec "$py" -P -m jade "$@"

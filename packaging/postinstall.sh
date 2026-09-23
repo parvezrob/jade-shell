@@ -1,3 +1,3 @@
 #!/bin/sh
-# Byte-compile for the Python this system has; removed again before removal.
-python3 -m compileall -q /usr/share/jade-shell/jade >/dev/null 2>&1 || true
+# Byte-compile for the Python /usr/bin/jade runs; removed again before removal.
+/usr/bin/python3 -m compileall -q /usr/share/jade-shell/jade >/dev/null 2>&1 || true

@@ -29,7 +29,7 @@ export class Picker {
         this._busy = false;
         this._build();
         Main.wm.addKeybinding('toggle-picker', this._settings, Meta.KeyBindingFlags.NONE,
-            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this._button.menu.toggle());
+            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this._toggle());
         this._indicatorChanged = this._settings.connect('changed::show-picker', () => this._showIndicator());
         this._showIndicator();
         // A switch rewrites the palette; the picker then marks the new theme.
@@ -51,6 +51,21 @@ export class Picker {
     // The shortcut still opens the picker when the icon is hidden.
     _showIndicator() {
         this._button.visible = this._settings.get_boolean('show-picker');
+    }
+
+    _toggle() {
+        const menu = this._button.menu;
+        if (!menu.isOpen && !this._button.mapped) {
+            // A hidden icon, or a top bar hidden by a fullscreen window, is
+            // unmapped, so BoxPointer would never position the menu and it
+            // would open at the stage origin. Anchor it to the right end of
+            // the top bar on the primary monitor instead.
+            const monitor = Main.layoutManager.primaryMonitor;
+            const [, panelY] = Main.panel.get_transformed_position();
+            Main.layoutManager.setDummyCursorGeometry(monitor.x + monitor.width - 1, panelY, 0, Main.panel.height);
+            menu.sourceActor = Main.layoutManager.dummyCursor;
+        }
+        menu.toggle();
     }
 
     _build() {
@@ -80,8 +95,11 @@ export class Picker {
         this._item(footer);
 
         menu.connect('open-state-changed', (_m, open) => {
-            if (!open)
+            if (!open) {
+                // Point back at the icon, which the menu manager tracks it by.
+                menu.sourceActor = this._button;
                 return;
+            }
             this._refresh();
             const current = this._tiles.get(this._current) ?? this._tiles.values().next().value;
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
@@ -166,6 +184,8 @@ export class Picker {
     }
 
     // Arrow keys move through the grid; Enter and Space pick (St.Button).
+    // Up and Down off the grid bubble to the menu, whose focus manager moves
+    // to the footer buttons (or the nearest tile below a short last row).
     _onTileKey(index, event) {
         const step = {
             [Clutter.KEY_Left]: -1, [Clutter.KEY_Right]: 1,
@@ -176,6 +196,8 @@ export class Picker {
         const target = index + step;
         if (target >= 0 && target < this._themes.length)
             this._tiles.get(this._themes[target].id).grab_key_focus();
+        else if (Math.abs(step) === COLUMNS)
+            return Clutter.EVENT_PROPAGATE;
         return Clutter.EVENT_STOP;
     }
 
