@@ -18,7 +18,7 @@ gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
 from . import __version__, engine, migrations, shelltheme, themes
-from .store import Setting, config_home, data_home, write_text
+from .store import File, Setting, config_home, data_home, write_text
 from .usage import collect
 
 UUID = 'jade-shell@parvezrob.github.io'
@@ -369,8 +369,18 @@ def setup(ctx, theme_id=None, after_update=False):
     current = state.get('theme') if state.get('theme') in themes.ids() else None
     theme = themes.load(theme_id or current or 'osaka-jade')
     ctx.wallpaper_index = state.get('wallpaper') or 0
+    # Before touching them, name the configs of their own that people edit.
+    home = pathlib.Path.home()
+    edited = [(target, change.path) for target, change in engine.plan(theme, ctx, skip=['gnome', 'dock', 'shell'])
+              if isinstance(change, File) and change.path.exists() and change.path.is_relative_to(home)
+              and not change.path.is_relative_to(engine.state_dir())]
+    if edited:
+        paths = join([f'~/{path.relative_to(home)}' for _t, path in edited])
+        say(f'Adding the theme to {paths}.')
+        say(f'Your settings in them stay, and a copy of each is kept. To leave an app alone: jade apps off {edited[0][0].name}')
     changes, _backup = engine.apply(theme, ctx)
-    themed = [t.title for t in engine.selected() if t.name not in ctx.absent and t.name not in ctx.skipped]
+    alone = engine.left_alone(ctx.settings)
+    themed = [t.title for t in engine.selected(skip=alone) if t.name not in ctx.absent and t.name not in ctx.skipped]
     say(f'{theme.name} applied to {join(themed)}.')
     for name, reason in ctx.skipped.items():
         say(f'Not themed: {name} ({reason})')
@@ -548,8 +558,9 @@ def doctor(ctx):
 
     current = engine.current().get('theme')
     check(bool(current), f'Theme: {current or "none applied"}', 'Run: jade setup')
+    alone = engine.left_alone(ctx.settings)
     for target in engine.selected():
-        reason = target.available(ctx)
+        reason = 'left alone: jade apps on ' + target.name if target.name in alone else target.available(ctx)
         say(f'  {"·" if reason is None else "-"} {target.label}{"" if reason is None else f" ({reason})"}')
 
     timer = systemctl('is-active', 'jade-usage.timer').stdout.strip()

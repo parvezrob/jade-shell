@@ -69,6 +69,11 @@
       <description>Not polled while the machine runs on battery, where polling would keep a discrete GPU awake.</description>
     </key>
 
+    <key name="left-alone" type="as">
+      <default>[]</default>
+      <summary>Apps Jade Shell leaves alone</summary>
+      <description>Target names (as in `jade apps`): theme switches, setup and the picker never change these apps' configs.</description>
+    </key>
     <key name="check-updates" type="b">
       <default>true</default>
       <summary>Check for new versions once a day</summary>

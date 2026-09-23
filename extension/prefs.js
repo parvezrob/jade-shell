@@ -43,6 +43,12 @@ function output(argv) {
     });
 }
 
+// The `jade` command: installed for everyone, or into ~/.local/bin.
+function jadeCommand() {
+    const local = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'jade']);
+    return GLib.find_program_in_path('jade') ?? (GLib.file_test(local, GLib.FileTest.IS_EXECUTABLE) ? local : null);
+}
+
 function switchRow(settings, group, key, title, subtitle = null) {
     const row = new Adw.SwitchRow({title, subtitle});
     settings.bind(key, row, 'active', Gio.SettingsBindFlags.DEFAULT);
@@ -95,6 +101,13 @@ export default class JadePreferences extends ExtensionPreferences {
         page.add(updates);
         switchRow(settings, updates, 'check-updates', 'Check for updates', 'Once a day; a notification when a new version is out');
 
+        const apps = new Adw.PreferencesGroup({
+            title: 'Apps',
+            description: 'Themed along with the desktop. Turn one off to leave it alone: its own config comes back, and theme switches pass it by.',
+        });
+        page.add(apps);
+        this._fillApps(apps);
+
         const usage = new Adw.PreferencesGroup({
             title: 'AI usage',
             description: 'Collected in the background while AI usage is on. Opening the menu also fetches current limits, and Refresh rescans everything.',
@@ -113,6 +126,45 @@ export default class JadePreferences extends ExtensionPreferences {
         const usageChanged = settings.connect('changed::show-usage',
             () => this._setTimerEnabled(settings.get_boolean('show-usage'), status));
         window.connect('close-request', () => settings.disconnect(usageChanged));
+    }
+
+    // One switch per app `jade apps` knows, which also does the work: putting
+    // an app's own config back, or theming it again.
+    async _fillApps(group) {
+        const jade = jadeCommand();
+        let apps = null;
+        try {
+            apps = JSON.parse(jade ? await output([jade, 'apps', 'list', '--json']) : '');
+        } catch {}
+        if (!Array.isArray(apps)) {
+            group.add(new Adw.ActionRow({title: 'Could not list the apps', subtitle: 'Run: jade doctor'}));
+            return;
+        }
+        for (const app of apps) {
+            const state = on => on ? app.note ?? 'Themed' : 'Left alone';
+            const row = new Adw.SwitchRow({title: app.label, subtitle: state(!app.left_alone), active: !app.left_alone});
+            let reverting = false;
+            row.connect('notify::active', async () => {
+                if (reverting)
+                    return;
+                const on = row.active;
+                row.sensitive = false;
+                row.subtitle = on ? 'Applying the theme…' : 'Putting back its own config…';
+                try {
+                    await run([jade, 'apps', on ? 'on' : 'off', app.name]);
+                    row.subtitle = state(on);
+                } catch (e) {
+                    // Nothing changed: the switch goes back to how things are.
+                    reverting = true;
+                    row.active = !on;
+                    reverting = false;
+                    row.subtitle = `Did not work. Try: jade apps ${on ? 'on' : 'off'} ${app.name}`;
+                    console.error(e);
+                }
+                row.sensitive = true;
+            });
+            group.add(row);
+        }
     }
 
     // Only a state systemd reports; the installed interval may differ from

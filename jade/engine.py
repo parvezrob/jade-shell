@@ -15,6 +15,8 @@ from .store import File, Setting, Settings, read_text, state_home, write_text
 from .targets.base import Absent
 
 KEEP = 30  # newest backups kept apart from the oldest; older ones are folded into it
+# The apps a person asked Jade Shell to leave alone (`jade apps off`, or the settings window).
+LEFT_ALONE = ('org.gnome.shell.extensions.jade-shell', 'left-alone')
 
 
 @dataclass
@@ -58,6 +60,18 @@ def selected(only=None, skip=None):
     return [t for t in registry.ALL if (not only or t.name in only) and t.name not in (skip or ())]
 
 
+def left_alone(settings):
+    schema, key = LEFT_ALONE
+    try:
+        return frozenset(settings.get(schema).get_strv(key)) if settings.has(schema, key) else frozenset()
+    except AttributeError:  # a stand-in without GSettings (tests)
+        return frozenset()
+
+
+def target_named(name):
+    return next(t for t in registry.ALL if t.name == name)
+
+
 def first_line(error):
     return str(error).splitlines()[0] if str(error) else type(error).__name__
 
@@ -91,6 +105,10 @@ def target_changes(target, theme, ctx):
 def plan(theme, ctx, only=None, skip=None, fetch=False):
     """Every change that would alter something, grouped by target."""
     ctx.theme = theme
+    alone = left_alone(ctx.settings)
+    for name in alone & set(only or ()):
+        ctx.skipped[name] = f'left alone (turn it back on with: jade apps on {name})'
+    skip = set(skip or ()) | alone
     if fetch:
         fetch_wallpaper(theme, ctx, only, skip)
     result = []
@@ -149,7 +167,7 @@ def apply(theme, ctx, only=None, skip=None):
                 manifest['targets'].append(target.name)
             if isinstance(change, Setting):
                 manifest['settings'].append({'schema': change.schema, 'path': change.path, 'key': change.key,
-                                             'old': ctx.settings.user_value(change)})
+                                             'old': ctx.settings.user_value(change), 'target': target.name})
                 continue
             old = store.read_bytes(change.path)
             saved = None
@@ -293,6 +311,73 @@ def targeted_revert(manifest, entry, path, backup):
             if text is not None:
                 return text
     return None
+
+
+def put_back(name, ctx):
+    """Give one app back what it had before Jade Shell, across the whole undo
+    history: each file and setting its target changed, as the earliest backup
+    saved it ('restored'), or gone when Jade Shell made it ('removed'). A
+    config edited since keeps the edits and loses only Jade
+    Shell's part (listed in 'merged'), or is left as it is when that can't be
+    done cleanly ('kept'). The history then forgets the app, so a later undo
+    or restore leaves it alone too."""
+    target = target_named(name)
+    result = {'restored': [], 'removed': [], 'merged': [], 'kept': [], 'skipped': []}
+    manifests = []
+    for backup in backups():
+        try:
+            manifests.append((backup, load_manifest(backup)))
+        except (OSError, ValueError):
+            continue  # undo and restore report an unreadable backup
+    first_files, last_files, first_settings = {}, {}, {}
+    for backup, manifest in manifests:
+        for entry in manifest['files']:
+            if entry.get('target') == name:
+                first_files.setdefault(entry['path'], (backup, entry))
+                last_files[entry['path']] = entry
+        for entry in manifest['settings']:
+            if entry.get('target') == name:
+                first_settings.setdefault((entry['schema'], entry['path'], entry['key']), entry)
+
+    for key, (backup, first) in first_files.items():
+        path = pathlib.Path(key)
+        now = store.read_bytes(path)
+        if now is None and first['saved'] is None:
+            continue  # Jade Shell made it and it is gone already
+        written = last_files[key].get('written') or []
+        try:
+            if store.digest(now) in written:
+                if first['saved']:
+                    store.write_bytes(path, (backup / first['saved']).read_bytes())
+                    result['restored'].append(key)
+                else:
+                    path.unlink(missing_ok=True)
+                    result['removed'].append(key)
+                continue
+            old = read_text(backup / first['saved']) if first['saved'] else None
+            text = read_text(path)
+            reverted = target.revert(path, text, old) if text is not None and hasattr(target, 'revert') else None
+            if reverted is None:
+                result['kept'].append(key)
+            else:
+                write_text(path, reverted)
+                result['merged'].append(key)
+        except OSError as error:
+            result['skipped'].append(f'{path}: {error.strerror or error}')
+    result['skipped'] += ctx.settings.restore_all(list(first_settings.values()))
+
+    for backup, manifest in manifests:
+        files = [e for e in manifest['files'] if e.get('target') != name]
+        settings = [e for e in manifest['settings'] if e.get('target') != name]
+        if (files, settings) == (manifest['files'], manifest['settings']):
+            continue
+        manifest['files'], manifest['settings'] = files, settings
+        # Older backups don't name the target of each setting: the name stays there.
+        if not any(e.get('target') in (name, None) for e in files + settings):
+            manifest['targets'] = [t for t in manifest['targets'] if t != name]
+        write_text(backup / 'manifest.json', json.dumps(manifest, indent=2))
+    reload([name], ctx)
+    return result
 
 
 def undo(ctx, ignore=()):

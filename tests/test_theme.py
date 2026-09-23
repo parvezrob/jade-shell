@@ -574,6 +574,39 @@ class Sandbox(unittest.TestCase):
         self.assertIn('solitude', self.jade('theme', 'current'))
 
     @needs_compiler
+    def test_an_app_left_alone_gets_its_config_back_and_stays_untouched(self):
+        kitty = self.home / '.config/kitty/kitty.conf'
+        starship = self.home / '.config/starship.toml'
+        out = self.jade('setup')
+        self.assertIn('Adding the theme to ~/.config/kitty/kitty.conf', out)
+        self.jade('theme', 'set', 'nord')
+        # Edited since: the edit stays, Jade Shell's part goes.
+        starship.write_text(starship.read_text() + 'command_timeout = 900\n')
+
+        out = self.jade('apps', 'off', 'kitty', 'starship')
+        self.assertIn('Jade Shell leaves Kitty alone now: put back ~/.config/kitty/kitty.conf; '
+                      'removed ~/.config/kitty/jade-theme.conf.', out)
+        self.assertIn("Jade Shell leaves Starship alone now: took Jade Shell's part out of ~/.config/starship.toml", out)
+        self.assertEqual(kitty.read_text(), self.originals[kitty])
+        self.assertFalse((kitty.parent / 'jade-theme.conf').exists())
+        self.assertEqual(starship.read_text(), self.originals[starship] + 'command_timeout = 900\n')
+        self.assertIn('left alone', self.jade('apps', 'list'))
+
+        self.jade('theme', 'set', 'tokyo-night')  # the picker runs this too
+        out = self.run_jade('theme', 'set', 'nord', '--only', 'kitty').stdout
+        self.assertIn('skipped kitty: left alone', out)
+        self.jade('theme', 'undo')
+        self.jade('setup')
+        self.assertEqual(kitty.read_text(), self.originals[kitty])
+        self.assertIn('Kitty terminal (left alone: jade apps on kitty)', self.run_jade('doctor').stdout)
+
+        self.assertIn('applied to Kitty', self.jade('apps', 'on', 'kitty'))
+        self.assertIn('include jade-theme.conf', kitty.read_text())
+        self.jade('restore', '--yes')
+        self.assertEqual(kitty.read_text(), self.originals[kitty])
+        self.assertEqual(starship.read_text(), self.originals[starship] + 'command_timeout = 900\n')
+
+    @needs_compiler
     def test_an_update_leaves_an_extension_turned_back_on(self):
         blur = 'blur-my-shell@aunetx'
         self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{blur}']")

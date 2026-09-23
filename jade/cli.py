@@ -2,11 +2,19 @@
 import argparse
 import contextlib
 import json
+import pathlib
 import sys
+
+import gi
+
+gi.require_version('Gio', '2.0')
+from gi.repository import Gio
 
 from . import __version__, engine, setup, themes, update
 from . import targets as registry
+from .setup import join
 from .store import File, Settings, read_text
+from .targets.base import Absent
 from .usage import collect
 
 TARGETS = [t.name for t in registry.ALL]
@@ -105,6 +113,9 @@ def theme_wallpaper(args, ctx):
     theme = themes.load(state['theme'])
     ctx.wallpaper_index = (state.get('wallpaper') or 0) + 1
     engine.apply(theme, ctx, only=['gnome'])
+    if 'gnome' in ctx.skipped:
+        print(f'Wallpaper not changed: GNOME is {ctx.skipped["gnome"]}', file=sys.stderr)
+        return 1
     if ctx.wallpaper_error:  # the picker shows this line
         print(f'Wallpaper not changed: {ctx.wallpaper_error}', file=sys.stderr)
         return 1
@@ -134,7 +145,8 @@ def theme_reload(args, ctx):
         print('No theme applied yet', file=sys.stderr)
         return 1
     ctx.theme = themes.load(theme_id)
-    engine.reload([t.name for t in engine.selected() if not t.available(ctx)], ctx)
+    names = [t.name for t in engine.selected(skip=engine.left_alone(ctx.settings)) if not t.available(ctx)]
+    engine.reload(names, ctx)
     print(f'Reloaded {ctx.theme.name}')
     return 0
 
@@ -151,6 +163,79 @@ def theme_thumbs(args, ctx):
     for theme_id in themes.ids():
         if args.refresh or not themes.thumbnail_path(theme_id).exists():
             print(themes.make_thumbnail(themes.load(theme_id)))
+    return 0
+
+
+# ------------------------------------------------------------------ apps
+
+def apps_list(args, ctx):
+    alone = engine.left_alone(ctx.settings)
+    rows = []
+    for target in registry.ALL:
+        reason = target.available(ctx)
+        rows.append({'name': target.name, 'title': target.title, 'label': target.label,
+                     'left_alone': target.name in alone, 'installed': not isinstance(reason, Absent),
+                     'problem': None if reason is None or isinstance(reason, Absent) else str(reason),
+                     'note': str(reason) if reason else None})
+    if getattr(args, 'json', False):
+        print(json.dumps(rows))
+        return 0
+    for row in rows:
+        state = 'left alone' if row['left_alone'] else 'themed' if not row['note'] else row['note']
+        print(f"{row['name']:9} {row['label']:44} {state}")
+    print('\nLeave an app alone with: jade apps off NAME (its own config comes back). Theme it again with: jade apps on NAME')
+    return 0
+
+
+def set_left_alone(ctx, names, alone):
+    schema, key = engine.LEFT_ALONE
+    if not ctx.settings.has(schema, key):
+        print("jade: Jade Shell's settings are not installed; reinstall Jade Shell", file=sys.stderr)
+        return False
+    settings = ctx.settings.get(schema)
+    now = settings.get_strv(key)
+    wanted = [n for n in now if n not in names] + (list(dict.fromkeys(n for n in names if n not in now)) if alone else [])
+    settings.set_strv(key, wanted)
+    Gio.Settings.sync()
+    return True
+
+
+def apps_off(args, ctx):
+    if not set_left_alone(ctx, args.names, alone=True):
+        return 1
+    home = str(pathlib.Path.home())
+
+    def short_paths(paths):
+        return join([path.replace(home, '~', 1) for path in paths])
+
+    for name in dict.fromkeys(args.names):
+        result = engine.put_back(name, ctx)
+        done = ([f'put back {short_paths(result["restored"])}'] if result['restored'] else []) \
+            + ([f"took Jade Shell's part out of {short_paths(result['merged'])} (your edits since stay)"]
+               if result['merged'] else []) \
+            + ([f'removed {short_paths(result["removed"])}'] if result['removed'] else [])
+        print(f'Jade Shell leaves {engine.target_named(name).title} alone now'
+              + (f': {"; ".join(done)}.' if done else '.'))
+        for path in result['kept']:
+            print(f'  Kept {short_paths([path])}: it changed since Jade Shell wrote it, so it was left as it is.')
+        for item in result['skipped']:
+            print(f'  Skipped {item}')
+    return 0
+
+
+def apps_on(args, ctx):
+    if not set_left_alone(ctx, args.names, alone=False):
+        return 1
+    state = engine.current()
+    titles = join([engine.target_named(n).title for n in dict.fromkeys(args.names)])
+    if not state.get('theme'):
+        print(f'Jade Shell themes {titles} again from the next theme you pick.')
+        return 0
+    theme = themes.load(state['theme'])
+    ctx.wallpaper_index = state.get('wallpaper') or 0
+    engine.apply(theme, ctx, only=args.names)
+    print(f'{theme.name} applied to {titles}.')
+    print_skipped(ctx, args.names)
     return 0
 
 
@@ -216,6 +301,14 @@ def parser():
     theme.add_parser('thumbs', help='make the picker previews').add_argument(
         '--refresh', action='store_true', help='rebuild previews that already exist')
 
+    apps = commands.add_parser('apps', help='choose which apps Jade Shell themes').add_subparsers(
+        dest='action', metavar='action')
+    apps.add_parser('list', help='each app and whether Jade Shell themes it').add_argument('--json', action='store_true')
+    for name, text in [('off', "leave apps alone from now on, with their own configs put back"),
+                       ('on', 'theme apps again, starting with the current theme')]:
+        apps.add_parser(name, help=text).add_argument('names', type=lambda t: target_list(t)[0], nargs='+',
+                                                      metavar='NAME', help=', '.join(TARGETS))
+
     usage = commands.add_parser('usage', help='Claude and Codex usage').add_subparsers(
         dest='action', required=True, metavar='action')
     p = usage.add_parser('collect', help='collect usage for the top bar')
@@ -242,6 +335,7 @@ HANDLERS = {
     ('theme', 'set'): theme_set, ('theme', 'wallpaper'): theme_wallpaper, ('theme', 'undo'): theme_undo,
     ('theme', 'reload'): theme_reload, ('theme', 'fetch'): theme_fetch, ('theme', 'thumbs'): theme_thumbs,
     ('usage', 'collect'): usage_collect,
+    ('apps', None): apps_list, ('apps', 'list'): apps_list, ('apps', 'off'): apps_off, ('apps', 'on'): apps_on,
     ('setup', None): run_setup, ('doctor', None): run_doctor, ('update', None): run_update, ('restore', None): run_restore,
 }
 
@@ -249,7 +343,8 @@ HANDLERS = {
 # Commands that change the desktop or the undo history, or download wallpapers
 # (a switch downloads them too, to the same files): one at a time.
 EXCLUSIVE = {('theme', 'set'), ('theme', 'wallpaper'), ('theme', 'undo'), ('theme', 'reload'),
-             ('theme', 'fetch'), ('theme', 'thumbs'), ('setup', None), ('restore', None)}
+             ('theme', 'fetch'), ('theme', 'thumbs'), ('setup', None), ('restore', None),
+             ('apps', 'off'), ('apps', 'on')}
 
 
 def main(argv=None):

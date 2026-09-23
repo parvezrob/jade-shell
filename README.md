@@ -46,6 +46,7 @@ Log out and back in once to start the extension. `jade doctor` checks everything
   ```
 
   `--only` and `--skip` limit a switch to some targets, e.g. `jade theme set nord --skip vscode,kitty`. The target names are in the table below.
+- **Leave an app alone:** turn it off under **Apps** in the settings, or run `jade apps off kitty`. Its own config comes back as it was before Jade Shell (keeping any edits you made since), and no switch, setup or picker touches it again until `jade apps on kitty`. `jade apps` lists them all.
 - **Settings:** open the extension's preferences (Extensions app, or Settings in the AI usage menu) to turn parts of the top bar on or off, change the clock format or the app grid size.
 
 ## What a theme switch changes
