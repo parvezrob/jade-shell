@@ -715,6 +715,19 @@ class Sandbox(unittest.TestCase):
         for path, text in self.originals.items():
             self.assertEqual(path.read_text(), text, path)
 
+    def test_each_theme_keeps_its_wallpaper(self):
+        nord = themes.load('nord')
+        second = self.home / '.local/share/jade-shell/backgrounds/nord' / nord.backgrounds[1]
+        second.write_bytes(b'image')  # no download in the sandbox
+        skip = ['--only', 'gnome']
+        self.jade('theme', 'set', 'nord', *skip)
+        self.jade('theme', 'wallpaper')
+        self.jade('theme', 'set', 'tokyo-night', *skip)
+        self.assertNotIn(second.name, self.gsettings('get', 'org.gnome.desktop.background', 'picture-uri'))
+        self.jade('theme', 'set', 'nord', *skip)  # back: the wallpaper it had
+        self.assertIn(second.name, self.gsettings('get', 'org.gnome.desktop.background', 'picture-uri'))
+        self.assertIn('already applied', self.jade('theme', 'plan', 'nord', *skip))
+
     @needs_compiler
     def test_an_update_leaves_an_extension_turned_back_on(self):
         blur = 'blur-my-shell@aunetx'

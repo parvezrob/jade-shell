@@ -208,7 +208,11 @@ export class Picker {
         }) : swatch(theme.colors));
         box.add_child(label(theme.name, 'jade-tile-name'));
         tile.set_child(box);
-        tile.connect('clicked', () => this._runJade(['theme', 'set', theme.id], `${theme.name} applied`, `Applying ${theme.name}…`));
+        // The current theme's tile moves on to its next wallpaper; any other
+        // switches, with the wallpaper that theme had last time.
+        tile.connect('clicked', () => theme.id === this._current
+            ? this._runJade(['theme', 'wallpaper'], 'New wallpaper set', 'Changing the wallpaper…')
+            : this._runJade(['theme', 'set', theme.id], `${theme.name} applied`, `Applying ${theme.name}…`));
         tile.connect('key-press-event', (_a, event) => this._onTileKey(index, event));
         this._tiles.set(theme.id, tile);
         return tile;

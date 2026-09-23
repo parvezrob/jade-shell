@@ -34,7 +34,7 @@ Log out and back in once to start the extension. A few notes at that first login
 
 ## Use
 
-- **Picker:** click the palette icon in the top bar, or press **Super+Ctrl+Shift+Space**. Arrow keys move, Enter applies. The menu stays open while you try themes.
+- **Picker:** click the palette icon in the top bar, or press **Super+Ctrl+Shift+Space**. Arrow keys move, Enter applies. The menu stays open while you try themes. Each theme keeps the wallpaper you last gave it; pick the current theme again for its next wallpaper.
 - **Command line:**
 
   ```bash

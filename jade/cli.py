@@ -76,9 +76,20 @@ def theme_current(args, ctx):
     return 0
 
 
+def wallpaper_for(theme_id, asked):
+    """The wallpaper a switch uses: the one asked for, else the one this theme
+    had last time (the picker's "next wallpaper" is `theme wallpaper`)."""
+    if asked is not None:
+        return asked
+    state = engine.current()
+    if state.get('theme') == theme_id:
+        return state.get('wallpaper') or 0
+    return engine.remembered_wallpaper(theme_id)
+
+
 def theme_plan(args, ctx):
     theme = themes.load(args.theme)
-    ctx.wallpaper_index = args.wallpaper
+    ctx.wallpaper_index = wallpaper_for(theme.id, args.wallpaper)
     changes = engine.plan(theme, ctx, args.only, args.skip)
     by_target = {}
     for target, change in changes:
@@ -95,7 +106,7 @@ def theme_plan(args, ctx):
 
 def theme_set(args, ctx):
     theme = themes.load(args.theme)
-    ctx.wallpaper_index = args.wallpaper
+    ctx.wallpaper_index = wallpaper_for(theme.id, args.wallpaper)
     changes, backup = engine.apply(theme, ctx, args.only, args.skip)
     if backup is None:  # no backup was made, so `undo` would revert an older switch
         print(f'{theme.name}: already applied')
@@ -304,7 +315,7 @@ def parser():
     for name, text in [('plan', 'show what switching would change, without changing it'), ('set', 'switch to a theme')]:
         p = theme.add_parser(name, help=text)
         p.add_argument('theme', choices=themes.ids())
-        p.add_argument('--wallpaper', type=int, default=0, help="which of the theme's wallpapers (default 0)")
+        p.add_argument('--wallpaper', type=int, help="which of the theme's wallpapers (default: the one it had last time)")
         p.add_argument('--only', type=target_list, metavar='T,...', help=f'only these targets: {", ".join(TARGETS)}')
         p.add_argument('--skip', type=target_list, metavar='T,...', help='skip these targets (same names as --only)')
     theme.add_parser('wallpaper', help='next wallpaper of the current theme')

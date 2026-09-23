@@ -56,6 +56,11 @@ def current():
         return {}
 
 
+def remembered_wallpaper(theme_id):
+    """The wallpaper `theme_id` showed when it was last in use (0 at first)."""
+    return current().get('wallpapers', {}).get(theme_id, 0)
+
+
 def selected(only=None, skip=None):
     return [t for t in registry.ALL if (not only or t.name in only) and t.name not in (skip or ())]
 
@@ -187,8 +192,12 @@ def apply(theme, ctx, only=None, skip=None):
     for _target, change in changes:
         if isinstance(change, File):
             write_text(change.path, change.content)
-    wallpaper = current().get('wallpaper') if ctx.wallpaper_error else ctx.wallpaper_index
-    write_text(state_dir() / 'current.json', json.dumps({'theme': theme.id, 'wallpaper': wallpaper}))
+    before = current()
+    wallpaper = before.get('wallpaper') if ctx.wallpaper_error else ctx.wallpaper_index
+    # Each theme's wallpaper is remembered, so switching back shows it again.
+    wallpapers = {**before.get('wallpapers', {}), theme.id: wallpaper or 0}
+    write_text(state_dir() / 'current.json', json.dumps({'theme': theme.id, 'wallpaper': wallpaper,
+                                                         'wallpapers': wallpapers}))
     reload(manifest['targets'], ctx)
     try:
         prune()
