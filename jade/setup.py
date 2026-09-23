@@ -173,14 +173,33 @@ def extension_info(uuid):
     return info
 
 
+# GNOME Shell's ExtensionState values (js/misc/extensionUtils.js).
+STATES = {1: 'active', 2: 'inactive', 3: 'error', 4: 'out of date'}
+
+
 def extension_state(uuid):
-    """The running Shell's view: 'active', 'inactive', 'unknown' (needs a new login) or None (no Shell)."""
+    """The running Shell's view: 'active', 'inactive', 'error', 'out of date',
+    'unknown' (needs a new login) or None (no Shell)."""
     info = extension_info(uuid)
     if info is None:
         return None
     if not info:
         return 'unknown'
-    return 'active' if info.get('state') == 1 else 'inactive'
+    return STATES.get(info.get('state'), 'inactive')
+
+
+def needs_login(uuid):
+    """Whether the running Shell has yet to load this copy of the extension.
+
+    The Shell loads an extension's code once per login: a new one is unknown
+    to it, and one updated underneath it keeps running (or fails with) the
+    old code. Only packages stamp a version to compare.
+    """
+    info = extension_info(uuid)
+    if info is None:
+        return False
+    running = info.get('version-name')
+    return not info or info.get('state') != 1 or bool(running and running != __version__)
 
 
 def usage_wanted():
@@ -319,9 +338,8 @@ def setup(ctx, theme_id=None):
         for command in commands:
             say(f'    {command}')
 
-    state = extension_state(UUID)
-    if state in ('unknown', None) and os.environ.get('XDG_SESSION_TYPE') == 'wayland':
-        say('Done. Log out and back in once to start Jade Shell.')
+    if needs_login(UUID):
+        say('Done. Log out and back in once to start this version of Jade Shell.')
     else:
         say('Done.')
     say('Change theme with Super+Ctrl+Shift+Space. Undo everything with: jade restore')
@@ -430,8 +448,11 @@ def doctor(ctx):
           'Jade Shell extension enabled', 'Run: jade setup')
     state = extension_state(UUID)
     if state is not None:
+        error = (extension_info(UUID) or {}).get('error')
         check(state == 'active', f'Jade Shell running in GNOME Shell ({state})',
-              'Log out and back in' if state == 'unknown' else 'Check: journalctl --user -b | grep -i jade')
+              '\n    '.join([*([f'GNOME Shell says: {error}'] if error else []),
+                             'Log out and back in (GNOME Shell loads extensions at login).',
+                             'If it stays like this, check: journalctl --user -b | grep -i jade']))
     # Packages stamp their version into the extension; the Shell keeps running
     # the code it loaded at login until the next one.
     running = (extension_info(UUID) or {}).get('version-name')
