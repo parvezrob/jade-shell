@@ -70,6 +70,24 @@ class Ptyxis:
         pass  # Ptyxis watches its palettes folder and profile settings
 
 
+def jsonc(text):
+    """Vicinae writes its config as JSON with // comment lines."""
+    return json.loads(re.sub(r'^\s*//.*$', '', text, flags=re.M))
+
+
+def set_theme_names(text, name):
+    """Change only the theme names, keeping Vicinae's own formatting and comments."""
+    start = text.index('"theme"')
+    depth, end = 0, None
+    for i in range(text.index('{', start), len(text)):
+        depth += {'{': 1, '}': -1}.get(text[i], 0)
+        if depth == 0:
+            end = i
+            break
+    block = re.sub(r'("name"\s*:\s*")[^"]*"', lambda m: f'{m.group(1)}{name}"', text[start:end])
+    return text[:start] + block + text[end:]
+
+
 class Vicinae:
     name = 'vicinae'
     label = 'Vicinae launcher'
@@ -104,15 +122,15 @@ class Vicinae:
         config = self.config_path()
         text = read_text(config)
         if text is not None:
-            data = json.loads(text)
-            for variant in ('dark', 'light'):
-                data.setdefault('theme', {}).setdefault(variant, {})['name'] = theme_id
-            out.append(File(config, json.dumps(data, indent=2) + '\n'))
+            themes_now = jsonc(text).get('theme', {})
+            names = [themes_now.get(v, {}).get('name') for v in ('dark', 'light')]
+            if names != [theme_id, theme_id]:
+                out.append(File(config, set_theme_names(text, theme_id)))
         return out
 
     def reload(self, ctx):
         text = read_text(self.config_path())
-        name = json.loads(text).get('theme', {}).get('dark', {}).get('name') if text else None
+        name = jsonc(text).get('theme', {}).get('dark', {}).get('name') if text else None
         if name:
             subprocess.run(['vicinae', 'theme', 'set', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

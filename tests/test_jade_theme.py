@@ -15,7 +15,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from jade_theme import palette, themes  # noqa: E402
-from jade_theme.targets.apps import managed_block  # noqa: E402
+from jade_theme.targets.apps import jsonc, managed_block, set_theme_names  # noqa: E402
 from jade_theme.targets.gnome import nearest_accent  # noqa: E402
 
 
@@ -52,6 +52,14 @@ class Helpers(unittest.TestCase):
         self.assertTrue(twice.startswith('user line\n'))
         self.assertEqual(twice.count('include'), 1)
         self.assertIn('include b.conf', twice)
+
+    def test_vicinae_config_keeps_its_comments_and_other_names(self):
+        text = ('// written by vicinae\n{\n   "theme": {\n      "light": { "name": "a" },\n'
+                '      "dark": { "name": "a" }\n   },\n   "extensions": { "name": "keep" }\n}')
+        changed = set_theme_names(text, 'omarchy-nord')
+        self.assertTrue(changed.startswith('// written by vicinae'))
+        self.assertEqual(jsonc(changed)['theme']['dark']['name'], 'omarchy-nord')
+        self.assertEqual(jsonc(changed)['extensions']['name'], 'keep')
 
     def test_nearest_accent(self):
         self.assertEqual(nearest_accent('#509475'), 'green')
