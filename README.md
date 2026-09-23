@@ -67,7 +67,8 @@ Every switch first saves the value of each setting and file it will change, in `
 - **Workspaces** replace Activities: numbered, the current one filled with the accent. Click the current one for the overview; scroll to move between them.
 - **System monitor:** CPU, memory, GPU and CPU temperature. It reads `/proc` and sysfs every two seconds, and on NVIDIA keeps one `nvidia-smi` running instead of starting one per update. It never polls the GPU on battery. Click it for your system monitor app.
 - **AI usage:** Claude and Codex limits, with Omarchy's usage panel as its menu (limits, tokens by day and by model). It uses Omarchy's own collectors, run every ten minutes by a user timer.
-- **Clock** as "Tuesday 14:05", and GNOME starts on the desktop instead of the overview.
+- **Clock** as "Tuesday 14:05", and GNOME starts on the desktop instead of the overview. Its menu is the calendar.
+- **Notifications** behind a bell, in a panel of their own, as in Omarchy's notification center: a dot for unread ones, Do Not Disturb and Clear at the top. **Super+V** opens it, and pop-ups appear at the top right under it. Turn it off in the settings to have GNOME's layout back.
 
 ## Remove
 
@@ -98,6 +99,6 @@ The sandbox tests use their own HOME, XDG dirs and GSettings keyfile, so they ne
 
 ## Credits
 
-Jade Shell stands on other people's work: [Omarchy](https://github.com/basecamp/omarchy)'s themes, templates and usage collectors (MIT), GNOME Shell's theme sources (GPL-2.0-or-later), and ideas and code from [Simple Workspaces Bar](https://gitlab.com/null-git/simple-workspaces-bar), [Panel Date Format](https://github.com/KEIII/gnome-shell-panel-date-format), Just Perfection, App Grid Tuner, TopHat and Vitals. Details in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+Jade Shell stands on other people's work: [Omarchy](https://github.com/basecamp/omarchy)'s themes, templates and usage collectors (MIT), GNOME Shell's theme sources (GPL-2.0-or-later), the layout of [Omarchy Notification Center](https://github.com/jankeesvw/omarchy-notification-center) (an idea, no code), and ideas and code from [Simple Workspaces Bar](https://gitlab.com/null-git/simple-workspaces-bar), [Panel Date Format](https://github.com/KEIII/gnome-shell-panel-date-format), Just Perfection, App Grid Tuner, TopHat and Vitals. Details in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 GPL-3.0-or-later. Not affiliated with Omarchy, Basecamp or GNOME.

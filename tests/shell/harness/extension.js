@@ -93,6 +93,32 @@ async function states(role, name) {
     await wait(300);
 }
 
+// The bell off puts GNOME's list, Clear row, unread dot and pop-up place back;
+// on again takes them. Logs "HARNESS bell …" lines and shoots the calendar.
+async function bellRoundTrip() {
+    const settings = Extension.lookupByUUID(UUID)?.getSettings();
+    const dateMenu = Main.panel.statusArea.dateMenu;
+    const list = dateMenu._messageList;
+    const where = () => {
+        const clockBox = dateMenu._clockDisplay.get_parent();
+        return [`list in ${list.get_parent()?.name || list.get_parent()?.style_class}`,
+            `clear row ${list._clearButton.get_parent().visible ? 'shown' : 'hidden'}`,
+            `clock box ${clockBox.get_children().map(c => c.constructor.name).join(',')}`,
+            `banners ${Main.messageTray.bannerAlignment}`,
+            `bell ${Main.panel.statusArea['jade-bell'] ? 'in bar' : 'gone'}`,
+            `toggleCalendar ${Object.hasOwn(Main.panel, 'toggleCalendar') ? 'ours' : 'GNOME'}`].join('; ');
+    };
+    log(`bell on: ${where()}`);
+    settings.set_boolean('notification-bell', false);
+    await wait(500);
+    log(`bell off: ${where()}`);
+    await panel('dateMenu', 'bell-off-calendar');
+    settings.set_boolean('notification-bell', true);
+    await wait(500);
+    log(`bell on again: ${where()}`);
+    await panel('jade-bell', 'bell-on-again');
+}
+
 // ------------------------------------------------------------------ timing
 //
 // For each Jade menu and, as a baseline, GNOME's clock and quick settings:
@@ -676,8 +702,17 @@ export default class Harness extends Extension {
             await panel('jade-monitor', `${theme}-monitor`, 3000);
             await panel('jade-usage', `${theme}-usage`);
             await panel('dateMenu', `${theme}-calendar`);
+            await states('jade-bell', `${theme}-bell-button`);
+            // The unread dot: GNOME's indicator decides, the bell shows it.
+            const unread = Main.panel.statusArea.dateMenu._indicator;
+            unread.visible = true;
+            await wait(300);
+            await shoot(`${theme}-bell-unread`, Main.panel.statusArea['jade-bell']);
+            unread._sync();
+            await panel('jade-bell', `${theme}-bell`);
             await panel('quickSettings', `${theme}-quick-settings`);
         }
+        await bellRoundTrip();
     }
 
     disable() {}

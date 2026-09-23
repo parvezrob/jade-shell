@@ -85,6 +85,7 @@ export default class JadePreferences extends ExtensionPreferences {
         const desktop = new Adw.PreferencesGroup({title: 'Desktop', description: 'Set a size to 0 to let GNOME choose.'});
         page.add(desktop);
         switchRow(settings, desktop, 'start-on-desktop', 'Start on the desktop', 'Skip the overview after logging in');
+        switchRow(settings, desktop, 'notification-bell', 'Notification bell', 'Notifications in their own panel, pop-ups at the top right');
         switchRow(settings, desktop, 'simple-calendar', 'Simple calendar', 'Hide world clocks and weather in the clock’s menu');
         spinRow(settings, desktop, 'app-grid-columns', 'App grid columns', null, 0, 12);
         spinRow(settings, desktop, 'app-grid-rows', 'App grid rows', null, 0, 8);

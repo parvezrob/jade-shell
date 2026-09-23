@@ -12,6 +12,7 @@ import {Clock} from './lib/clock.js';
 import {Desktop} from './lib/desktop.js';
 import {SimpleCalendar} from './lib/datemenu.js';
 import {Monitor} from './lib/monitor.js';
+import {Notifications} from './lib/notifications.js';
 import {Picker} from './lib/picker.js';
 import {ShellTheme} from './lib/theme.js';
 import {Usage} from './lib/usage.js';
@@ -31,6 +32,7 @@ export default class JadeShell extends Extension {
             {key: 'show-monitor', make: () => new Monitor(this, this._settings, this._shellTheme)},
             {key: 'show-usage', make: () => new Usage(this, this._settings, this._shellTheme)},
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
+            {key: 'notification-bell', make: () => new Notifications()},
         ];
         this._partsChanged = this._parts.filter(p => p.key).map(
             part => this._settings.connect(`changed::${part.key}`, () => this._syncPart(part)));

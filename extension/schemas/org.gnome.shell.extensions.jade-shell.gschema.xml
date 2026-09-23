@@ -29,6 +29,11 @@
       <summary>Calendar without world clocks and weather</summary>
       <description>Like Omarchy's clock panel: the date and the month only.</description>
     </key>
+    <key name="notification-bell" type="b">
+      <default>true</default>
+      <summary>Notifications behind a bell in the top bar</summary>
+      <description>Like Omarchy's notification center: a panel of their own, with pop-ups at the top right. Off: GNOME's layout, beside the calendar.</description>
+    </key>
     <key name="start-on-desktop" type="b">
       <default>true</default>
       <summary>Start on the desktop instead of the overview</summary>

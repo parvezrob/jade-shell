@@ -18,6 +18,20 @@
 .jade-frame .popup-menu-item:hover,
 .jade-frame .popup-menu-item:selected { background-color: transparent; box-shadow: none; }
 
+/* ---------- notifications ---------- */
+.jade-bell-dot { width: 6px; height: 6px; border-radius: 3px; }
+/* Pop-ups sit at the top right: keep them off the screen's edge. */
+.notification-banner { margin: 10px; }
+.jade-bell { padding: 12px; spacing: 10px; }
+.jade-bell-header { spacing: 6px; padding-left: 2px; }
+.jade-bell-title { font-size: 8pt; font-weight: 700; letter-spacing: 1.5px; }
+.jade-bell-action { padding: 4px 10px; border-radius: 0; font-size: 9pt; font-weight: 700; }
+.jade-bell .message-list,
+.jade-bell .message-list:ltr,
+.jade-bell .message-list:rtl { width: 400px; min-height: 120px; max-height: 560px; margin: 0; padding: 0; border-width: 0; }
+.jade-calendar-only .datemenu-calendar-column:ltr,
+.jade-calendar-only .datemenu-calendar-column:rtl { margin: 0; }
+
 /* ---------- theme picker ---------- */
 .jade-picker .jade-hero { spacing: 12px; }
 .jade-picker .jade-hero-icon { icon-size: 28px; }

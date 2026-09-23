@@ -355,6 +355,13 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
   }
   .message-action-bin .button, .notification-button { @include om-control; }
 }
+// The bell: an accent dot for unread, the panel's header in caps.
+#panel .jade-bell-dot { background-color: $jade-accent; }
+.jade-bell {
+  .jade-bell-title { @include om-caps; }
+  .jade-bell-action { @include om-control; }
+}
+
 // Pop-up banners: the same card, framed like every Omarchy panel.
 .notification-banner {
   background-color: $jade-background;
