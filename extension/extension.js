@@ -16,6 +16,7 @@ import {Notifications} from './lib/notifications.js';
 import {Picker} from './lib/picker.js';
 import {ShellTheme} from './lib/theme.js';
 import {Usage} from './lib/usage.js';
+import {Updates} from './lib/updates.js';
 import {Workspaces} from './lib/workspaces.js';
 
 export default class JadeShell extends Extension {
@@ -33,6 +34,7 @@ export default class JadeShell extends Extension {
             {key: 'show-usage', make: () => new Usage(this, this._settings, this._shellTheme)},
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
             {key: 'notification-bell', make: () => new Notifications(this)},
+            {key: null, make: () => new Updates(this)},
         ];
         this._partsChanged = this._parts.filter(p => p.key).map(
             part => this._settings.connect(`changed::${part.key}`, () => this._syncPart(part)));

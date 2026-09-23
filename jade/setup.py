@@ -17,7 +17,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
-from . import __version__, engine, shelltheme, themes
+from . import __version__, engine, migrations, shelltheme, themes
 from .store import Setting, config_home, data_home, write_text
 from .usage import collect
 
@@ -238,10 +238,11 @@ def usage_shown(ctx):
 
 # ------------------------------------------------------------------ setup
 
-def planned_settings(ctx):
+def planned_settings(ctx, keep=()):
+    """What setup sets. Extensions in `keep` stay on even if Jade Shell replaces them."""
     settings = ctx.settings
     shell = settings.get(SHELL)
-    enabled = [uuid for uuid in shell.get_strv('enabled-extensions') if uuid not in REPLACED]
+    enabled = [uuid for uuid in shell.get_strv('enabled-extensions') if uuid not in REPLACED or uuid in keep]
     disabled = [uuid for uuid in shell.get_strv('disabled-extensions') if uuid not in (UUID, DASH_TO_DOCK)]
     enabled.append(UUID)
     # Ubuntu Dock is Dash to Dock under another name; never run both.
@@ -297,7 +298,9 @@ def sticks(change):
     return not (change.key == 'show-usage' and change.value is False)
 
 
-def setup(ctx, theme_id=None):
+def setup(ctx, theme_id=None, after_update=False):
+    """Set up this desktop, or finish an update (`after_update`: run by the
+    extension at the first login with a new version, without a terminal)."""
     version = shelltheme.installed_shell_version()
     if version not in shelltheme.available_versions():
         supported = ', '.join(str(v) for v in shelltheme.available_versions())
@@ -307,8 +310,17 @@ def setup(ctx, theme_id=None):
         say('Jade Shell needs sassc to build the Shell theme. Install it with your package manager.')
         return 1
 
+    fresh = not manifest_path().exists()
     manifest = load_manifest()
-    planned = planned_settings(ctx)
+    if fresh:
+        migrations.mark_all()  # a first setup starts from how things are now
+    elif not migrations.run_pending(ctx, say):
+        return 1
+    # An extension Jade Shell already replaced when setup last ran and that is
+    # on again was turned back on by its owner: an update leaves it alone. Only
+    # ones a new version learned about are turned off.
+    keep = set(manifest.get('replaced', REPLACED)) if after_update else ()
+    planned = planned_settings(ctx, keep)
     if 'defaulted' not in manifest:
         # Set up by an older version, which has already applied these once.
         manifest['defaulted'] = ([[c.schema, c.path, c.key] for c in planned if c.schema in PREFERENCE_SCHEMAS and sticks(c)]
@@ -320,7 +332,7 @@ def setup(ctx, theme_id=None):
     write_text(manifest_path(), json.dumps(manifest, indent=2))
     enabled_before = set(ctx.settings.get(SHELL).get_strv('enabled-extensions'))
     ctx.settings.write(changes)
-    for uuid in sorted(enabled_before & set(REPLACED)):
+    for uuid in sorted(enabled_before & set(REPLACED) - set(keep)):
         name, job = REPLACED[uuid]
         say(f'Turned off {name}: Jade Shell does {job}.')
 
@@ -371,6 +383,13 @@ def setup(ctx, theme_id=None):
         for command in commands:
             say(f'    {command}')
 
+    # Which version this desktop is set up for: the extension compares it with
+    # its own at login, and finishes an update when they differ.
+    manifest.update(version=__version__, replaced=sorted(REPLACED))
+    write_text(manifest_path(), json.dumps(manifest, indent=2))
+    if after_update:
+        say(f'Jade Shell {__version__} is set up.')
+        return 0
     say('Change theme with Super+Ctrl+Shift+Space. Undo everything with: jade restore')
     if needs_login(UUID):
         say('Done. Log out and back in once to start this version of Jade Shell.')
@@ -514,6 +533,10 @@ def doctor(ctx):
     if running:
         check(running == __version__, f'GNOME Shell runs this version of the extension ({running})',
               f'The Shell still runs {running}; log out and back in to load {__version__}')
+    set_for = load_manifest().get('version')
+    if set_for:  # set up by a version that stamps it
+        check(set_for == __version__, f'Set up for this version of Jade Shell ({set_for})',
+              'Run: jade setup (the extension also does it at your next login)')
     clashing = [uuid for uuid in enabled if uuid in REPLACED]
     check(not clashing, 'No extensions doing the same job or taking over the top bar',
           f'Run: jade setup (turns off {", ".join(REPLACED[uuid][0] for uuid in clashing)})')

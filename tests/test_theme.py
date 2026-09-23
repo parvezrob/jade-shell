@@ -18,7 +18,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jade import engine, palette, setup, shelltheme, store, themes
+from jade import __version__, engine, migrations, palette, setup, shelltheme, store, themes
 from jade.setup import REPLACED, UUID
 from jade.targets.apps import VSCode, jsonc, managed_block, restore_theme_names, revert_block, revert_line, set_theme_names
 from jade.targets.gnome import Gnome, nearest_accent
@@ -213,6 +213,40 @@ class History(unittest.TestCase):
         names = [p.name for p in engine.backups()]
         self.assertEqual(names, ['20261231-235959-000000', '000002-20260101T000000Z', '000010-20250101T000000Z'])
         self.assertTrue(engine.new_backup_name(engine.backups()).startswith('000011-'))
+
+
+class Migrations(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        patcher = mock.patch.dict(os.environ, XDG_STATE_HOME=tmp.name)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.ran = []
+
+    def migration(self, number, fail=False):
+        def run(ctx):
+            if fail:
+                raise OSError('disk full')
+            self.ran.append(number)
+        return (number, f'step {number}', run)
+
+    def test_each_runs_once_in_order_and_a_failure_is_retried(self):
+        said = []
+        with mock.patch.object(migrations, 'MIGRATIONS', [self.migration(1), self.migration(2, fail=True)]):
+            self.assertFalse(migrations.run_pending(None, said.append))
+            self.assertEqual(self.ran, [1])
+            self.assertIn('Update step 2 (step 2) failed: disk full', said)
+        with mock.patch.object(migrations, 'MIGRATIONS', [self.migration(1), self.migration(2), self.migration(3)]):
+            self.assertTrue(migrations.run_pending(None, said.append))
+            self.assertEqual(self.ran, [1, 2, 3])
+            self.assertEqual(migrations.pending(), [])
+
+    def test_a_first_setup_starts_with_all_done(self):
+        with mock.patch.object(migrations, 'MIGRATIONS', [self.migration(1), self.migration(2)]):
+            migrations.mark_all()
+            self.assertTrue(migrations.run_pending(None, print))
+        self.assertEqual(self.ran, [])
 
 
 class Leftovers(unittest.TestCase):
@@ -486,6 +520,25 @@ class Sandbox(unittest.TestCase):
         self.assertIn('nord', self.jade('theme', 'current'))
         self.jade('setup', '--theme', 'solitude')
         self.assertIn('solitude', self.jade('theme', 'current'))
+
+    @needs_compiler
+    def test_an_update_leaves_an_extension_turned_back_on(self):
+        blur = 'blur-my-shell@aunetx'
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{blur}']")
+        self.jade('setup')
+        manifest = json.loads((self.home / '.local/state/jade-shell/setup.json').read_text())
+        self.assertEqual(manifest['version'], __version__)
+        self.assertIn(blur, manifest['replaced'])
+        # Its owner turns it back on; an update at login keeps that choice.
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{UUID}', '{blur}']")
+        manifest['version'] = '0.1.0'
+        (self.home / '.local/state/jade-shell/setup.json').write_text(json.dumps(manifest))
+        out = self.jade('setup', '--after-update')
+        self.assertIn(f'Jade Shell {__version__} is set up.', out)
+        self.assertNotIn('Turned off', out)
+        self.assertIn(blur, self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'))
+        # Running setup by hand is asking for Jade Shell's layout again.
+        self.assertIn('Turned off Blur my Shell', self.jade('setup'))
 
     @needs_compiler
     def test_setup_then_restore_gives_the_old_desktop_back(self):

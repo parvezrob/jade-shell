@@ -22,7 +22,9 @@ Run it as your desktop user. It downloads the latest `.rpm` or `.deb` release, c
 - downloads the first wallpaper of each theme for the picker's previews (one full-size image per theme; other wallpapers are downloaded when you pick them),
 - applies Osaka Jade.
 
-Running `jade setup` again (the installer does, on every update) keeps the dock layout and AI usage choice you made since; with AI usage turned off, the collector stays stopped.
+Running `jade setup` again keeps the dock layout and AI usage choice you made since; with AI usage turned off, the collector stays stopped.
+
+**Updates** come through `dnf`, `apt`, GNOME Software or the installer. Jade Shell notices a new version is installed and offers to log out; at the next login it finishes the update in the background (the settings and one-time changes the new version needs, the theme rebuilt), leaves on any extension you turned back on yourself, and says when it's done. `update.log` in `~/.local/state/jade-shell` has the details.
 
 If your home folder still has a copy of Jade Shell from before the packages (or from `scripts/dev-install.sh`), GNOME Shell would keep loading it instead of the package's, so the installer stops and prints the `rm -rf` command that removes it; run that, then the installer again. `jade setup` and `jade doctor` also point out such copies, and files left by older versions (Jade AI Usage, `jade-theme`), with the command to remove them. Nothing is deleted for you.
 

@@ -26,6 +26,9 @@ metadata['version-name'] = os.environ['JADE_VERSION']
 with open(path, 'w') as f:
     f.write(json.dumps(metadata, indent=2) + '\n')
 EOF
+# The same version for `jade`: setup records it, and the extension compares
+# the two at login to finish an update.
+sed -i "s/^__version__ = .*/__version__ = '$JADE_VERSION'/" build/stage/lib/jade/__init__.py
 glib-compile-schemas --strict build/stage/extension/schemas
 find build/stage -name __pycache__ -prune -exec rm -rf {} +
 
