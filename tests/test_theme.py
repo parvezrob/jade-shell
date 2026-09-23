@@ -347,6 +347,28 @@ class RestoreKit(unittest.TestCase):
         offer.assert_not_called()
 
 
+class Flatpak(unittest.TestCase):
+    def test_restore_takes_out_only_what_setup_added(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, XDG_DATA_HOME=tmp), mock.patch('shutil.which', return_value='/usr/bin/flatpak'):
+            overrides = setup.flatpak_overrides()
+            overrides.parent.mkdir(parents=True)
+            overrides.write_text('[Context]\nfilesystems=xdg-config/gtk-3.0:ro;~/Games;\n')
+
+            def fake_flatpak(argv, **_kwargs):  # appends as `flatpak override --user` does
+                extra = ''.join(a.split('=', 1)[1] + ';' for a in argv if a.startswith('--filesystem='))
+                overrides.write_text(overrides.read_text().rstrip('\n') + extra + '\n')
+                return subprocess.CompletedProcess(argv, 0)
+
+            manifest = {}
+            with mock.patch('subprocess.run', side_effect=fake_flatpak):
+                setup.grant_flatpak(manifest)
+            self.assertEqual(manifest['flatpak_added'], ['xdg-config/gtk-4.0:ro'])  # gtk-3.0 was there
+            setup.revoke_flatpak(manifest)
+            self.assertIn('filesystems=xdg-config/gtk-3.0:ro;~/Games;', overrides.read_text())
+            self.assertNotIn('gtk-4.0', overrides.read_text())
+
+
 class Leftovers(unittest.TestCase):
     def test_a_home_copy_hiding_the_package_and_old_versions_are_found(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -666,6 +688,9 @@ class Sandbox(unittest.TestCase):
 
     @needs_compiler
     def test_light_dark_light_and_back_leaves_nothing_behind(self):
+        own = self.home / '.config/gtk-4.0/gtk.css'  # someone's own tweaks stay
+        own.parent.mkdir(parents=True)
+        own.write_text('window { font-size: 11pt; }\n')
         before = self.keyfile()
         scheme = ('get', 'org.gnome.desktop.interface', 'color-scheme')
         self.jade('theme', 'set', 'catppuccin-latte')
@@ -677,8 +702,15 @@ class Sandbox(unittest.TestCase):
         self.assertEqual(self.gsettings(*scheme), "'prefer-light'")
         self.jade('theme', 'set', 'catppuccin-latte')
         self.assertEqual((self.home / '.local/state/jade-shell/gnome-shell.css').read_text(), css)
+        gtk4 = own.read_text()
+        self.assertTrue(gtk4.startswith('window { font-size: 11pt; }'))
+        self.assertIn('@define-color window_bg_color #eff1f5;', gtk4)
+        self.assertIn('--window-bg-color: #eff1f5;', gtk4)
+        self.assertIn('@define-color theme_bg_color #eff1f5;', (self.home / '.config/gtk-3.0/gtk.css').read_text())
         for _ in range(4):
             self.jade('theme', 'undo')
+        self.assertEqual(own.read_text(), 'window { font-size: 11pt; }\n')
+        self.assertFalse((self.home / '.config/gtk-3.0/gtk.css').exists())
         self.assertEqual(self.keyfile(), before)
         for path, text in self.originals.items():
             self.assertEqual(path.read_text(), text, path)

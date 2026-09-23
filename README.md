@@ -58,6 +58,7 @@ Log out and back in once to start the extension. A few notes at that first login
 | GNOME (`gnome`) | light or dark style to match the theme, the nearest named accent for apps, wallpaper (desktop and lock screen) |
 | Dock (`dock`) | Dash to Dock or Ubuntu Dock colors |
 | Ptyxis (`ptyxis`) | an Omarchy palette file, selected in every profile |
+| GNOME apps (`gtk`) | the theme's colors in a marked block of `~/.config/gtk-4.0/gtk.css` and `gtk-3.0/gtk.css` (libadwaita's named colors and CSS variables), so Files, Settings, Text Editor and other GNOME apps follow the theme when they next start; GTK 3 apps follow with the adw-gtk3 theme. Setup lets Flatpak apps read those files; restore takes that back |
 | Kitty (`kitty`) | `jade-theme.conf`, included at the end of `kitty.conf` (your own colors stay, overridden); kitty reloads |
 | Vicinae (`vicinae`) | an `omarchy-<theme>` theme, selected in its config |
 | Starship (`starship`) | a `jade` palette block (Catppuccin color names mapped to the theme) |

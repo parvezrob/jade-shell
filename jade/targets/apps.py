@@ -5,13 +5,22 @@ import re
 import subprocess
 from typing import ClassVar
 
+from .. import palette as pal
 from .. import shelltheme, themes
 from ..store import File, Setting, config_home, data_home, read_text, state_home
 from .base import Absent
 
 MARK_BEGIN = '# >>> jade-theme (generated; edits here are replaced)'
 MARK_END = '# <<< jade-theme'
-BLOCK = re.compile(re.escape(MARK_BEGIN) + r'.*?' + re.escape(MARK_END) + r'\n?', re.S)
+# The same markers as comments of a CSS file (GTK's gtk.css).
+CSS_MARKS = ('/* >>> jade-theme (generated; edits here are replaced) */', '/* <<< jade-theme */')
+
+
+def block_pattern(marks):
+    return re.compile(re.escape(marks[0]) + r'.*?' + re.escape(marks[1]) + r'\n?', re.S)
+
+
+BLOCK = block_pattern((MARK_BEGIN, MARK_END))
 
 
 def signal(process, sig):
@@ -19,21 +28,23 @@ def signal(process, sig):
     subprocess.run(['pkill', f'-{sig}', '-x', process], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def managed_block(text, block):
+def managed_block(text, block, marks=(MARK_BEGIN, MARK_END)):
     """Replace (or append) our marked block, leaving the rest of the file alone."""
-    wrapped = f'{MARK_BEGIN}\n{block.rstrip()}\n{MARK_END}\n'
-    if BLOCK.search(text):
-        return BLOCK.sub(lambda _m: wrapped, text)
-    return text.rstrip('\n') + '\n\n' + wrapped
+    pattern = block_pattern(marks)
+    wrapped = f'{marks[0]}\n{block.rstrip()}\n{marks[1]}\n'
+    if pattern.search(text):
+        return pattern.sub(lambda _m: wrapped, text)
+    return text.rstrip('\n') + '\n\n' + wrapped if text.strip() else wrapped
 
 
-def revert_block(text, old):
+def revert_block(text, old, marks=(MARK_BEGIN, MARK_END)):
     """`text` with our marked block as it was in `old`: its old contents, or gone
     (with the blank line managed_block put before it). None if the block is not there."""
-    found = BLOCK.search(text)
+    pattern = block_pattern(marks)
+    found = pattern.search(text)
     if found is None:
         return None
-    before = BLOCK.search(old or '')
+    before = pattern.search(old or '')
     if before:
         return text[:found.start()] + before.group(0) + text[found.end():]
     head = text[:found.start()].rstrip('\n')
@@ -77,6 +88,72 @@ class Shell:
 
     def reload(self, ctx):
         pass  # the Jade Shell extension watches these files
+
+
+class Gtk:
+    """GNOME's own apps (Files, Settings, Text Editor…) in the theme's colors:
+    libadwaita's named colors in the user's gtk.css, which GTK 4 apps and GTK 3
+    apps with adw-gtk3 read at start. Both the CSS variables of libadwaita
+    1.6+ and the older @define-color names, plus GTK 3 Adwaita's own names."""
+    name = 'gtk'
+    title = 'GNOME apps'
+    label = 'GNOME apps (GTK 4, and GTK 3 with adw-gtk3)'
+
+    def paths(self):
+        return [config_home() / 'gtk-4.0/gtk.css', config_home() / 'gtk-3.0/gtk.css']
+
+    def available(self, ctx):
+        return None
+
+    @staticmethod
+    def named_colors(theme):
+        c = theme.colors
+        light = c.get('mode') == 'light'
+        fg, bg = c['foreground'], c['background']
+        raised = pal.mix(bg, fg, 0.05)  # headerbars and popovers: a step toward the text
+        view = pal.mix(bg, '#ffffff', 0.5) if light else c['dark_background']
+        return {
+            'accent_color': c['accent'], 'accent_bg_color': c['accent'],
+            'accent_fg_color': shelltheme.accent_foreground(c),
+            'destructive_color': c['red'], 'destructive_bg_color': c['red'], 'destructive_fg_color': bg,
+            'success_color': c['green'], 'warning_color': c['yellow'], 'error_color': c['red'],
+            'window_bg_color': bg, 'window_fg_color': fg,
+            'view_bg_color': view, 'view_fg_color': fg,
+            'headerbar_bg_color': raised, 'headerbar_fg_color': fg, 'headerbar_backdrop_color': bg,
+            'sidebar_bg_color': c['dark_background'], 'sidebar_fg_color': fg,
+            'sidebar_backdrop_color': c['dark_background'],
+            'secondary_sidebar_bg_color': c['dark_background'], 'secondary_sidebar_fg_color': fg,
+            'card_bg_color': pal.mix(bg, fg, 0.04), 'card_fg_color': fg,
+            'thumbnail_bg_color': pal.mix(bg, fg, 0.04), 'thumbnail_fg_color': fg,
+            'dialog_bg_color': raised, 'dialog_fg_color': fg,
+            'popover_bg_color': raised, 'popover_fg_color': fg,
+        }
+
+    def css(self, theme, gtk3=False):
+        named = self.named_colors(theme)
+        lines = [f'/* {theme.name}, from Jade Shell. Apps read this when they start. */']
+        lines += [f'@define-color {key} {value};' for key, value in named.items()]
+        if gtk3:  # stock Adwaita for GTK 3 names a few of them its own way
+            lines += [f'@define-color {old} {named[new]};' for old, new in (
+                ('theme_bg_color', 'window_bg_color'), ('theme_fg_color', 'window_fg_color'),
+                ('theme_base_color', 'view_bg_color'), ('theme_text_color', 'view_fg_color'),
+                ('theme_selected_bg_color', 'accent_bg_color'), ('theme_selected_fg_color', 'accent_fg_color'))]
+        else:
+            variables = ' '.join(f'--{key.removesuffix("_color").replace("_", "-")}-color: {value};'
+                                 for key, value in named.items())
+            lines.append(f':root {{ {variables} }}')
+        return '\n'.join(lines)
+
+    def changes(self, theme, ctx):
+        return [File(path, managed_block(read_text(path) or '', self.css(theme, gtk3=path.parent.name == 'gtk-3.0'),
+                                         CSS_MARKS))
+                for path in self.paths()]
+
+    def revert(self, path, text, old):
+        return revert_block(text, old, CSS_MARKS) if path in self.paths() else None
+
+    def reload(self, ctx):
+        pass  # apps read gtk.css when they start
 
 
 class Ptyxis:

@@ -1,4 +1,4 @@
-from .apps import Btop, Kitty, Ptyxis, Shell, Starship, Vicinae, VSCode
+from .apps import Btop, Gtk, Kitty, Ptyxis, Shell, Starship, Vicinae, VSCode
 from .gnome import Dock, Gnome
 
-ALL = [Gnome(), Dock(), Shell(), Ptyxis(), Vicinae(), Kitty(), Starship(), Btop(), VSCode()]
+ALL = [Gnome(), Dock(), Shell(), Gtk(), Ptyxis(), Vicinae(), Kitty(), Starship(), Btop(), VSCode()]

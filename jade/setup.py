@@ -4,6 +4,7 @@
 (state/jade-shell/setup.json), the same way each theme switch keeps a backup,
 so `restore` can return the desktop to exactly how it was.
 """
+import configparser
 import json
 import os
 import pathlib
@@ -55,6 +56,8 @@ REPLACED = {
     'osaka-ai-usage@local': ('Jade AI Usage', 'AI usage (Jade AI Usage is now part of Jade Shell)'),
 }
 OLD_UNITS = ['osaka-ai-usage.timer']
+# Flatpak apps see the host's gtk.css (the GNOME apps target) only when allowed to.
+FLATPAK_PATHS = ['xdg-config/gtk-4.0:ro', 'xdg-config/gtk-3.0:ro']
 SYSTEM_EXTENSIONS = pathlib.Path('/usr/share/gnome-shell/extensions')
 
 # The dock as Jade Shell ships it: small, at the bottom, out of the way.
@@ -228,6 +231,55 @@ def needs_login(uuid):
     return not info or info.get('state') != 1 or bool(running and running != __version__)
 
 
+def flatpak_overrides():
+    return data_home() / 'flatpak/overrides/global'
+
+
+def flatpak_filesystems():
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    parser.optionxform = str
+    try:
+        parser.read(flatpak_overrides())
+    except configparser.Error:
+        return parser, None  # not ours to fix
+    listed = parser.get('Context', 'filesystems', fallback='')
+    return parser, [entry for entry in listed.split(';') if entry]
+
+
+def grant_flatpak(manifest):
+    """Let Flatpak apps read the theme's gtk.css, remembering what was added."""
+    if not shutil.which('flatpak'):
+        return
+    _parser, listed = flatpak_filesystems()
+    if listed is None:
+        return
+    have = {entry.split(':')[0] for entry in listed}
+    added = [path for path in FLATPAK_PATHS if path.split(':')[0] not in have]
+    if added and subprocess.run(['flatpak', 'override', '--user', *[f'--filesystem={p}' for p in added]],
+                                capture_output=True).returncode == 0:
+        manifest['flatpak_added'] = sorted(set(manifest.get('flatpak_added', [])) | set(added))
+
+
+def revoke_flatpak(manifest):
+    """Take out only what setup added; the rest of the overrides stay."""
+    added = set(manifest.get('flatpak_added', []))
+    parser, listed = flatpak_filesystems()
+    if not added or not listed:
+        return
+    kept = [entry for entry in listed if entry not in added]
+    if kept:
+        parser.set('Context', 'filesystems', ';'.join(kept) + ';')
+    else:
+        parser.remove_option('Context', 'filesystems')
+        if not parser.items('Context'):
+            parser.remove_section('Context')
+    if not parser.sections():
+        flatpak_overrides().unlink(missing_ok=True)  # setup made it: nothing else was in it
+        return
+    with open(flatpak_overrides(), 'w') as f:
+        parser.write(f, space_around_delimiters=False)
+
+
 def usage_wanted():
     return any(collect.present(provider) for provider in collect.PROVIDERS)
 
@@ -336,6 +388,9 @@ def setup(ctx, theme_id=None, after_update=False):
     for uuid in sorted(enabled_before & set(REPLACED) - set(keep)):
         name, job = REPLACED[uuid]
         say(f'Turned off {name}: Jade Shell does {job}.')
+
+    grant_flatpak(manifest)
+    write_text(manifest_path(), json.dumps(manifest, indent=2))
 
     if usage_wanted():
         # Read after the settings above are written: a first setup turns it on, and a
@@ -521,6 +576,7 @@ def restore(ctx, assume_yes=False):
     systemctl('daemon-reload')
     for unit in manifest['disabled_units']:
         systemctl('enable', '--now', unit)
+    revoke_flatpak(manifest)
     manifest_path().unlink(missing_ok=True)
     restore_offer.drop_kit()  # nothing left to offer after a removal
     for path in dict.fromkeys(merged):
