@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from . import store, themes
 from . import targets as registry
 from .store import File, Setting, Settings, read_text, state_home, write_text
+from .targets.base import Absent
 
 KEEP = 30  # newest backups kept apart from the oldest; older ones are folded into it
 
@@ -22,7 +23,8 @@ class Context:
     theme: object = None
     wallpaper_index: int = 0
     wallpaper_error: str | None = None  # set when the wallpaper could not be downloaded
-    skipped: dict = field(default_factory=dict)
+    skipped: dict = field(default_factory=dict)  # targets that failed or were refused, by name: why
+    absent: dict = field(default_factory=dict)  # targets whose app isn't here, by name: why
 
 
 class Busy(RuntimeError):
@@ -95,7 +97,7 @@ def plan(theme, ctx, only=None, skip=None, fetch=False):
     for target in selected(only, skip):
         reason = target.available(ctx)
         if reason:
-            ctx.skipped[target.name] = reason
+            (ctx.absent if isinstance(reason, Absent) else ctx.skipped)[target.name] = reason
             continue
         try:
             changes = target_changes(target, theme, ctx)

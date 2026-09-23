@@ -2,6 +2,7 @@
 
 from .. import palette as pal
 from ..store import Setting
+from .base import Absent
 
 # GNOME 47+ offers a fixed set of named accents; pick the nearest.
 ACCENTS = {
@@ -17,6 +18,7 @@ def nearest_accent(color):
 
 class Gnome:
     name = 'gnome'
+    title = 'GNOME'
     label = 'GNOME accent, dark style and wallpaper'
 
     def available(self, ctx):
@@ -46,11 +48,12 @@ class Gnome:
 
 class Dock:
     name = 'dock'
+    title = 'the dock'
     label = 'Dock (Dash to Dock or Ubuntu Dock)'
     schema = 'org.gnome.shell.extensions.dash-to-dock'
 
     def available(self, ctx):
-        return None if ctx.settings.has(self.schema) else 'Dash to Dock is not installed'
+        return None if ctx.settings.has(self.schema) else Absent('Dash to Dock is not installed')
 
     def changes(self, theme, ctx):
         c = theme.colors

@@ -34,8 +34,10 @@ def describe(ctx, change):
     return f'{where}: {short(ctx.settings.current(change))} → {short(change.value)}'
 
 
-def print_skipped(ctx):
-    for name, reason in ctx.skipped.items():
+def print_skipped(ctx, only=None):
+    """Targets that failed; an app that isn't installed only when asked for by name."""
+    asked = {name: reason for name, reason in ctx.absent.items() if name in (only or ())}
+    for name, reason in {**ctx.skipped, **asked}.items():
         print(f'skipped {name}: {reason}')
 
 
@@ -77,7 +79,7 @@ def theme_plan(args, ctx):
         print(f'{target.label} ({target.name}): {plural(len(group), "change")}')
         for change in group:
             print(f'    {describe(ctx, change)}')
-    print_skipped(ctx)
+    print_skipped(ctx, args.only)
     if not changes:
         print(f'{theme.name}: already applied')
     return 0
@@ -91,7 +93,7 @@ def theme_set(args, ctx):
         print(f'{theme.name}: already applied')
     else:
         print(f'{theme.name}: {plural(len(changes), "change")} applied (undo: jade theme undo)')
-    print_skipped(ctx)
+    print_skipped(ctx, args.only)
     return 0
 
 

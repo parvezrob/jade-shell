@@ -500,6 +500,9 @@ class Sandbox(unittest.TestCase):
 
         out = self.jade('setup')
         self.assertIn('Turned off Dash to Panel: Jade Shell does the top bar and the dock', out)
+        # Apps that aren't installed are not worth a line; what was themed is.
+        self.assertNotIn('skipped', out)
+        self.assertIn('Osaka Jade applied to GNOME', out)
         # (With the package installed on this machine, the sandbox's own extension copy is named too.)
         self.assertTrue(any(line.strip().startswith('rm -rf ') and str(old_copy) in line for line in out.splitlines()), out)
         self.assertTrue(old_copy.exists())  # said, never deleted

@@ -121,6 +121,21 @@ def say(text):
     print(text, flush=True)
 
 
+def progress(text):
+    """One line that updates in place on a terminal; None clears it. Elsewhere
+    (a log, a pipe) it stays quiet: the line after it says how it went."""
+    if not sys.stdout.isatty():
+        return
+    print(f'\r\033[K{text}' if text else '\r\033[K', end='', flush=True)
+
+
+def join(names):
+    """'a', 'a and b', 'a, b and c'."""
+    if len(names) < 2:
+        return ''.join(names) or 'nothing'
+    return f'{", ".join(names[:-1])} and {names[-1]}'
+
+
 def systemctl(*args):
     return subprocess.run(['systemctl', '--user', *args], capture_output=True, text=True)
 
@@ -319,16 +334,22 @@ def setup(ctx, theme_id=None):
     elif (config_home() / 'systemd/user/jade-usage.timer').exists():
         systemctl('disable', '--now', 'jade-usage.timer')  # neither Claude Code nor Codex is here any more
 
-    say('Preparing theme previews…')
-    for tid in themes.ids():
-        if not themes.thumbnail_path(tid).exists():
-            try:
-                themes.make_thumbnail(themes.load(tid))
-            except themes.WallpaperUnavailable as error:  # offline: the rest would fail the same way
-                say(f'  no previews ({error}); the picker shows colors until you run: jade theme thumbs')
-                break
-            except Exception as error:  # a preview is not worth failing setup over; the picker shows colors
-                say(f'  no preview for {tid}: {str(error).splitlines()[0]}')
+    missing = [tid for tid in themes.ids() if not themes.thumbnail_path(tid).exists()]
+    for done, tid in enumerate(missing):
+        progress(f'Downloading theme previews {done + 1}/{len(missing)}…')
+        try:
+            themes.make_thumbnail(themes.load(tid))
+        except themes.WallpaperUnavailable as error:  # offline: the rest would fail the same way
+            progress(None)
+            say(f'No theme previews ({error}); the picker shows colors until you run: jade theme thumbs')
+            break
+        except Exception as error:  # a preview is not worth failing setup over; the picker shows colors
+            progress(None)
+            say(f'No preview for {tid}: {str(error).splitlines()[0]}')
+    else:
+        if missing:
+            progress(None)
+            say(f'Downloaded {len(missing)} theme previews.')
 
     # The theme asked for, else the current one, else Osaka Jade, applied
     # everywhere: this also builds anything a new version of Jade Shell adds.
@@ -337,9 +358,10 @@ def setup(ctx, theme_id=None):
     theme = themes.load(theme_id or current or 'osaka-jade')
     ctx.wallpaper_index = state.get('wallpaper') or 0
     changes, _backup = engine.apply(theme, ctx)
-    say(f'{theme.name}: {len(changes)} change{"" if len(changes) == 1 else "s"} applied.')
+    themed = [t.title for t in engine.selected() if t.name not in ctx.absent and t.name not in ctx.skipped]
+    say(f'{theme.name} applied to {join(themed)}.')
     for name, reason in ctx.skipped.items():
-        say(f'  skipped {name}: {reason}')
+        say(f'Not themed: {name} ({reason})')
 
     commands = leftover_commands(*leftovers())
     if commands:
@@ -483,7 +505,7 @@ def doctor(ctx):
     check(bool(current), f'Theme: {current or "none applied"}', 'Run: jade setup')
     for target in engine.selected():
         reason = target.available(ctx)
-        say(f'  {"·" if reason is None else "-"} {target.label}{"" if reason is None else f" (skipped: {reason})"}')
+        say(f'  {"·" if reason is None else "-"} {target.label}{"" if reason is None else f" ({reason})"}')
 
     timer = systemctl('is-active', 'jade-usage.timer').stdout.strip()
     say(f'  · AI usage collector: {timer or "unknown"}')

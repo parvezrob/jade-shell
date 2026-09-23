@@ -7,6 +7,7 @@ from typing import ClassVar
 
 from .. import shelltheme, themes
 from ..store import File, Setting, config_home, data_home, read_text, state_home
+from .base import Absent
 
 MARK_BEGIN = '# >>> jade-theme (generated; edits here are replaced)'
 MARK_END = '# <<< jade-theme'
@@ -54,12 +55,13 @@ def revert_line(text, old, key, ours):
 
 class Shell:
     name = 'shell'
+    title = 'the Shell'
     label = 'GNOME Shell theme and Jade Shell extension'
 
     def available(self, ctx):
         version = shelltheme.installed_shell_version()
         if version not in shelltheme.available_versions():
-            return f'no Shell theme for GNOME {version}' if version else 'GNOME Shell is not installed'
+            return f'no Shell theme for GNOME {version}' if version else Absent('GNOME Shell is not installed')
         self.version = version
         return None
 
@@ -77,11 +79,12 @@ class Shell:
 
 class Ptyxis:
     name = 'ptyxis'
+    title = 'Ptyxis'
     label = 'Ptyxis terminal palette'
     schema = 'org.gnome.Ptyxis'
 
     def available(self, ctx):
-        return None if ctx.settings.has(self.schema) else 'Ptyxis is not installed'
+        return None if ctx.settings.has(self.schema) else Absent('Ptyxis is not installed')
 
     def changes(self, theme, ctx):
         c = theme.colors
@@ -164,6 +167,7 @@ def restore_theme_names(text, old):
 
 class Vicinae:
     name = 'vicinae'
+    title = 'Vicinae'
     label = 'Vicinae launcher'
 
     def config_path(self):
@@ -174,7 +178,7 @@ class Vicinae:
         return pathlib.Path(pinned[-1]) if pinned else config_home() / 'vicinae/settings.json'
 
     def available(self, ctx):
-        return None if (data_home() / 'vicinae').exists() else 'Vicinae is not installed'
+        return None if (data_home() / 'vicinae').exists() else Absent('Vicinae is not installed')
 
     def changes(self, theme, ctx):
         c = theme.colors
@@ -217,10 +221,11 @@ class Vicinae:
 
 class Kitty:
     name = 'kitty'
+    title = 'Kitty'
     label = 'Kitty terminal'
 
     def available(self, ctx):
-        return None if (config_home() / 'kitty/kitty.conf').exists() else 'Kitty is not configured'
+        return None if (config_home() / 'kitty/kitty.conf').exists() else Absent('Kitty is not configured')
 
     def changes(self, theme, ctx):
         folder = config_home() / 'kitty'
@@ -241,6 +246,7 @@ class Kitty:
 
 class Starship:
     name = 'starship'
+    title = 'Starship'
     label = 'Starship prompt'
     # The prompt refers to Catppuccin color names; give each a theme color.
     NAMES: ClassVar[dict] = {
@@ -250,7 +256,7 @@ class Starship:
     }
 
     def available(self, ctx):
-        return None if (config_home() / 'starship.toml').exists() else 'Starship is not configured'
+        return None if (config_home() / 'starship.toml').exists() else Absent('Starship is not configured')
 
     def changes(self, theme, ctx):
         path = config_home() / 'starship.toml'
@@ -277,10 +283,11 @@ class Starship:
 
 class Btop:
     name = 'btop'
+    title = 'btop'
     label = 'btop'
 
     def available(self, ctx):
-        return None if (config_home() / 'btop/btop.conf').exists() else 'btop is not configured'
+        return None if (config_home() / 'btop/btop.conf').exists() else Absent('btop is not configured')
 
     def changes(self, theme, ctx):
         folder = config_home() / 'btop'
@@ -300,6 +307,7 @@ class Btop:
 
 class VSCode:
     name = 'vscode'
+    title = 'VS Code'
     label = 'VS Code color theme'
     ID = 'jade-shell.jade-themes'
     VERSION = '1.0.0'
@@ -312,7 +320,7 @@ class VSCode:
         return pathlib.Path.home() / '.vscode/extensions/extensions.json'
 
     def available(self, ctx):
-        return None if self.settings_path().exists() else 'VS Code is not set up'
+        return None if self.settings_path().exists() else Absent('VS Code is not set up')
 
     @staticmethod
     def label_for(theme):
