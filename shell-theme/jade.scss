@@ -357,17 +357,37 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
 }
 
 // ---- quick settings
+// Flat tiles, no outlines: a tint at rest, a stronger one when on. A toggle
+// with a menu is one tile; a hairline of the panel's background splits off
+// its arrow.
+@mixin om-tile {
+  background-color: $om-fg-04;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: $jade-foreground;
+  &:hover, &:focus { background-color: $om-fg-08; box-shadow: none; }
+  &:active { background-color: $om-fg-22; }
+  &:checked { background-color: $om-fg-18; color: $jade-strong; }
+  &:checked:hover, &:checked:focus { background-color: $om-fg-22; }
+}
+
 .quick-settings {
   font-family: $jade-panel-font;
   padding: 14px;
   .icon-button, .button { border-radius: 0; }
 }
-.quick-settings-system-item .icon-button { @include om-flat-button; border-color: $om-fg-12; }
-.quick-settings-grid { spacing-rows: 6px; spacing-columns: 6px; }
+.quick-settings-system-item .icon-button {
+  @include om-flat-button;
+  border: none;
+  color: $om-dim;
+  &:hover, &:focus { border: none; color: $jade-strong; }
+}
+.quick-settings-grid { spacing-rows: 8px; spacing-columns: 8px; }
 
-.quick-toggle { @include om-control; border-radius: 0; min-height: 44px; }
+.quick-toggle { @include om-tile; min-height: 44px; }
 .quick-toggle .quick-toggle-title { font-weight: bold; font-size: 9.5pt; color: $jade-foreground; }
-.quick-toggle .quick-toggle-icon { color: $jade-foreground; }
+.quick-toggle .quick-toggle-icon { color: $om-dim; }
 .quick-toggle:checked .quick-toggle-title, .quick-toggle:checked .quick-toggle-icon { color: $jade-strong; }
 .quick-toggle .quick-toggle-subtitle { font-size: 8pt; color: $om-dim; }
 .quick-toggle:checked .quick-toggle-subtitle { color: $jade-foreground; }
@@ -376,8 +396,12 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
   & .quick-toggle, & .quick-toggle:ltr, & .quick-toggle:rtl,
   & .quick-toggle:ltr:last-child, & .quick-toggle:rtl:last-child { border-radius: 0; }
   & .quick-toggle-menu-button,
-  & .quick-toggle-menu-button:ltr, & .quick-toggle-menu-button:rtl { @include om-control; border-radius: 0; border-left-width: 0; }
-  & .quick-toggle-separator, &:checked .quick-toggle-separator { background-color: $om-fg-25; }
+  & .quick-toggle-menu-button:ltr, & .quick-toggle-menu-button:rtl {
+    @include om-tile;
+    color: $om-dim;
+    &:hover, &:focus { color: $jade-strong; }
+  }
+  & .quick-toggle-separator, &:checked .quick-toggle-separator { background-color: $jade-background; }
 }
 
 .quick-toggle-menu {
