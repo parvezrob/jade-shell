@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Run jade from wherever this checkout or install lives.
+root=$(dirname "$(dirname "$(readlink -f "$0")")")
+export JADE_BIN="$0"
+PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m jade "$@"

@@ -1,0 +1,6 @@
+GNOME Shell's theme sources, unmodified, from
+https://gitlab.gnome.org/GNOME/gnome-shell/-/tree/50.4/data/theme
+(tag 50.4, commit dcda6594b153aa179d92cc62e2414d84a43ab82c), GPL-2.0-or-later.
+
+jade/shelltheme.py compiles gnome-shell-dark.scss with a few base color
+variables pointed at the current Omarchy palette, then appends shell-theme/jade.scss.

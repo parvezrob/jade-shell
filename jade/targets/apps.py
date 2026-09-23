@@ -1,10 +1,10 @@
-"""Apps themed through files: the Shell stylesheet, terminals, launcher, editor."""
+"""Apps themed through files: the Shell theme, terminals, launcher, editor."""
 import json
 import pathlib
 import re
 import subprocess
 
-from .. import themes
+from .. import shelltheme, themes
 from ..store import File, Setting, config_home, data_home, read_text, state_home
 
 MARK_BEGIN = '# >>> jade-theme (generated; edits here are replaced)'
@@ -27,16 +27,20 @@ def managed_block(text, block):
 
 class Shell:
     name = 'shell'
-    label = 'Workspaces bar, quick settings and Jade extensions'
+    label = 'GNOME Shell theme and Jade Shell extension'
 
     def available(self, ctx):
+        version = shelltheme.installed_shell_version()
+        if version not in shelltheme.available_versions():
+            return f'no Shell theme for GNOME {version}' if version else 'GNOME Shell is not installed'
+        self.version = version
         return None
 
     def changes(self, theme, ctx):
         base = state_home() / 'jade-shell'
         colors = {'id': theme.id, 'name': theme.name, 'colors': theme.colors}
         return [
-            File(base / 'shell.css', themes.render(themes.template('shell.css.tpl'), theme.colors)),
+            File(base / 'gnome-shell.css', shelltheme.build(theme.colors, self.version)),
             File(base / 'colors.json', json.dumps(colors, indent=2, sort_keys=True) + '\n'),
         ]
 

@@ -5,9 +5,68 @@
       <default><![CDATA[['<Super><Control><Shift>space']]]></default>
       <summary>Open the theme picker</summary>
     </key>
-    <key name="show-indicator" type="b">
+    <key name="show-picker" type="b">
       <default>true</default>
       <summary>Show the theme picker in the top bar</summary>
+      <description>The shortcut opens the picker either way.</description>
+    </key>
+
+    <key name="show-workspaces" type="b">
+      <default>true</default>
+      <summary>Workspace buttons in place of Activities</summary>
+    </key>
+    <key name="show-clock-format" type="b">
+      <default>true</default>
+      <summary>Use the custom clock format</summary>
+    </key>
+    <key name="clock-format" type="s">
+      <default>'%A %H:%M'</default>
+      <summary>Clock format</summary>
+      <description>A GLib.DateTime format, such as %A %H:%M for "Tuesday 14:05".</description>
+    </key>
+    <key name="start-on-desktop" type="b">
+      <default>true</default>
+      <summary>Start on the desktop instead of the overview</summary>
+    </key>
+    <key name="app-grid-columns" type="i">
+      <range min="0" max="12"/>
+      <default>8</default>
+      <summary>App grid columns (0 for GNOME's choice)</summary>
+    </key>
+    <key name="app-grid-rows" type="i">
+      <range min="0" max="8"/>
+      <default>4</default>
+      <summary>App grid rows (0 for GNOME's choice)</summary>
+    </key>
+    <key name="app-grid-icon-size" type="i">
+      <range min="0" max="192"/>
+      <default>64</default>
+      <summary>App grid icon size in pixels (0 for GNOME's choice)</summary>
+    </key>
+
+    <key name="show-monitor" type="b">
+      <default>true</default>
+      <summary>Show CPU, memory, GPU and temperature in the top bar</summary>
+    </key>
+    <key name="monitor-gpu" type="b">
+      <default>true</default>
+      <summary>Include GPU usage</summary>
+      <description>Never polled on battery-powered machines, where it would keep a discrete GPU awake.</description>
+    </key>
+
+    <key name="show-usage" type="b">
+      <default>true</default>
+      <summary>Show Claude and Codex usage in the top bar</summary>
+    </key>
+    <key name="usage-show-percentages" type="b">
+      <default>true</default>
+      <summary>Show provider names and percent used</summary>
+      <description>When off, a single AI logo. Full usage remains in the menu.</description>
+    </key>
+    <key name="usage-refresh-minutes" type="i">
+      <range min="1" max="60"/>
+      <default>10</default>
+      <summary>Automatic usage refresh interval in minutes</summary>
     </key>
   </schema>
 </schemalist>

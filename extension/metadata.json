@@ -1,9 +1,13 @@
 {
   "uuid": "jade-shell@parvezrob.github.io",
   "name": "Jade Shell",
-  "description": "Omarchy themes for GNOME: a theme picker that re-colors the desktop and apps, and live theme styles for the Shell.",
+  "description": "Omarchy's look for GNOME: a Shell theme built from Omarchy's palettes, a theme picker that re-colors the desktop and apps, workspaces, a light system monitor and Claude/Codex usage in the top bar.",
   "shell-version": [
     "50"
+  ],
+  "session-modes": [
+    "user",
+    "unlock-dialog"
   ],
   "settings-schema": "org.gnome.shell.extensions.jade-shell",
   "url": "https://github.com/parvezrob/jade-shell"
