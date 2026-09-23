@@ -15,5 +15,6 @@ left=$(awk -F: '$3 >= 1000 && $3 < 65534 { print $6 }' /etc/passwd | while read 
 done)
 if [ -n "$left" ]; then
     echo "Jade Shell's look stays on these desktops until it is restored: $(echo "$left" | tr '\n' ' ')"
-    echo "To put a desktop back, reinstall Jade Shell and run 'jade restore' as that user."
+    echo "At their next login, Jade Shell offers to restore each one."
+    echo "Or reinstall Jade Shell and run 'jade restore' as that user."
 fi

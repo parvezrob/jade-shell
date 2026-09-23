@@ -20,7 +20,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jade import __version__, engine, migrations, palette, setup, shelltheme, store, themes, update
+from jade import __version__, engine, migrations, palette, restore_offer, setup, shelltheme, store, themes, update
 from jade.setup import REPLACED, UUID
 from jade.targets.apps import VSCode, jsonc, managed_block, restore_theme_names, revert_block, revert_line, set_theme_names
 from jade.targets.gnome import Gnome, nearest_accent
@@ -301,6 +301,52 @@ class Update(unittest.TestCase):
                          {'current': __version__, 'latest': '10.2.0', 'available': True, 'package': 'deb'})
 
 
+class RestoreKit(unittest.TestCase):
+    """What setup leaves behind so a removal through Software can still restore."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = pathlib.Path(tmp.name)
+        package = self.dir / 'usr/share/jade-shell'
+        (package / 'jade/__pycache__').mkdir(parents=True)
+        (package / 'jade/setup.py').write_text('# code')
+        (package / 'jade/__pycache__/setup.pyc').write_text('bytes')
+        (package / 'themes').mkdir()
+        home = self.dir / 'home'
+        for patcher in (mock.patch.object(restore_offer, 'PACKAGE_ROOT', package),
+                        mock.patch.object(restore_offer, 'systemctl'),
+                        mock.patch.dict(os.environ, HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'),
+                                        XDG_CONFIG_HOME=str(home / '.config'))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_only_a_package_keeps_a_kit(self):
+        restore_offer.keep_kit()  # this checkout is not under the (patched) package root
+        self.assertFalse(restore_offer.kit_path().exists())
+
+    def test_the_kit_copies_the_package_and_goes_when_asked(self):
+        with mock.patch.object(restore_offer, 'from_package', return_value=True):
+            restore_offer.keep_kit()
+            restore_offer.keep_kit()  # every setup refreshes it
+        kit = restore_offer.kit_path()
+        self.assertEqual((kit / 'jade/setup.py').read_text(), '# code')
+        self.assertFalse((kit / 'jade/__pycache__').exists())
+        unit = restore_offer.unit_path().read_text()
+        self.assertIn(f'Environment=PYTHONPATH={kit}', unit)
+        self.assertIn('ConditionPathExists=!/usr/bin/jade', unit)
+        restore_offer.systemctl.assert_any_call('enable', restore_offer.UNIT)
+        restore_offer.drop_kit()
+        self.assertFalse(kit.exists())
+        self.assertFalse(restore_offer.unit_path().exists())
+
+    def test_nothing_is_offered_while_jade_is_installed(self):
+        with mock.patch.object(restore_offer, 'jade_installed', return_value=True), \
+                mock.patch.object(restore_offer, 'Offer') as offer:
+            self.assertEqual(restore_offer.main(), 0)
+        offer.assert_not_called()
+
+
 class Leftovers(unittest.TestCase):
     def test_a_home_copy_hiding_the_package_and_old_versions_are_found(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -546,8 +592,9 @@ class Sandbox(unittest.TestCase):
                                         'key': 'dock-position', 'old': "'LEFT'"}], 'disabled_units': []}
         (self.home / '.local/state/jade-shell/setup.json').write_text(json.dumps(setup_manifest))
         out = self.jade('restore', '--yes')
-        self.assertIn('Skipped org.example.uninstalled palette (no longer installed)', out)
-        self.assertIn('Skipped org.gnome.shell.extensions.dash-to-dock dock-position', out)
+        self.assertIn('Skipped the settings of org.example.uninstalled: no longer installed.', out)
+        self.assertIn('Skipped the settings of org.gnome.shell.extensions.dash-to-dock: no longer installed.', out)
+        self.assertIn('Skipped org.gnome.desktop.interface no-such-key (no longer installed)', out)
         kitty = self.home / '.config/kitty/kitty.conf'
         self.assertEqual(kitty.read_text(), self.originals[kitty])
         self.assertNotIn('accent-color', self.keyfile().get('org/gnome/desktop/interface', {}))

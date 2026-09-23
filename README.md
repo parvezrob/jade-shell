@@ -83,7 +83,7 @@ curl -fsSL https://raw.githubusercontent.com/parvezrob/jade-shell/main/install.s
 
 This runs `jade restore`, which asks first, undoes the theme switches and the settings `jade setup` changed, then removes the package. Without a terminal to ask on (from a script, say), add `--yes`: `bash -s -- --uninstall --yes`. The extensions setup turned off come back; extensions you turned on or off yourself since stay as they are, and config files you edited after a switch keep your edits, the same way undo does. If an older or development copy is still in your home folder afterwards, the uninstaller prints the command to remove it. Downloaded wallpapers and previews stay in `~/.local/share/jade-shell`, `~/.local/state/jade-shell` and `~/.cache/jade-shell`; delete those folders to remove them too.
 
-Removing the package with `dnf` or `apt` directly skips `jade restore`: your desktop stays themed. Run `jade restore` first, or use the command above.
+Removing the package another way (`dnf`, `apt`, a software app) skips `jade restore`, so your desktop keeps Jade Shell's look for now. At your next login a notification asks whether to **Restore My Desktop** (the same restore, from a copy of Jade Shell's code that setup keeps in `~/.local/share/jade-shell/restore-kit`) or **Keep This Look**. Either way, that copy then removes itself; after a restore, so do Jade Shell's downloaded wallpapers and logs.
 
 ## Personal overrides
 

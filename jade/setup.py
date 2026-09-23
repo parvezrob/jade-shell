@@ -18,7 +18,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
-from . import __version__, engine, migrations, shelltheme, themes
+from . import __version__, engine, migrations, restore_offer, shelltheme, themes
 from .store import File, Setting, config_home, data_home, write_text
 from .usage import collect
 
@@ -394,6 +394,10 @@ def setup(ctx, theme_id=None, after_update=False):
         for command in commands:
             say(f'    {command}')
 
+    try:
+        restore_offer.keep_kit()
+    except OSError as error:  # only the offer after a removal is missing
+        say(f'Could not keep the restore kit ({error.strerror or error}); remove Jade Shell with: jade restore first')
     # Which version this desktop is set up for: the extension compares it with
     # its own at login, and finishes an update when they differ.
     manifest.update(version=__version__, replaced=sorted(REPLACED))
@@ -507,7 +511,8 @@ def restore(ctx, assume_yes=False):
                 shell.set_strv(entry['key'], value)
         else:
             rest.append(entry)
-    skipped += ctx.settings.restore_all(rest)  # also flushes the extension lists
+    # Jade Shell's own settings go with its package: not worth a line when they're gone.
+    skipped += [item for item in ctx.settings.restore_all(rest) if not item.startswith(JADE_SCHEMA)]
     units = config_home() / 'systemd/user'
     systemctl('disable', '--now', 'jade-usage.timer')
     for name in ('jade-usage.service', 'jade-usage.timer'):
@@ -517,12 +522,22 @@ def restore(ctx, assume_yes=False):
     for unit in manifest['disabled_units']:
         systemctl('enable', '--now', unit)
     manifest_path().unlink(missing_ok=True)
+    restore_offer.drop_kit()  # nothing left to offer after a removal
     for path in dict.fromkeys(merged):
         say(f'Took Jade Shell\'s part out of {path}; your edits since stay.')
     for path in dict.fromkeys(kept):
         say(f'Kept {path}: it changed after Jade Shell wrote it, so it was left as it is.')
+    # An app removed since (Dash to Dock can go with Jade Shell's package) is
+    # one line, not one per setting.
+    def app_gone(item):
+        return item.endswith('(no longer installed)') and not ctx.settings.has(item.split()[0])
+
+    gone = [item.split()[0] for item in skipped if app_gone(item)]
     for item in skipped:
-        say(f'Skipped {item}')
+        if not app_gone(item):
+            say(f'Skipped {item}')
+    for schema in dict.fromkeys(gone):
+        say(f'Skipped the settings of {schema}: no longer installed.')
     say('Restored the desktop you had before Jade Shell. Log out and back in to finish.')
     return 0
 

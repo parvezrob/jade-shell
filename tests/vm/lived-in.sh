@@ -50,7 +50,9 @@ fi
 gsettings set org.gnome.desktop.interface accent-color 'teal'
 gsettings set org.gnome.desktop.interface clock-format '12h'
 gsettings set org.gnome.desktop.interface color-scheme 'default'
-wallpaper=$(find /usr/share/backgrounds -maxdepth 2 -type f \( -name '*.jpg' -o -name '*.png' \) | sort | tail -1)
+# The largest picture: a real wallpaper, not one of the small pattern tiles.
+wallpaper=$(find /usr/share/backgrounds -maxdepth 2 -type f \( -name '*.jpg' -o -name '*.png' -o -name '*.jxl' \) -printf '%s %p\n' \
+    | sort -n | tail -1 | cut -d' ' -f2-)
 if [[ -n $wallpaper ]]; then
     gsettings set org.gnome.desktop.background picture-uri "file://$wallpaper"
     gsettings set org.gnome.desktop.background picture-uri-dark "file://$wallpaper"
