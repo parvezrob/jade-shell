@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Lint tooling for the Jade Shell GNOME extension",
   "scripts": {
-    "lint": "eslint extension"
+    "lint": "eslint extension tests/shell"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

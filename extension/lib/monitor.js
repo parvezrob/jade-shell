@@ -144,13 +144,15 @@ function diskModel(device) {
 }
 
 // Local disks, one row per device (its first mount wins, so "/" rather than
-// the /home subvolume on the same btrfs).
+// the /home subvolume on the same btrfs). The small boot partitions are left
+// out: they only repeat the system disk's name.
 function disks() {
     const seen = new Set();
     const out = [];
     for (const line of readText('/proc/self/mounts')?.split('\n') ?? []) {
         const [device, mount, type] = line.split(' ');
-        if (!device?.startsWith('/dev/') || device.startsWith('/dev/loop') || ['squashfs', 'iso9660'].includes(type))
+        if (!device?.startsWith('/dev/') || device.startsWith('/dev/loop') || ['squashfs', 'iso9660'].includes(type) ||
+            /^\/(boot|efi)(\/|$)/.test(mount))
             continue;
         const key = symlinkTarget(device) ?? device;
         if (seen.has(key))
@@ -396,7 +398,7 @@ export class Monitor {
         const footer = this._item(new St.BoxLayout({x_expand: true, style_class: 'jm-footer jm-divided'}));
         const open = new St.Button({can_focus: true, track_hover: true, x_expand: true, style_class: 'jade-action', accessible_name: 'Open System Monitor'});
         const openBox = new St.BoxLayout({style_class: 'jade-action-content', x_align: Clutter.ActorAlign.CENTER});
-        openBox.add_child(new St.Icon({icon_name: 'utilities-system-monitor-symbolic', icon_size: 14}));
+        openBox.add_child(new St.Icon({gicon: this._gicon('cpu-symbolic.svg'), icon_size: 14}));
         openBox.add_child(label('System Monitor', 'jade-action-label'));
         open.set_child(openBox);
         open.connect('clicked', () => {
