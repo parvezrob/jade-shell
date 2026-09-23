@@ -160,19 +160,16 @@ else
 fi
 chmod 644 "$tmp/jade-shell.$kind"
 
-upgrade='' mode=''
+mode=''
 installed=$(installed_version)
-if [[ -n $installed ]]; then
-    upgrade=1
-    [[ $installed != "$(package_version "$tmp/jade-shell.$kind")" ]] || mode=reinstall
+if [[ -n $installed && $installed == "$(package_version "$tmp/jade-shell.$kind")" ]]; then
+    mode=reinstall
 fi
 
 say 'Installing the package (sudo may ask for your password)…'
 package_install "$tmp/jade-shell.$kind" "$mode"
 
 say 'Setting up your desktop…'
+# Setup says when a log-out is needed (the Shell keeps running the extension
+# code it loaded at login) and, on a terminal, offers to do it.
 /usr/bin/jade setup
-if [[ -n $upgrade ]]; then
-    # The Shell keeps running the extension code it loaded at login.
-    say 'Jade Shell was upgraded. Log out and back in to load the new version of the extension.'
-fi

@@ -371,12 +371,34 @@ def setup(ctx, theme_id=None):
         for command in commands:
             say(f'    {command}')
 
+    say('Change theme with Super+Ctrl+Shift+Space. Undo everything with: jade restore')
     if needs_login(UUID):
         say('Done. Log out and back in once to start this version of Jade Shell.')
+        offer_logout()
     else:
         say('Done.')
-    say('Change theme with Super+Ctrl+Shift+Space. Undo everything with: jade restore')
     return 0
+
+
+def offer_logout():
+    """Ask on the terminal (stdin is the script itself when piped from curl),
+    then open GNOME's own log-out dialog: it confirms, and warns about apps with
+    unsaved work. Without a terminal or a GNOME session, the sentence is enough."""
+    if 'GNOME' not in os.environ.get('XDG_CURRENT_DESKTOP', '').split(':'):
+        return
+    try:
+        # A terminal can't be opened for both in text mode: it isn't seekable.
+        with open('/dev/tty', 'w') as out, open('/dev/tty') as tty:
+            out.write('Log out now? GNOME asks you to confirm first. [Y/n] ')
+            out.flush()
+            answer = tty.readline().strip().lower()
+    except OSError:  # no terminal: run from a script or a service
+        return
+    if answer in ('', 'y', 'yes'):
+        try:
+            subprocess.run(['gnome-session-quit', '--logout'], check=False)
+        except OSError:
+            say('Could not open the log-out dialog; log out from the top bar\'s menu.')
 
 
 # ------------------------------------------------------------------ restore
