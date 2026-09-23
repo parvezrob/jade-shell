@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Run jade-theme from wherever this checkout or install lives.
+root=$(dirname "$(dirname "$(readlink -f "$0")")")
+PYTHONPATH="$root${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m jade_theme "$@"

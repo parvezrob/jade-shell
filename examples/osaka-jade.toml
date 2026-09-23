@@ -1,0 +1,11 @@
+# Personal overrides for one theme: copy to ~/.config/jade-shell/themes/<theme>.toml.
+# Any palette key or derived shade can be pinned; everything else follows the theme.
+
+# Use wallpapers you already have (same file names as the theme's); missing ones
+# are still downloaded.
+wallpaper_folder = "~/Pictures/Wallpapers/Omarchy-Osaka-Jade"
+
+[colors]
+dock_background = "#252d29"
+quick_toggle_hover = "#405B4A"
+secondary_text = "#ABB8A5"
