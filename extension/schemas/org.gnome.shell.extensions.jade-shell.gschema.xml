@@ -40,17 +40,17 @@
     </key>
     <key name="app-grid-columns" type="i">
       <range min="0" max="12"/>
-      <default>8</default>
+      <default>0</default>
       <summary>App grid columns (0 for GNOME's choice)</summary>
     </key>
     <key name="app-grid-rows" type="i">
       <range min="0" max="8"/>
-      <default>4</default>
+      <default>0</default>
       <summary>App grid rows (0 for GNOME's choice)</summary>
     </key>
     <key name="app-grid-icon-size" type="i">
       <range min="0" max="192"/>
-      <default>64</default>
+      <default>0</default>
       <summary>App grid icon size in pixels (0 for GNOME's choice)</summary>
     </key>
 
