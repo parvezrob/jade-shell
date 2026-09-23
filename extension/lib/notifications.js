@@ -14,8 +14,6 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 import {addToPanel, label} from './util.js';
 
-const BELL = 'preferences-system-notifications-symbolic';
-const BELL_OFF = 'notifications-disabled-symbolic';
 
 // Where GNOME puts pop-ups: on the clock's side of the top bar.
 function gnomeBannerAlignment() {
@@ -28,6 +26,10 @@ function gnomeBannerAlignment() {
 }
 
 export class Notifications {
+    constructor(extension) {
+        this._extension = extension;
+    }
+
     enable() {
         const dateMenu = Main.panel.statusArea.dateMenu;
         this._list = dateMenu._messageList;
@@ -103,7 +105,7 @@ export class Notifications {
         if (this._dnd)
             Gio.Settings.unbind(this._dnd, 'checked');
         this._button?.destroy();
-        this._button = this._icon = this._dot = this._dnd = this._bindings = null;
+        this._button = this._icon = this._bellIcon = this._bellOffIcon = this._dot = this._dnd = this._bindings = null;
         this._list = this._view = this._listHome = this._controls = null;
         this._unread = this._unreadPad = this._clockBox = null;
         this._unreadChanged = this._dndChanged = this._sessionChanged = null;
@@ -117,7 +119,11 @@ export class Notifications {
             layout_manager: new Clutter.BinLayout(), x_expand: false, y_expand: false,
             y_align: Clutter.ActorAlign.CENTER,
         });
-        this._icon = new St.Icon({icon_name: BELL, style_class: 'system-status-icon'});
+        // Our own bells: icon themes draw these names very differently
+        // (Papirus's has a speech bubble).
+        this._bellIcon = this._iconFile('bell-symbolic.svg');
+        this._bellOffIcon = this._iconFile('bell-off-symbolic.svg');
+        this._icon = new St.Icon({gicon: this._bellIcon, style_class: 'system-status-icon'});
         // BinLayout honors a child's alignment only when it expands.
         this._dot = new St.Widget({
             style_class: 'jade-bell-dot', visible: false, x_expand: true, y_expand: true,
@@ -135,7 +141,7 @@ export class Notifications {
         header.add_child(label('NOTIFICATIONS', 'jade-bell-title', {x_expand: true}));
         this._dnd = new St.Button({
             style_class: 'jade-bell-action jade-bell-dnd', toggle_mode: true, can_focus: true,
-            accessible_name: 'Do Not Disturb', child: new St.Icon({icon_name: BELL_OFF, icon_size: 14}),
+            accessible_name: 'Do Not Disturb', child: new St.Icon({gicon: this._bellOffIcon, icon_size: 14}),
         });
         this._settings.bind('show-banners', this._dnd, 'checked', Gio.SettingsBindFlags.INVERT_BOOLEAN);
         header.add_child(this._dnd);
@@ -160,9 +166,13 @@ export class Notifications {
         addToPanel('jade-bell', this._button);
     }
 
+    _iconFile(name) {
+        return new Gio.FileIcon({file: this._extension.dir.get_child('icons').get_child(name)});
+    }
+
     _sync() {
         const dnd = !this._settings.get_boolean('show-banners');
-        this._icon.icon_name = dnd ? BELL_OFF : BELL;
+        this._icon.gicon = dnd ? this._bellOffIcon : this._bellIcon;
         this._dot.visible = this._unread.visible;
     }
 }
