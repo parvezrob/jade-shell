@@ -16,7 +16,7 @@ curl -fsSL https://raw.githubusercontent.com/parvezrob/jade-shell/main/install.s
 
 Run it as your desktop user. It downloads the latest `.rpm` or `.deb` release, checks it against the release checksums, installs it with `dnf` or `apt` (asking for your password), then runs `jade setup`, which:
 
-- turns off extensions that do the same jobs (OpenBar, User Themes, Simple Workspaces Bar, Blur My Shell, Astra Monitor and a few more; `setup` names each one it turns off),
+- turns off extensions that do the same jobs or would take over the top bar (Dash to Panel, OpenBar, User Themes, Blur my Shell, system monitors such as Vitals and a few more; `setup` names each one it turns off, and `jade restore` turns them back on),
 - sets up the dock (Dash to Dock on Fedora, Ubuntu Dock on Ubuntu),
 - starts the usage collector if you have Claude Code or Codex,
 - downloads the first wallpaper of each theme for the picker's previews (one full-size image per theme; other wallpapers are downloaded when you pick them),

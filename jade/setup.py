@@ -32,16 +32,26 @@ PREFERENCE_SCHEMAS = (DOCK_SCHEMA, JADE_SCHEMA)
 
 # Extensions whose job Jade Shell now does. Running both would fight over the
 # same part of the Shell (or just do the work twice).
+# Extensions setup turns off, by UUID: their name, and the job Jade Shell does
+# instead (or the top bar they would take over). `jade restore` turns them back on.
 REPLACED = {
-    'openbar@neuromorph': 'top bar and menu styling',
-    'user-theme@gnome-shell-extensions.gcampax.github.com': 'the Shell theme',
-    'simple-workspaces-bar@null-git': 'workspace buttons',
-    'panel-date-format@keiii.github.com': 'the clock format',
-    'app-grid-tuner@m-lab': 'the app grid',
-    'just-perfection-desktop@just-perfection': 'hiding Activities and starting on the desktop',
-    'blur-my-shell@aunetx': 'the overview background',
-    'monitor@astraext.github.io': 'the system monitor',
-    'osaka-ai-usage@local': 'AI usage (Jade AI Usage is now part of Jade Shell)',
+    'openbar@neuromorph': ('Open Bar', 'top bar and menu styling'),
+    'transparent-top-bar@zhanghai.me': ('Transparent Top Bar', 'top bar styling'),
+    'dash-to-panel@jderose9.github.com': ('Dash to Panel', 'the top bar and the dock (it moves the top bar into a taskbar)'),
+    'bottom-dash-panel@fthx': ('Bottom Dash Panel', 'the dock'),
+    'user-theme@gnome-shell-extensions.gcampax.github.com': ('User Themes', 'the Shell theme'),
+    'simple-workspaces-bar@null-git': ('Simple Workspaces Bar', 'workspace buttons'),
+    'panel-date-format@keiii.github.com': ('Panel Date Format', 'the clock format'),
+    'app-grid-tuner@m-lab': ('App Grid Tuner', 'the app grid'),
+    'just-perfection-desktop@just-perfection': ('Just Perfection', 'hiding Activities and starting on the desktop'),
+    'blur-my-shell@aunetx': ('Blur my Shell', 'the overview background'),
+    'monitor@astraext.github.io': ('Astra Monitor', 'the system monitor'),
+    'Vitals@CoreCoding.com': ('Vitals', 'the system monitor'),
+    'tophat@fflewddur.github.io': ('TopHat', 'the system monitor'),
+    'system-monitor@gnome-shell-extensions.gcampax.github.com': ('System Monitor', 'the system monitor'),
+    'notification-position@drugo.dev': ('Notification Banner Position', 'where notifications pop up'),
+    'notification-banner-re-reloaded@chrhuang': ('Notification Banner Re-Reloaded', 'where notifications pop up'),
+    'osaka-ai-usage@local': ('Jade AI Usage', 'AI usage (Jade AI Usage is now part of Jade Shell)'),
 }
 OLD_UNITS = ['osaka-ai-usage.timer']
 SYSTEM_EXTENSIONS = pathlib.Path('/usr/share/gnome-shell/extensions')
@@ -296,7 +306,8 @@ def setup(ctx, theme_id=None):
     enabled_before = set(ctx.settings.get(SHELL).get_strv('enabled-extensions'))
     ctx.settings.write(changes)
     for uuid in sorted(enabled_before & set(REPLACED)):
-        say(f'Turned off {uuid}: Jade Shell now does {REPLACED[uuid]}.')
+        name, job = REPLACED[uuid]
+        say(f'Turned off {name}: Jade Shell does {job}.')
 
     if usage_wanted():
         # Read after the settings above are written: a first setup turns it on, and a
@@ -460,7 +471,8 @@ def doctor(ctx):
         check(running == __version__, f'GNOME Shell runs this version of the extension ({running})',
               f'The Shell still runs {running}; log out and back in to load {__version__}')
     clashing = [uuid for uuid in enabled if uuid in REPLACED]
-    check(not clashing, 'No extensions doing the same job', f'Run: jade setup (turns off {", ".join(clashing)})')
+    check(not clashing, 'No extensions doing the same job or taking over the top bar',
+          f'Run: jade setup (turns off {", ".join(REPLACED[uuid][0] for uuid in clashing)})')
     paths, units = leftovers()
     check(not paths and not units, 'No older or development copies in your home folder',
           '\n    '.join(['Remove them with:', *leftover_commands(paths, units)]))

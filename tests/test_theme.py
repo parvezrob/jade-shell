@@ -489,7 +489,8 @@ class Sandbox(unittest.TestCase):
 
     @needs_compiler
     def test_setup_then_restore_gives_the_old_desktop_back(self):
-        replaced = next(iter(REPLACED))
+        replaced = 'dash-to-panel@jderose9.github.com'  # it would take over the top bar
+        self.assertIn(replaced, REPLACED)
         self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{replaced}', 'keep@me']")
         (self.home / '.claude').mkdir(parents=True)  # so setup starts the usage collector
         old_copy = self.home / '.local/bin/jade-theme'  # from before Jade Shell merged with Jade AI Usage
@@ -498,6 +499,7 @@ class Sandbox(unittest.TestCase):
         before = self.keyfile()
 
         out = self.jade('setup')
+        self.assertIn('Turned off Dash to Panel: Jade Shell does the top bar and the dock', out)
         # (With the package installed on this machine, the sandbox's own extension copy is named too.)
         self.assertTrue(any(line.strip().startswith('rm -rf ') and str(old_copy) in line for line in out.splitlines()), out)
         self.assertTrue(old_copy.exists())  # said, never deleted
