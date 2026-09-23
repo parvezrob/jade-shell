@@ -10,7 +10,7 @@ import St from 'gi://St';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {VERTICAL, addToPanel, cairoRgb, jadeCommand, label as baseLabel} from './util.js';
+import {SPAWN, VERTICAL, addToPanel, cairoRgb, jadeCommand, label as baseLabel} from './util.js';
 
 // Providers in display order. A record for any of them in the records
 // directory earns it a tab; the collectors decide what goes in a record.
@@ -224,6 +224,7 @@ export class Usage {
     enable() {
         this._alive = true;
         this._records = {};
+        this._menuRenderedAt = 0;
         this._selected = PROVIDERS[0].id;
         this._refreshing = false;
         this._refreshFailed = false;
@@ -374,7 +375,7 @@ export class Usage {
         const cancellable = this._cancellable;
         try {
             const proc = Gio.Subprocess.new([jade, 'usage', 'collect', mode],
-                Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE);
+                SPAWN | Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE);
             // Not cancellable: a collector that has started should finish and
             // publish even if the extension is disabled meanwhile.
             proc.wait_async(null, (p, result) => {
@@ -400,7 +401,12 @@ export class Usage {
     }
 
     _onOpened() {
-        this._renderMenu();
+        // Rebuilding the menu costs ~15-20 ms, too much for sweeping across
+        // the top bar. Records and palette changes render it straight away and
+        // the 30 s tick keeps it current while open, so only the minutes
+        // shown (ages, countdowns) can be behind here.
+        if (Date.now() - this._menuRenderedAt >= 30_000)
+            this._renderMenu();
         // Opening the menu is asking for current limits; local scans are reused.
         if (!this._refreshing && Date.now() - this._lastProbe > LIMITS_PROBE_GAP_S * 1000)
             this._runCollector('--limits-only');
@@ -531,6 +537,7 @@ export class Usage {
         this._renderSwitch(providers);
         this._renderContent(record);
         this._renderFooter();
+        this._menuRenderedAt = Date.now();
     }
 
     _renderHero(record) {

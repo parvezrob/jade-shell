@@ -24,12 +24,19 @@ export function jadeCommand() {
     return GLib.find_program_in_path('jade') ?? (GLib.file_test(local, GLib.FileTest.IS_EXECUTABLE) ? local : null);
 }
 
+// Every process the Shell starts takes this flag. Without it GLib fork()s the
+// whole Shell on the main thread, copying its page tables: 12-20 ms, several
+// dropped frames. With it GLib uses posix_spawn. The Shell opens its files
+// close-on-exec, so nothing extra is inherited, but children do inherit the
+// Shell's ignored SIGPIPE (posix_spawn does not reset it).
+export const SPAWN = Gio.SubprocessFlags.INHERIT_FDS;
+
 // Run a command without blocking the Shell; resolves with its exit status and output.
 export function run(argv, cancellable = null) {
     return new Promise(resolve => {
         let proc;
         try {
-            proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+            proc = Gio.Subprocess.new(argv, SPAWN | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
         } catch (e) {
             resolve({ok: false, stdout: '', stderr: e.message});
             return;

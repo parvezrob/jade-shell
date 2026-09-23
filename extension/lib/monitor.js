@@ -15,7 +15,7 @@ import St from 'gi://St';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {VERTICAL, addToPanel, cairoRgb, label} from './util.js';
+import {SPAWN, VERTICAL, addToPanel, cairoRgb, label} from './util.js';
 
 const INTERVAL_S = 2;
 const TAGLINE_S = 4;
@@ -63,8 +63,10 @@ function listDir(path) {
 
 function symlinkTarget(path) {
     try {
-        return Gio.File.new_for_path(path).query_info('standard::symlink-target',
-            Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null).get_symlink_target();
+        const info = Gio.File.new_for_path(path).query_info('standard::is-symlink,standard::symlink-target',
+            Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, null);
+        // Asking a non-link for its target is a GLib critical, logged each time.
+        return info.get_is_symlink() ? info.get_symlink_target() : null;
     } catch {
         return null;
     }
@@ -648,7 +650,10 @@ export class Monitor {
         }
         this._cancelNvidiaRetry();
         this._stopNvidia();
-        if (!wanted)
+        // Closing the panel keeps the last reading, so the GPU section is
+        // there at once on the next open instead of appearing a moment later
+        // and resizing the menu. Only turning GPU usage off hides it.
+        if (!this._gpuWanted())
             this._gpu = {name: this._gpu.name, percent: null, temp: NaN};
     }
 
@@ -659,7 +664,7 @@ export class Monitor {
             this._nvidia = Gio.Subprocess.new(
                 ['nvidia-smi', '--id=0', '--query-gpu=name,utilization.gpu,temperature.gpu',
                     '--format=csv,noheader,nounits', `--loop-ms=${INTERVAL_S * 1000}`],
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
+                SPAWN | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
         } catch (e) {
             console.error(`Jade Shell: cannot start nvidia-smi: ${e.message}`);
             return;
