@@ -78,7 +78,9 @@ class Settings:
             if self.differs(change):
                 groups.setdefault((change.schema, change.path), []).append(change)
         for (schema, path), group in groups.items():
-            settings = self.get(schema, path)
+            # A separate object: delay() is permanent on the object it is
+            # called on, and would hold back later writes such as reload flips.
+            settings = Gio.Settings.new_full(self._source.lookup(schema, True), None, path)
             settings.delay()
             for change in group:
                 settings.set_value(change.key, self.variant(change))

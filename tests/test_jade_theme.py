@@ -110,6 +110,11 @@ class Sandbox(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return result.stdout
 
+    def gsetting(self, schema, key):
+        schemadir = next(self.home.glob('.local/share/gnome-shell/extensions/openbar*/schemas'), None)
+        args = ['gsettings'] + (['--schemadir', str(schemadir)] if 'openbar' in schema and schemadir else [])
+        return subprocess.run(args + ['get', schema, key], env=self.env, capture_output=True, text=True).stdout.strip()
+
     def accent(self):
         return subprocess.run(['gsettings', 'get', 'org.gnome.desktop.interface', 'accent-color'],
                               env=self.env, capture_output=True, text=True).stdout.strip()
@@ -120,8 +125,11 @@ class Sandbox(unittest.TestCase):
         return parser
 
     def test_switch_twice_then_undo_everything(self):
+        before = self.gsetting('org.gnome.shell.extensions.openbar', 'trigger-reload')
         self.run_cli('set', 'tokyo-night')
         self.assertIn('already applied', self.run_cli('plan', 'tokyo-night'))
+        # OpenBar only rebuilds its stylesheet when this flips.
+        self.assertNotEqual(self.gsetting('org.gnome.shell.extensions.openbar', 'trigger-reload'), before)
         config = self.home / '.config'
         self.assertIn('#7aa2f7', (config / 'kitty/jade-theme.conf').read_text())
         self.assertIn('include jade-theme.conf', (config / 'kitty/kitty.conf').read_text())

@@ -97,6 +97,17 @@ def cmd_undo(args, ctx):
     return 0
 
 
+def cmd_reload(args, ctx):
+    theme_id = engine.current().get('theme')
+    if not theme_id:
+        print('No theme applied yet', file=sys.stderr)
+        return 1
+    ctx.theme = themes.load(theme_id)
+    engine.reload([t.name for t in engine.selected() if not t.available(ctx)], ctx)
+    print(f'Reloaded {ctx.theme.name}')
+    return 0
+
+
 def cmd_current(args, ctx):
     print(engine.current().get('theme') or 'none')
     return 0
@@ -131,6 +142,7 @@ def main(argv=None):
         p.add_argument('--skip', type=lambda s: s.split(','), help='comma-separated targets')
     sub.add_parser('wallpaper', help='next wallpaper of the current theme')
     sub.add_parser('undo', help='restore what the last switch changed')
+    sub.add_parser('reload', help='ask every app to reload the current theme')
     fetch = sub.add_parser('fetch', help='download wallpapers')
     fetch.add_argument('theme', choices=themes.ids() + ['all'])
     fetch.add_argument('--every', action='store_true', help='all of a theme\'s wallpapers, not just the first')
