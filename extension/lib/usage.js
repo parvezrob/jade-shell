@@ -281,7 +281,7 @@ export class Usage {
         this._unfollow();
         this._settings.disconnect(this._settingsChanged);
         this._button.destroy();
-        this._button = this._bar = this._icon = null;
+        this._button = this._bar = this._icon = this._barMarkup = null;
         this._hero = this._switch = this._content = this._footer = null;
         this._switchButtons = this._refreshAction = null;
         this._records = null;
@@ -466,7 +466,12 @@ export class Usage {
         }
         this._bar.visible = show && parts.length > 0;
         this._icon.visible = !this._bar.visible;
-        this._bar.clutter_text.set_markup(parts.join('  ·  '));
+        // Setting markup always relayouts the top bar, and this runs every 30 s.
+        const markup = parts.join('  ·  ');
+        if (markup !== this._barMarkup) {
+            this._barMarkup = markup;
+            this._bar.clutter_text.set_markup(markup);
+        }
         if (alarming)
             this._icon.add_style_class_name('ai-alarm');
         else

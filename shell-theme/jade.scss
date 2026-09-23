@@ -39,6 +39,21 @@ $jade-strong: if(lightness($jade-light_foreground) > lightness($jade-foreground)
   .panel-status-menu-box { spacing: 8px; }
 }
 
+// Hover and press show on the next frame. GNOME eases them in over 150 ms,
+// which at a high refresh rate reads as lag. The clock's highlight sits on its
+// child, and each selector here matches one of GNOME's so it wins by order.
+// St ignores a unitless 0, hence 0ms.
+#panel, #panel:overview, #panel.unlock-screen, #panel.login-screen {
+  .panel-button,
+  .panel-button.clock-display,
+  .panel-button.clock-display .clock,
+  .panel-button.screen-recording-indicator,
+  .panel-button.screen-sharing-indicator { transition-duration: 0ms; }
+}
+
+.popup-menu-item,
+.popup-sub-menu .popup-menu-item { transition-duration: 0ms; }
+
 // Workspaces: numbers, the active one filled with the accent.
 #panel .jade-workspace {
   margin: 0 2px;
