@@ -160,10 +160,21 @@ def theme_fetch(args, ctx):
 
 
 def theme_thumbs(args, ctx):
-    for theme_id in themes.ids():
-        if args.refresh or not themes.thumbnail_path(theme_id).exists():
-            print(themes.make_thumbnail(themes.load(theme_id)))
-    return 0
+    wanted = [themes.load(t) for t in themes.ids() if args.refresh or not themes.thumbnail_path(t).exists()]
+    # Those whose wallpaper is here first; after one download fails (offline),
+    # the rest would only wait through the same retries.
+    wanted.sort(key=lambda theme: not theme.wallpaper(0).exists())
+    failed = None
+    for theme in wanted:
+        if failed and not theme.wallpaper(0).exists():
+            continue
+        try:
+            print(themes.make_thumbnail(theme))
+        except themes.WallpaperUnavailable as error:
+            failed = error
+    if failed:
+        print(f'jade: {failed}', file=sys.stderr)
+    return 1 if failed else 0
 
 
 # ------------------------------------------------------------------ apps
@@ -350,10 +361,11 @@ HANDLERS = {
 }
 
 
-# Commands that change the desktop or the undo history, or download wallpapers
-# (a switch downloads them too, to the same files): one at a time.
+# Commands that change the desktop or the undo history: one at a time.
+# Downloads (fetch, thumbs) run alongside them: each writes its own partial
+# file and moves it into place.
 EXCLUSIVE = {('theme', 'set'), ('theme', 'wallpaper'), ('theme', 'undo'), ('theme', 'reload'),
-             ('theme', 'fetch'), ('theme', 'thumbs'), ('setup', None), ('restore', None),
+             ('setup', None), ('restore', None),
              ('apps', 'off'), ('apps', 'on')}
 
 

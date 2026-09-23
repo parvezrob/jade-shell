@@ -12,7 +12,18 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {VERTICAL, addToPanel, jadeCommand, label, run} from './util.js';
 
 const COLUMNS = 5;
+// After a failed preview download (offline), wait this long before the next try.
+const PREVIEW_RETRY_MS = 5 * 60 * 1000;
 const ICONS = ['preferences-desktop-appearance-symbolic', 'applications-graphics-symbolic'];
+
+// Until its preview is here, a theme shows its colors: the background with
+// an accent stripe, as tall as a preview so the grid keeps its size.
+function swatch(colors) {
+    const box = new St.BoxLayout({orientation: VERTICAL, style_class: 'jade-tile-thumb'});
+    box.add_child(new St.Widget({y_expand: true, style: `background-color: ${colors.background};`}));
+    box.add_child(new St.Widget({height: 6, style: `background-color: ${colors.accent};`}));
+    return box;
+}
 
 export class Picker {
     constructor(settings, theme) {
@@ -147,11 +158,33 @@ export class Picker {
             this._themes = themes;
             this._buildGrid();
         }
+        if (themes.some(t => !t.thumbnail))
+            this._fetchPreviews(jade);
         const current = themes.find(t => t.current);
         this._current = current?.id ?? null;
         this._heroTitle.text = current?.name ?? 'No theme applied yet';
         for (const [id, tile] of this._tiles)
             tile[id === this._current ? 'add_style_class_name' : 'remove_style_class_name']('jade-current');
+    }
+
+    // Setup offline leaves themes as color swatches: download their previews
+    // in the background while the picker is open, then show them.
+    async _fetchPreviews(jade) {
+        if (this._fetching || GLib.get_monotonic_time() / 1000 < (this._previewsRetryAt ?? 0))
+            return;
+        this._fetching = true;
+        const cancellable = this._cancellable;
+        if (!this._busy)
+            this._setStatus('Downloading theme previews…');
+        const {ok} = await run([jade, 'theme', 'thumbs'], cancellable);
+        if (!this._alive || cancellable !== this._cancellable)
+            return;
+        this._fetching = false;
+        if (!ok)
+            this._previewsRetryAt = GLib.get_monotonic_time() / 1000 + PREVIEW_RETRY_MS;
+        if (!this._busy)
+            this._setStatus(ok ? '' : 'Previews need an internet connection', !ok);
+        this._refresh();  // offline part-way, the ones that came still show
     }
 
     _buildGrid() {
@@ -170,11 +203,9 @@ export class Picker {
     _tile(theme, index) {
         const tile = new St.Button({can_focus: true, reactive: true, track_hover: true, style_class: 'jade-tile', accessible_name: `Switch to ${theme.name}`});
         const box = new St.BoxLayout({orientation: VERTICAL});
-        const thumb = new St.Widget({style_class: 'jade-tile-thumb'});
-        thumb.style = theme.thumbnail
-            ? `background-image: url("${theme.thumbnail}");`
-            : `background-color: ${theme.colors.background}; border-bottom: 6px solid ${theme.colors.accent};`;
-        box.add_child(thumb);
+        box.add_child(theme.thumbnail ? new St.Widget({
+            style_class: 'jade-tile-thumb', style: `background-image: url("${theme.thumbnail}");`,
+        }) : swatch(theme.colors));
         box.add_child(label(theme.name, 'jade-tile-name'));
         tile.set_child(box);
         tile.connect('clicked', () => this._runJade(['theme', 'set', theme.id], `${theme.name} applied`, `Applying ${theme.name}…`));

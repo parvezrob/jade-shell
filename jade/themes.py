@@ -1,5 +1,6 @@
 """Themes: Omarchy palettes plus the GNOME shades derived from them."""
 import math
+import os
 import pathlib
 import re
 import shutil
@@ -60,7 +61,8 @@ class Theme:
         if path and not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             url = WALLPAPER_URL.format(theme=self.id, file=path.name)
-            tmp = path.with_suffix(path.suffix + '.part')
+            # Its own partial file: the picker's preview download and a switch may fetch the same one.
+            tmp = path.with_name(f'.{path.name}.{os.getpid()}.part')
             for attempt in range(len(RETRY_DELAYS) + 1):
                 try:
                     with urllib.request.urlopen(url, timeout=20) as response, tmp.open('wb') as out:
@@ -96,7 +98,9 @@ def make_thumbnail(theme, width=320, height=200):
     y = (image.get_height() - height) // 2
     out = thumbnail_path(theme.id)
     out.parent.mkdir(parents=True, exist_ok=True)
-    image.new_subpixbuf(x, y, width, height).savev(str(out), 'png', [], [])
+    tmp = out.with_name(f'.{out.name}.{os.getpid()}.part')
+    image.new_subpixbuf(x, y, width, height).savev(str(tmp), 'png', [], [])
+    tmp.replace(out)
     return out
 
 
