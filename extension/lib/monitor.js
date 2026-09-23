@@ -119,15 +119,50 @@ function findCpuTemperature() {
     return null;
 }
 
-// With an iGPU and a discrete card both on amdgpu, the discrete one: an APU
-// reports only its small carve-out as VRAM.
-function findAmdGpu() {
+function drmCards() {
+    return listDir('/sys/class/drm').filter(n => /^card\d+$/.test(n)).map(n => `/sys/class/drm/${n}`);
+}
+
+function driverOf(card) {
+    return symlinkTarget(`${card}/device/driver`)?.split('/').pop() ?? null;
+}
+
+// A card whose driver reports how busy it is (amdgpu; newer xe too). With an
+// iGPU and a discrete card both on amdgpu, the discrete one: an APU reports
+// only its small carve-out as VRAM.
+function findBusyGpu() {
     const vram = dir => Number(readText(`${dir}/mem_info_vram_total`)) || 0;
-    const cards = listDir('/sys/class/drm').filter(n => /^card\d+$/.test(n))
-        .map(n => `/sys/class/drm/${n}/device`)
+    const cards = drmCards().map(card => `${card}/device`)
         .filter(dir => GLib.file_test(`${dir}/gpu_busy_percent`, GLib.FileTest.EXISTS))
         .sort((a, b) => vram(b) - vram(a));
-    return cards[0] ?? null;
+    if (!cards.length)
+        return null;
+    const driver = driverOf(cards[0].replace(/\/device$/, ''));
+    return {path: cards[0], name: driver === 'amdgpu' ? 'AMD GPU' : driver === 'xe' ? 'Intel GPU' : 'GPU'};
+}
+
+// Intel's i915 and xe drivers have no busy counter a user may read, but they
+// count the milliseconds the render engine sleeps in RC6: the rest of each
+// tick is its load (as intel_gpu_top's "100 - RC6" and Omarchy status tools
+// read it). {path: null} for an Intel GPU without the counter (RC6 off).
+function findIntelGpu() {
+    for (const card of drmCards()) {
+        const driver = driverOf(card);
+        const counters = driver === 'i915' ? [`${card}/gt/gt0/rc6_residency_ms`, `${card}/power/rc6_residency_ms`]
+            : driver === 'xe' ? [`${card}/device/tile0/gt0/gtidle/idle_residency_ms`] : null;
+        if (counters)
+            return {path: counters.find(path => GLib.file_test(path, GLib.FileTest.EXISTS)) ?? null};
+    }
+    return null;
+}
+
+// Load from two idle counter readings ({idle ms, at ms}); null for the first,
+// or after a pause long enough to average away what is happening now.
+function idleToBusy(before, now) {
+    const elapsed = now.at - (before?.at ?? 0);
+    if (!before || elapsed <= 0 || elapsed > 10000 || !Number.isFinite(now.idle) || now.idle < before.idle)
+        return null;
+    return Math.max(0, Math.min(100, Math.round(100 - 100 * (now.idle - before.idle) / elapsed)));
 }
 
 function hasNvidia() {
@@ -259,7 +294,9 @@ export class Monitor {
         this._nvidiaFailures = 0;
         this._gpu = {name: null, percent: null, temp: NaN};
         this._temperature = findCpuTemperature();
-        this._amdGpu = findAmdGpu();
+        this._busyGpu = findBusyGpu();
+        this._intelGpu = this._busyGpu ? null : findIntelGpu();
+        this._intelIdle = null;
         this._model = cpuModel();
         this._bands = {idle: true, busy: false, gpu: false};
         this._deck = [];
@@ -496,9 +533,20 @@ export class Monitor {
         const temp = readNumber(this._temperature) / 1000;
         // nvidia-smi owns the GPU reading while it runs (or is due a restart),
         // so a Ryzen iGPU next to an NVIDIA card does not alternate with it.
-        if (this._amdGpu && !this._nvidia && !this._nvidiaRetry && this._gpuWanted()) {
-            const busy = readNumber(`${this._amdGpu}/gpu_busy_percent`);
-            this._gpu = {name: 'AMD GPU', percent: Number.isFinite(busy) ? busy : null, temp: NaN};
+        if (!this._nvidia && !this._nvidiaRetry && this._gpuWanted()) {
+            if (this._busyGpu) {
+                const busy = readNumber(`${this._busyGpu.path}/gpu_busy_percent`);
+                this._gpu = {name: this._busyGpu.name, percent: Number.isFinite(busy) ? busy : null, temp: NaN};
+            } else if (this._intelGpu?.path) {
+                const now = {idle: readNumber(this._intelGpu.path), at: GLib.get_monotonic_time() / 1000};
+                const busy = idleToBusy(this._intelIdle, now);
+                this._intelIdle = now;
+                // Between the first two readings, the last value stays.
+                if (busy !== null)
+                    this._gpu = {name: 'Intel GPU', percent: busy, temp: NaN};
+            } else if (this._intelGpu) {
+                this._gpu = {name: 'Intel GPU', percent: null, temp: NaN, unavailable: true};
+            }
         }
         this._updateBands(cpu ?? 0, this._gpu.percent ?? 0);
 
@@ -536,8 +584,14 @@ export class Monitor {
     }
 
     _showGpu() {
-        const {name, percent: busy, temp} = this._gpu;
-        this._gpuSection.get_parent().visible = busy !== null;
+        const {name, percent: busy, temp, unavailable} = this._gpu;
+        this._gpuSection.get_parent().visible = busy !== null || Boolean(unavailable);
+        if (unavailable) {
+            this._gpuValue.text = '—';
+            this._gpuMeter.value = 0;
+            this._gpuCaption.text = 'GPU usage isn’t available for this GPU';
+            return;
+        }
         if (busy === null)
             return;
         this._gpuValue.text = `${busy}%`;
