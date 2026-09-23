@@ -468,7 +468,6 @@ class Sandbox(unittest.TestCase):
         self.assertIn('none', self.jade('theme', 'current'))
 
     @needs_compiler
-    @needs_compiler
     def test_ai_usage_turns_on_once_claude_arrives(self):
         # Neither CLI on PATH (the real ~/.local/bin has them on the developer's machine).
         self.env['PATH'] = f'{self.env["PATH"].split(os.pathsep)[0]}:/usr/bin:/bin'
@@ -478,6 +477,17 @@ class Sandbox(unittest.TestCase):
         self.jade('setup')
         self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'show-usage'), 'true')
 
+    @needs_compiler
+    def test_setup_keeps_the_current_theme_unless_asked(self):
+        self.jade('setup')
+        self.assertIn('osaka-jade', self.jade('theme', 'current'))
+        self.jade('theme', 'set', 'nord')
+        self.jade('setup')  # again, as after an update: the chosen theme stays
+        self.assertIn('nord', self.jade('theme', 'current'))
+        self.jade('setup', '--theme', 'solitude')
+        self.assertIn('solitude', self.jade('theme', 'current'))
+
+    @needs_compiler
     def test_setup_then_restore_gives_the_old_desktop_back(self):
         replaced = next(iter(REPLACED))
         self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{replaced}', 'keep@me']")

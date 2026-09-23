@@ -220,7 +220,7 @@ def parser():
 
     p = commands.add_parser('setup', help='set up this desktop for Jade Shell (safe to run again; keeps your dock and '
                                           'top bar choices)')
-    p.add_argument('--theme', choices=themes.ids(), default='osaka-jade', help='theme to start with')
+    p.add_argument('--theme', choices=themes.ids(), help='theme to apply (default: keep the current one, or Osaka Jade)')
     commands.add_parser('doctor', help='check that everything Jade Shell needs is in place')
     p = commands.add_parser('restore', help='put back the desktop you had before Jade Shell')
     p.add_argument('--yes', action='store_true', help="don't ask for confirmation")

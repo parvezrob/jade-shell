@@ -253,7 +253,7 @@ def sticks(change):
     return not (change.key == 'show-usage' and change.value is False)
 
 
-def setup(ctx, theme_id='osaka-jade'):
+def setup(ctx, theme_id=None):
     version = shelltheme.installed_shell_version()
     if version not in shelltheme.available_versions():
         supported = ', '.join(str(v) for v in shelltheme.available_versions())
@@ -300,10 +300,11 @@ def setup(ctx, theme_id='osaka-jade'):
             except Exception as error:  # a preview is not worth failing setup over; the picker shows colors
                 say(f'  no preview for {tid}: {str(error).splitlines()[0]}')
 
-    # The current theme (or the starting one), applied everywhere: this also
-    # builds anything a new version of Jade Shell adds, and changes nothing else.
+    # The theme asked for, else the current one, else Osaka Jade, applied
+    # everywhere: this also builds anything a new version of Jade Shell adds.
     state = engine.current()
-    theme = themes.load(state['theme'] if state.get('theme') in themes.ids() else theme_id)
+    current = state.get('theme') if state.get('theme') in themes.ids() else None
+    theme = themes.load(theme_id or current or 'osaka-jade')
     ctx.wallpaper_index = state.get('wallpaper') or 0
     changes, _backup = engine.apply(theme, ctx)
     say(f'{theme.name}: {len(changes)} change{"" if len(changes) == 1 else "s"} applied.')
@@ -313,8 +314,8 @@ def setup(ctx, theme_id='osaka-jade'):
     commands = leftover_commands(*leftovers())
     if commands:
         # Never removed here: it may be someone's development copy.
-        say('Your home folder has files from an older or development copy of Jade Shell '
-            '(an extension there runs instead of the package\'s). Remove them with:')
+        say('Your home folder still has files from an older or development copy of Jade Shell. '
+            'Remove them with:')
         for command in commands:
             say(f'    {command}')
 
