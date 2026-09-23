@@ -14,7 +14,7 @@
 .jade-picker .jade-grid { spacing: 10px; padding-top: 12px; }
 .jade-picker .jade-row { spacing: 10px; }
 .jade-picker .jade-tile { padding: 0; border-radius: 0; }
-.jade-picker .jade-tile-thumb { width: 116px; height: 72px; background-size: cover; background-position: center; }
+.jade-picker .jade-tile-thumb { width: 116px; height: 72px; background-size: cover; }
 .jade-picker .jade-tile-name { font-size: 8.5pt; padding: 4px 6px 5px 6px; }
 
 .jade-picker .jade-footer { spacing: 8px; padding-top: 12px; }
