@@ -145,6 +145,21 @@ async function clockFollowsGnome() {
     await shoot('clock-12h-check', Main.panel.statusArea.dateMenu);
 }
 
+// High Contrast shows GNOME's own high-contrast Shell, and turning it off
+// brings Jade's theme back. Logs "HARNESS contrast …" lines.
+async function highContrast() {
+    const a11y = new Gio.Settings({schema_id: 'org.gnome.desktop.a11y.interface'});
+    const sheet = () => Main.getThemeStylesheet()?.get_basename() ?? 'GNOME\'s own';
+    log(`contrast off: ${sheet()}`);
+    a11y.set_boolean('high-contrast', true);
+    await wait(1500);
+    log(`contrast on: ${sheet()}`);
+    await shoot('high-contrast-on', Main.panel);
+    a11y.reset('high-contrast');
+    await wait(1500);
+    log(`contrast off again: ${sheet()}`);
+}
+
 // ------------------------------------------------------------------ timing
 //
 // For each Jade menu and, as a baseline, GNOME's clock and quick settings:
@@ -740,6 +755,7 @@ export default class Harness extends Extension {
         }
         await bellRoundTrip();
         await clockFollowsGnome();
+        await highContrast();
     }
 
     disable() {}

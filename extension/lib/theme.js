@@ -1,4 +1,5 @@
 import Gio from 'gi://Gio';
+import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {Debouncer, stateDir} from './util.js';
@@ -12,6 +13,8 @@ const DEFAULT_PALETTE = {
 // Loads the Shell theme `jade` compiles for the current palette (the same
 // mechanism the User Themes extension uses) and follows it as themes switch.
 // Runs on the lock screen too, so locking does not flash GNOME's colors.
+// Steps aside while High Contrast (Settings › Accessibility) is on: that is
+// GNOME's own stylesheet, and a theme stylesheet would hide it.
 export class ShellTheme {
     constructor() {
         this.palette = {...DEFAULT_PALETTE};
@@ -36,11 +39,13 @@ export class ShellTheme {
             if (names.includes('gnome-shell.css') || names.includes('colors.json'))
                 this._reload.schedule();
         });
+        this._contrastChanged = St.Settings.get().connect('notify::high-contrast', () => this._loadStylesheet());
         this._loadStylesheet();
         this._loadPalette();
     }
 
     disable() {
+        St.Settings.get().disconnect(this._contrastChanged);
         this._reload.cancel();
         this._monitor.disconnect(this._monitorChanged);
         this._monitor.cancel();
@@ -65,10 +70,10 @@ export class ShellTheme {
     }
 
     _loadStylesheet() {
-        const exists = this._css.query_exists(null);
-        if (!exists && !this._ours())
+        const wanted = this._css.query_exists(null) && !St.Settings.get().high_contrast;
+        if (!wanted && !this._ours())
             return;
-        Main.setThemeStylesheet(exists ? this._css.get_path() : null);
+        Main.setThemeStylesheet(wanted ? this._css.get_path() : null);
         Main.loadTheme();
     }
 
