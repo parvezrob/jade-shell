@@ -67,7 +67,9 @@ class Shell:
 
     def changes(self, theme, ctx):
         base = state_home() / 'jade-shell'
-        colors = {'id': theme.id, 'name': theme.name, 'colors': theme.colors}
+        # Also read by the settings window, to dress itself in the theme.
+        colors = {'id': theme.id, 'name': theme.name, 'colors': theme.colors,
+                  'accent_fg': shelltheme.accent_foreground(theme.colors)}
         return [
             File(base / 'gnome-shell.css', shelltheme.build(theme.colors, self.version)),
             File(base / 'colors.json', json.dumps(colors, indent=2, sort_keys=True) + '\n'),

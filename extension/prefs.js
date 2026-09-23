@@ -1,4 +1,5 @@
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
@@ -6,7 +7,9 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 
 import {aboutPage} from './settings/about.js';
 import {jadeCommand, output, run} from './settings/common.js';
+import {hero} from './settings/hero.js';
 import {ShortcutRow} from './settings/shortcut.js';
+import {applyStyle, capsTitles} from './settings/style.js';
 
 const TIMER = 'jade-usage.timer';
 
@@ -34,6 +37,8 @@ export default class JadePreferences extends ExtensionPreferences {
 
         const page = new Adw.PreferencesPage({title: 'Desktop', icon_name: 'preferences-desktop-appearance-symbolic'});
         window.add(page);
+        const top = hero(this.metadata['version-name'] ?? null);
+        page.add(top.group);
 
         const bar = new Adw.PreferencesGroup({title: 'Top bar'});
         page.add(bar);
@@ -68,7 +73,9 @@ export default class JadePreferences extends ExtensionPreferences {
         page.add(apps);
         this._fillApps(apps);
 
-        const usagePage = new Adw.PreferencesPage({title: 'AI Usage', icon_name: 'utilities-system-monitor-symbolic'});
+        // Jade Shell's own icons (the AI usage mark) for the page tabs.
+        Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(this.dir.get_child('icons').get_path());
+        const usagePage = new Adw.PreferencesPage({title: 'AI Usage', icon_name: 'ai-usage-symbolic'});
         window.add(usagePage);
         const usage = new Adw.PreferencesGroup({
             title: 'Collection',
@@ -93,6 +100,9 @@ export default class JadePreferences extends ExtensionPreferences {
         window.connect('close-request', () => settings.disconnect(usageChanged));
 
         window.add(aboutPage(settings, this.metadata, switchRow));
+        window.set_default_size(720, 860);
+        capsTitles(window);
+        applyStyle(window, top.update);
     }
 
     // One switch per app `jade apps` knows, which also does the work: putting

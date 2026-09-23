@@ -15,7 +15,8 @@ export function aboutPage(settings, metadata, switchRow) {
     const about = new Adw.PreferencesGroup();
     page.add(about);
     const info = new Adw.ActionRow({
-        title: 'Jade Shell', subtitle: version ? `Version ${version}` : 'Development copy (from a checkout)',
+        title: 'About Jade Shell',
+        subtitle: `${version ? `Version ${version}` : 'Development copy'} · credits and license`,
         activatable: true,
     });
     info.add_suffix(new Gtk.Image({icon_name: 'go-next-symbolic'}));
