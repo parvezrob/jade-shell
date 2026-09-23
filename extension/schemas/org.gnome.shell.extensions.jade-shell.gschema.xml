@@ -20,9 +20,9 @@
       <summary>Use the custom clock format</summary>
     </key>
     <key name="clock-format" type="s">
-      <default>'%A %H:%M'</default>
+      <default>''</default>
       <summary>Clock format</summary>
-      <description>A GLib.DateTime format, such as %A %H:%M for "Tuesday 14:05".</description>
+      <description>A GLib.DateTime format, such as %A %H:%M for "Tuesday 14:05". Empty: the weekday and the time, 12- or 24-hour and with seconds or not as set in GNOME's Settings.</description>
     </key>
     <key name="simple-calendar" type="b">
       <default>true</default>

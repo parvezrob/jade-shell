@@ -77,7 +77,7 @@ export default class JadePreferences extends ExtensionPreferences {
         switchRow(settings, bar, 'show-usage', 'AI usage', 'Claude and Codex limits');
         switchRow(settings, bar, 'show-picker', 'Theme picker icon', 'Super+Ctrl+Shift+Space opens it either way');
         switchRow(settings, bar, 'show-clock-format', 'Custom clock format');
-        const clock = new Adw.EntryRow({title: 'Clock format (for example %A %H:%M)'});
+        const clock = new Adw.EntryRow({title: 'Clock format (empty: weekday and time, as GNOME’s Settings say)'});
         settings.bind('clock-format', clock, 'text', Gio.SettingsBindFlags.DEFAULT);
         settings.bind('show-clock-format', clock, 'sensitive', Gio.SettingsBindFlags.GET);
         bar.add(clock);

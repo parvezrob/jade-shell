@@ -119,6 +119,32 @@ async function bellRoundTrip() {
     await panel('jade-bell', 'bell-on-again');
 }
 
+// The bar clock follows GNOME's 12h/24h and seconds settings live, unless a
+// format of the user's own is set. Logs "HARNESS clock …" lines.
+async function clockFollowsGnome() {
+    const iface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+    const jade = Extension.lookupByUUID(UUID)?.getSettings();
+    const text = () => Main.panel.statusArea.dateMenu._clockDisplay.get_parent().get_children()
+        .filter(c => c instanceof St.Label && c.visible).map(c => c.text).join(' | ');
+    const show = async what => {
+        await wait(400);
+        log(`clock ${what}: ${text()}`);
+    };
+    iface.set_string('clock-format', '24h');
+    await show('24h');
+    iface.set_string('clock-format', '12h');
+    await show('12h');
+    iface.set_boolean('clock-show-seconds', true);
+    await show('12h with seconds');
+    jade.set_string('clock-format', '%H.%M');
+    await show('own format %H.%M');
+    jade.reset('clock-format');
+    iface.reset('clock-show-seconds');
+    iface.reset('clock-format');
+    await show('back to the locale\'s default');
+    await shoot('clock-12h-check', Main.panel.statusArea.dateMenu);
+}
+
 // ------------------------------------------------------------------ timing
 //
 // For each Jade menu and, as a baseline, GNOME's clock and quick settings:
@@ -713,6 +739,7 @@ export default class Harness extends Extension {
             await panel('quickSettings', `${theme}-quick-settings`);
         }
         await bellRoundTrip();
+        await clockFollowsGnome();
     }
 
     disable() {}
