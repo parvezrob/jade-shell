@@ -337,7 +337,8 @@ class VSCode:
             data = json.loads(themes.render(template, t.colors))
             data['name'] = self.label_for(t)
             out.append(File(folder / 'themes' / f'{t.id}.json', json.dumps(data, indent=2) + '\n'))
-            contributed.append({'label': self.label_for(t), 'uiTheme': 'vs-dark', 'path': f'./themes/{t.id}.json'})
+            ui = 'vs' if t.colors.get('mode') == 'light' else 'vs-dark'
+            contributed.append({'label': self.label_for(t), 'uiTheme': ui, 'path': f'./themes/{t.id}.json'})
         package = {
             'name': 'jade-themes', 'displayName': 'Jade Shell themes', 'publisher': 'jade-shell',
             'version': self.VERSION, 'engines': {'vscode': '^1.60.0'},

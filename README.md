@@ -2,7 +2,7 @@
 
 **Omarchy's look for the GNOME you already have.**
 
-One install gives Fedora or Ubuntu Omarchy's themes, a theme picker that re-colors the whole desktop at once, workspace buttons, a light system monitor and your Claude and Codex usage in the top bar. No new OS, no tiling window manager to learn.
+One install gives Fedora or Ubuntu Omarchy's 22 themes, dark and light, a theme picker that re-colors the whole desktop at once, workspace buttons, a light system monitor and your Claude and Codex usage in the top bar. No new OS, no tiling window manager to learn.
 
 **Status: early (0.9), GNOME 50 only.** Tested on Fedora 44 and Ubuntu 26.04. Fedora Atomic desktops (Silverblue, Kinoite) are not supported yet: the installer stops on them.
 
@@ -54,8 +54,8 @@ Log out and back in once to start the extension. A few notes at that first login
 
 | Target (name) | How |
 |---|---|
-| GNOME Shell (`shell`) | a Shell theme compiled from GNOME's own theme sources with the Omarchy palette and the theme's exact accent: top bar, menus, quick settings, calendar, notifications, dialogs, lock screen |
-| GNOME (`gnome`) | dark style, the nearest named accent for apps, wallpaper (desktop and lock screen) |
+| GNOME Shell (`shell`) | a Shell theme compiled from GNOME's own theme sources (the light ones for light themes) with the Omarchy palette and the theme's exact accent: top bar, menus, quick settings, calendar, notifications, dialogs, lock screen |
+| GNOME (`gnome`) | light or dark style to match the theme, the nearest named accent for apps, wallpaper (desktop and lock screen) |
 | Dock (`dock`) | Dash to Dock or Ubuntu Dock colors |
 | Ptyxis (`ptyxis`) | an Omarchy palette file, selected in every profile |
 | Kitty (`kitty`) | `jade-theme.conf`, included at the end of `kitty.conf` (your own colors stay, overridden); kitty reloads |

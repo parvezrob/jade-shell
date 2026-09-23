@@ -19,14 +19,15 @@ def nearest_accent(color):
 class Gnome:
     name = 'gnome'
     title = 'GNOME'
-    label = 'GNOME accent, dark style and wallpaper'
+    label = 'GNOME accent, light or dark style and wallpaper'
 
     def available(self, ctx):
         return None
 
     def changes(self, theme, ctx):
         c = theme.colors
-        out = [Setting('org.gnome.desktop.interface', 'color-scheme', 'prefer-dark')]
+        scheme = 'prefer-light' if c.get('mode') == 'light' else 'prefer-dark'
+        out = [Setting('org.gnome.desktop.interface', 'color-scheme', scheme)]
         if ctx.settings.has('org.gnome.desktop.interface', 'accent-color'):  # GNOME 47 and later
             out.append(Setting('org.gnome.desktop.interface', 'accent-color', nearest_accent(c['accent'])))
         wallpaper = theme.wallpaper(ctx.wallpaper_index)

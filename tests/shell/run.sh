@@ -56,9 +56,6 @@ if [[ $mode == timing ]]; then
     # The live display runs at 180 Hz; frame counts only mean something at its rate.
     monitor=1400x900@${JADE_HZ:-180}
     timeout=2400
-    # The extension finds `jade` on PATH first: make that this checkout's, as
-    # ~/.local/bin/jade is on the live machine, not whatever the caller's PATH has.
-    export PATH=$home/.local/bin:$PATH
     # The live Shell's resident size (read only), for the fork() cost at that size.
     live_kb=0
     for pid in $(pgrep -x -u "$(id -u)" gnome-shell); do
@@ -69,6 +66,10 @@ if [[ $mode == timing ]]; then
     echo "Load before: $(cut -d' ' -f1-3 /proc/loadavg), headless shells running: $(pgrep -a -x gnome-shell | grep -c -- --headless)"
 fi
 
+# The extension finds `jade` on PATH first: make that this checkout's, as
+# ~/.local/bin/jade is on the live machine, not whatever the caller's PATH has
+# (the developer's own ~/.local/bin copy may be an older version).
+export PATH=$home/.local/bin:$PATH
 export HOME=$home XDG_RUNTIME_DIR=$runtime XDG_DATA_HOME=$home/.local/share XDG_CONFIG_HOME=$home/.config \
     XDG_CACHE_HOME=$home/.cache XDG_STATE_HOME=$home/.local/state GSETTINGS_BACKEND=keyfile JADE_SHOTS=$out JADE_MODE=$mode
 unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS

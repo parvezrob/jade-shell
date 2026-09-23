@@ -665,6 +665,25 @@ class Sandbox(unittest.TestCase):
         self.assertLess(len(debug.issue_url(out)), 8000)
 
     @needs_compiler
+    def test_light_dark_light_and_back_leaves_nothing_behind(self):
+        before = self.keyfile()
+        scheme = ('get', 'org.gnome.desktop.interface', 'color-scheme')
+        self.jade('theme', 'set', 'catppuccin-latte')
+        self.assertEqual(self.gsettings(*scheme), "'prefer-light'")
+        css = (self.home / '.local/state/jade-shell/gnome-shell.css').read_text()
+        self.jade('theme', 'set', 'nord')
+        self.assertEqual(self.gsettings(*scheme), "'prefer-dark'")
+        self.jade('theme', 'set', 'flexoki-light')
+        self.assertEqual(self.gsettings(*scheme), "'prefer-light'")
+        self.jade('theme', 'set', 'catppuccin-latte')
+        self.assertEqual((self.home / '.local/state/jade-shell/gnome-shell.css').read_text(), css)
+        for _ in range(4):
+            self.jade('theme', 'undo')
+        self.assertEqual(self.keyfile(), before)
+        for path, text in self.originals.items():
+            self.assertEqual(path.read_text(), text, path)
+
+    @needs_compiler
     def test_an_update_leaves_an_extension_turned_back_on(self):
         blur = 'blur-my-shell@aunetx'
         self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{blur}']")
