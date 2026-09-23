@@ -69,6 +69,12 @@
       <description>Not polled while the machine runs on battery, where polling would keep a discrete GPU awake.</description>
     </key>
 
+    <key name="check-updates" type="b">
+      <default>true</default>
+      <summary>Check for new versions once a day</summary>
+      <description>Asks the latest GitHub release for its version (a few bytes) and shows a notification when a newer one is out.</description>
+    </key>
+
     <key name="show-usage" type="b">
       <default>true</default>
       <summary>Show Claude and Codex usage in the top bar</summary>

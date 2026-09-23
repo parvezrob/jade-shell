@@ -34,7 +34,7 @@ export default class JadeShell extends Extension {
             {key: 'show-usage', make: () => new Usage(this, this._settings, this._shellTheme)},
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
             {key: 'notification-bell', make: () => new Notifications(this)},
-            {key: null, make: () => new Updates(this)},
+            {key: null, make: () => new Updates(this, this._settings)},
         ];
         this._partsChanged = this._parts.filter(p => p.key).map(
             part => this._settings.connect(`changed::${part.key}`, () => this._syncPart(part)));

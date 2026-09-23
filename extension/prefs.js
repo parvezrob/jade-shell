@@ -91,6 +91,10 @@ export default class JadePreferences extends ExtensionPreferences {
         spinRow(settings, desktop, 'app-grid-rows', 'App grid rows', null, 0, 8);
         spinRow(settings, desktop, 'app-grid-icon-size', 'App grid icon size', 'In pixels', 0, 192);
 
+        const updates = new Adw.PreferencesGroup({title: 'Updates'});
+        page.add(updates);
+        switchRow(settings, updates, 'check-updates', 'Check for updates', 'Once a day; a notification when a new version is out');
+
         const usage = new Adw.PreferencesGroup({
             title: 'AI usage',
             description: 'Collected in the background while AI usage is on. Opening the menu also fetches current limits, and Refresh rescans everything.',

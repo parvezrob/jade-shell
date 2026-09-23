@@ -36,5 +36,7 @@ for packager in rpm deb; do
     nfpm package --config packaging/nfpm.yaml --packager "$packager" --target "dist/jade-shell.$packager"
 done
 (cd dist && sha256sum jade-shell.rpm jade-shell.deb > SHA256SUMS)
+# What `jade update` and the extension's daily check read from the latest release.
+echo "$JADE_VERSION" > dist/VERSION
 echo "Built Jade Shell $JADE_VERSION:"
 ls -l dist

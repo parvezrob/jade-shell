@@ -28,6 +28,12 @@ contents:
     dst: /usr/bin/jade
     file_info:
       mode: 0755
+  - src: packaging/install-update
+    dst: /usr/libexec/jade-shell/install-update
+    file_info:
+      mode: 0755
+  - src: packaging/io.github.parvezrob.jade-shell.policy
+    dst: /usr/share/polkit-1/actions/io.github.parvezrob.jade-shell.policy
   - src: LICENSE
     dst: /usr/share/licenses/jade-shell/LICENSE
     packager: rpm

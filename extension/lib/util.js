@@ -31,7 +31,8 @@ export function jadeCommand() {
 // Shell's ignored SIGPIPE (posix_spawn does not reset it).
 export const SPAWN = Gio.SubprocessFlags.INHERIT_FDS;
 
-// Run a command without blocking the Shell; resolves with its exit status and output.
+// Run a command without blocking the Shell; resolves with whether it succeeded,
+// its exit status (null when killed by a signal) and output.
 export function run(argv, cancellable = null) {
     return new Promise(resolve => {
         let proc;
@@ -44,7 +45,7 @@ export function run(argv, cancellable = null) {
         proc.communicate_utf8_async(null, cancellable, (p, result) => {
             try {
                 const [, stdout, stderr] = p.communicate_utf8_finish(result);
-                resolve({ok: p.get_successful(), stdout, stderr});
+                resolve({ok: p.get_successful(), status: p.get_if_exited() ? p.get_exit_status() : null, stdout, stderr});
             } catch (e) {
                 resolve({ok: false, stdout: '', stderr: e.message});
             }

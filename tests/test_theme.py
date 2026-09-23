@@ -5,6 +5,8 @@ session bus, and stand-ins for gnome-shell, pkill, systemctl and vicinae on
 PATH, so nothing reaches the real desktop.
 """
 import configparser
+import hashlib
+import io
 import json
 import os
 import pathlib
@@ -18,7 +20,7 @@ from unittest import mock
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from jade import __version__, engine, migrations, palette, setup, shelltheme, store, themes
+from jade import __version__, engine, migrations, palette, setup, shelltheme, store, themes, update
 from jade.setup import REPLACED, UUID
 from jade.targets.apps import VSCode, jsonc, managed_block, restore_theme_names, revert_block, revert_line, set_theme_names
 from jade.targets.gnome import Gnome, nearest_accent
@@ -247,6 +249,56 @@ class Migrations(unittest.TestCase):
             migrations.mark_all()
             self.assertTrue(migrations.run_pending(None, print))
         self.assertEqual(self.ran, [])
+
+
+class Update(unittest.TestCase):
+    """The release check and download, from a release folder on disk."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = pathlib.Path(tmp.name)
+        self.release = self.dir / 'release'
+        self.release.mkdir()
+        (self.release / 'VERSION').write_text('10.2.0\n')
+        (self.release / 'jade-shell.rpm').write_bytes(b'package')
+        (self.release / 'jade-shell.deb').write_bytes(b'tampered')
+        digest = hashlib.sha256(b'package').hexdigest()
+        (self.release / 'SHA256SUMS').write_text(f'{digest}  jade-shell.rpm\n{"0" * 64}  jade-shell.deb\n')
+        for patcher in (mock.patch.object(update, 'RELEASE', self.release.as_uri()),
+                        mock.patch.dict(os.environ, XDG_STATE_HOME=str(self.dir / 'state'))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_versions_compare_as_numbers(self):
+        self.assertGreater(update.version_key('0.10.0'), update.version_key('0.9.9'))
+
+    def test_check_remembers_when_it_asked(self):
+        self.assertEqual(update.check(), '10.2.0')
+        cached = json.loads(update.cache_path().read_text())
+        self.assertEqual(cached['latest'], '10.2.0')
+
+    def test_a_garbled_or_missing_release_is_a_sentence(self):
+        (self.release / 'VERSION').write_text('<html>')
+        with self.assertRaisesRegex(update.UpdateError, 'no usable version'):
+            update.latest()
+        (self.release / 'VERSION').unlink()
+        with self.assertRaisesRegex(update.UpdateError, 'Could not reach'):
+            update.latest()
+        self.assertFalse(update.cache_path().exists())  # the extension asks again later
+
+    def test_only_a_package_matching_the_checksum_is_kept(self):
+        path = update.verified_download('rpm', str(self.dir))
+        self.assertEqual(pathlib.Path(path).read_bytes(), b'package')
+        with self.assertRaisesRegex(update.UpdateError, 'does not match'):
+            update.verified_download('deb', str(self.dir))
+
+    def test_check_as_json(self):
+        with mock.patch.object(update, 'installed_kind', return_value='deb'), \
+                mock.patch('sys.stdout', new_callable=io.StringIO) as out:
+            self.assertEqual(update.update(as_json=True), 0)
+        self.assertEqual(json.loads(out.getvalue()),
+                         {'current': __version__, 'latest': '10.2.0', 'available': True, 'package': 'deb'})
 
 
 class Leftovers(unittest.TestCase):

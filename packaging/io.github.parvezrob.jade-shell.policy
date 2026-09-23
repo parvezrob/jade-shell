@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- The password dialog for "Update" in the top bar (jade update, pkexec). -->
+<policyconfig>
+  <vendor>Jade Shell</vendor>
+  <vendor_url>https://github.com/parvezrob/jade-shell</vendor_url>
+  <action id="io.github.parvezrob.jade-shell.update">
+    <description>Update Jade Shell</description>
+    <message>Authentication is required to update Jade Shell</message>
+    <icon_name>software-update-available</icon_name>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/jade-shell/install-update</annotate>
+  </action>
+</policyconfig>

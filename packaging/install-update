@@ -1,0 +1,31 @@
+#!/bin/sh
+# Install a Jade Shell package that `jade update` downloaded and checked
+# against the release's SHA256SUMS. Runs as root through pkexec (the polkit
+# action io.github.parvezrob.jade-shell.update, which names this file and asks
+# for an administrator's password every time) or sudo. Installs nothing but a
+# package named jade-shell.
+set -eu
+[ $# -eq 1 ] && [ -f "$1" ] || { echo 'usage: install-update <jade-shell.rpm|jade-shell.deb>' >&2; exit 64; }
+# A copy only root can change, so what is checked is what gets installed.
+dir=$(mktemp -d)
+trap 'rm -rf "$dir"' EXIT
+chmod 755 "$dir"  # apt reads the package as its own user
+case $1 in
+    *.rpm)
+        cp -- "$1" "$dir/jade-shell.rpm"
+        [ "$(rpm -qp --qf '%{NAME}' "$dir/jade-shell.rpm" 2>/dev/null)" = jade-shell ] \
+            || { echo 'Not a Jade Shell package.' >&2; exit 65; }
+        dnf install -y "$dir/jade-shell.rpm"
+        ;;
+    *.deb)
+        cp -- "$1" "$dir/jade-shell.deb"
+        chmod 644 "$dir/jade-shell.deb"
+        [ "$(dpkg-deb -f "$dir/jade-shell.deb" Package 2>/dev/null)" = jade-shell ] \
+            || { echo 'Not a Jade Shell package.' >&2; exit 65; }
+        # A new version may need a new dependency: fresh package lists first.
+        apt-get update -q || true
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
+            apt-get install -y "$dir/jade-shell.deb"
+        ;;
+    *) echo 'Expected a .rpm or .deb file.' >&2; exit 64 ;;
+esac

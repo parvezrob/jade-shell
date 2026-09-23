@@ -51,11 +51,11 @@ if [[ -n $uninstall ]]; then
     in_session 'bash /tmp/jade-install.sh --uninstall --yes'
 else
     [[ -z $build ]] || "$root/scripts/build-packages.sh" >/dev/null
-    for file in jade-shell.rpm jade-shell.deb SHA256SUMS; do
+    for file in jade-shell.rpm jade-shell.deb SHA256SUMS VERSION; do
         [[ -f $root/dist/$file ]] || { echo "dist/$file is missing; run without --no-build" >&2; exit 1; }
     done
     vm 'rm -rf /tmp/jade-release && mkdir -p /tmp/jade-release'
-    scp -q "${ssh_opts[@]}" "$root"/dist/{jade-shell.rpm,jade-shell.deb,SHA256SUMS} "$root/install.sh" "$host:/tmp/jade-release/"
+    scp -q "${ssh_opts[@]}" "$root"/dist/{jade-shell.rpm,jade-shell.deb,SHA256SUMS,VERSION} "$root/install.sh" "$host:/tmp/jade-release/"
     # Piped, as from curl: install.sh gets no terminal on stdin.
     in_session 'JADE_RELEASE=file:///tmp/jade-release bash < /tmp/jade-release/install.sh'
 fi

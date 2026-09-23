@@ -26,6 +26,8 @@ Running `jade setup` again keeps the dock layout and AI usage choice you made si
 
 **Updates** come through `dnf`, `apt`, GNOME Software or the installer. Jade Shell notices a new version is installed and offers to log out; at the next login it finishes the update in the background (the settings and one-time changes the new version needs, the theme rebuilt), leaves on any extension you turned back on yourself, and says when it's done. `update.log` in `~/.local/state/jade-shell` has the details.
 
+Once a day Jade Shell also asks the latest release for its version (a few bytes from GitHub; turn it off under **Updates** in the settings). When a newer one is out, a notification offers **Update**, which asks for your password in GNOME's own dialog and installs it, and **What's new**. From a terminal, `jade update` does the same (`jade update --check` only looks). The package is checked against the release's `SHA256SUMS` before anything is installed.
+
 If your home folder still has a copy of Jade Shell from before the packages (or from `scripts/dev-install.sh`), GNOME Shell would keep loading it instead of the package's, so the installer stops and prints the `rm -rf` command that removes it; run that, then the installer again. `jade setup` and `jade doctor` also point out such copies, and files left by older versions (Jade AI Usage, `jade-theme`), with the command to remove them. Nothing is deleted for you.
 
 Log out and back in once to start the extension. `jade doctor` checks everything is in place.

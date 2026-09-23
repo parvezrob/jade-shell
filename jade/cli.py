@@ -4,7 +4,7 @@ import contextlib
 import json
 import sys
 
-from . import __version__, engine, setup, themes
+from . import __version__, engine, setup, themes, update
 from . import targets as registry
 from .store import File, Settings, read_text
 from .usage import collect
@@ -175,6 +175,10 @@ def run_doctor(args, ctx):
     return setup.doctor(ctx)
 
 
+def run_update(args, ctx):
+    return update.update(check_only=args.check, as_json=args.json)
+
+
 def run_restore(args, ctx):
     return setup.restore(ctx, assume_yes=args.yes)
 
@@ -225,6 +229,9 @@ def parser():
     p.add_argument('--theme', choices=themes.ids(), help='theme to apply (default: keep the current one, or Osaka Jade)')
     p.add_argument('--after-update', action='store_true', help=argparse.SUPPRESS)  # run by the extension at login
     commands.add_parser('doctor', help='check that everything Jade Shell needs is in place')
+    p = commands.add_parser('update', help='install the latest Jade Shell release')
+    p.add_argument('--check', action='store_true', help="only say whether there's a newer version")
+    p.add_argument('--json', action='store_true', help='print the check as JSON (for the extension)')
     p = commands.add_parser('restore', help='put back the desktop you had before Jade Shell')
     p.add_argument('--yes', action='store_true', help="don't ask for confirmation")
     return top
@@ -235,7 +242,7 @@ HANDLERS = {
     ('theme', 'set'): theme_set, ('theme', 'wallpaper'): theme_wallpaper, ('theme', 'undo'): theme_undo,
     ('theme', 'reload'): theme_reload, ('theme', 'fetch'): theme_fetch, ('theme', 'thumbs'): theme_thumbs,
     ('usage', 'collect'): usage_collect,
-    ('setup', None): run_setup, ('doctor', None): run_doctor, ('restore', None): run_restore,
+    ('setup', None): run_setup, ('doctor', None): run_doctor, ('update', None): run_update, ('restore', None): run_restore,
 }
 
 
