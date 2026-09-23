@@ -1,6 +1,8 @@
 # Jade Shell
 
-Omarchy's look on the GNOME you already run. One install gives Fedora or Ubuntu Omarchy's themes, a theme picker that re-colors the whole desktop at once, workspace buttons, a light system monitor and your Claude and Codex usage in the top bar. No new OS, no tiling window manager to learn.
+**Omarchy's look for the GNOME you already have.**
+
+One install gives Fedora or Ubuntu Omarchy's themes, a theme picker that re-colors the whole desktop at once, workspace buttons, a light system monitor and your Claude and Codex usage in the top bar. No new OS, no tiling window manager to learn.
 
 **Status: early (0.9), GNOME 50 only.** Tested on Fedora 44 and Ubuntu 26.04. Fedora Atomic desktops (Silverblue, Kinoite) are not supported yet: the installer stops on them.
 
