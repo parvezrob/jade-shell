@@ -49,6 +49,7 @@ export default class JadeShell extends Extension {
         this._css = this._stateDir.get_child('shell.css');
         this._cli = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'jade-theme']);
         this._themes = [];
+        this._themesKey = null;
         this._tiles = new Map();
         this._busy = false;
 
@@ -87,7 +88,9 @@ export default class JadeShell extends Extension {
         this._button.destroy();
         this._button = this._grid = this._status = this._heroTitle = null;
         this._tiles.clear();
+        // The grid is rebuilt on the next enable (after every lock screen too).
         this._themes = [];
+        this._themesKey = null;
     }
 
     // ---------------------------------------------------- generated stylesheet
