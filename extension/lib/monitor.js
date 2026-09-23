@@ -18,6 +18,8 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {SPAWN, VERTICAL, addToPanel, cairoRgb, label} from './util.js';
 
 const INTERVAL_S = 2;
+// After the panel closes, nvidia-smi keeps running this long (see _syncGpu).
+const NVIDIA_LINGER_S = 5;
 const TAGLINE_S = 4;
 const ALARM = {cpu: 90, mem: 90, gpu: 95, temp: 85};
 const CPU_SENSORS = ['k10temp', 'coretemp', 'zenpower', 'cpu_thermal', 'acpitz'];
@@ -698,12 +700,27 @@ export class Monitor {
     _syncGpu(active) {
         const wanted = active && this._gpuWanted();
         if (wanted && hasNvidia()) {
+            this._cancelNvidiaLinger();
             if (!this._nvidiaRetry)
                 this._startNvidia();
             return;
         }
         this._cancelNvidiaRetry();
-        this._stopNvidia();
+        // Only closed: nvidia-smi exiting (NVML letting go of the driver)
+        // costs a frame, which would land in the close animation or the next
+        // menu's opening. Let it run a few seconds more and stop it while no
+        // top-bar menu is open; reopening meanwhile keeps it.
+        if (this._nvidia && this._gpuWanted()) {
+            this._nvidiaLinger ??= GLib.timeout_add_seconds(GLib.PRIORITY_LOW, NVIDIA_LINGER_S, () => {
+                if (Main.panel.menuManager.activeMenu)
+                    return GLib.SOURCE_CONTINUE;  // another menu is open: later
+                this._nvidiaLinger = null;
+                this._stopNvidia();
+                return GLib.SOURCE_REMOVE;
+            });
+        } else {
+            this._stopNvidia();
+        }
         // Closing the panel keeps the last reading, so the GPU section is
         // there at once on the next open instead of appearing a moment later
         // and resizing the menu. Only turning GPU usage off hides it.
@@ -765,6 +782,12 @@ export class Monitor {
         });
     }
 
+    _cancelNvidiaLinger() {
+        if (this._nvidiaLinger)
+            GLib.source_remove(this._nvidiaLinger);
+        this._nvidiaLinger = null;
+    }
+
     _cancelNvidiaRetry() {
         if (this._nvidiaRetry)
             GLib.source_remove(this._nvidiaRetry);
@@ -772,6 +795,7 @@ export class Monitor {
     }
 
     _stopNvidia() {
+        this._cancelNvidiaLinger();
         this._nvidiaCancellable?.cancel();
         this._nvidia?.force_exit();
         this._nvidia = this._nvidiaCancellable = null;

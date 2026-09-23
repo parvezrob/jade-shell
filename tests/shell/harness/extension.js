@@ -652,6 +652,9 @@ class Timing {
         for (const role of [...JADE_ROLES, ...BASE_ROLES])
             await this.open(role, 'warm', ROUNDS);
         await this.switches(JADE_ROLES, 'jade');
+        // The other way round: each menu entered from its other neighbour, so
+        // a slow switch shows whether the opening or the closing menu costs it.
+        await this.switches([...JADE_ROLES].reverse(), 'jade-reverse');
         await this.switches(BASE_ROLES, 'gnome');
         // A pointer sweeping across the icons: a switch every 250 ms, so one
         // menu's late work lands during the next one's animation.
