@@ -30,7 +30,7 @@ Once a day Jade Shell also asks the latest release for its version (a few bytes 
 
 If your home folder still has a copy of Jade Shell from before the packages (or from `scripts/dev-install.sh`), GNOME Shell would keep loading it instead of the package's, so the installer stops and prints the `rm -rf` command that removes it; run that, then the installer again. `jade setup` and `jade doctor` also point out such copies, and files left by older versions (Jade AI Usage, `jade-theme`), with the command to remove them. Nothing is deleted for you.
 
-Log out and back in once to start the extension. `jade doctor` checks everything is in place.
+Log out and back in once to start the extension. A few notes at that first login show where the picker, the bell and AI usage are (once each). `jade doctor` checks everything is in place.
 
 ## Use
 

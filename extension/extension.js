@@ -17,6 +17,7 @@ import {Picker} from './lib/picker.js';
 import {ShellTheme} from './lib/theme.js';
 import {Usage} from './lib/usage.js';
 import {Updates} from './lib/updates.js';
+import {Welcome} from './lib/welcome.js';
 import {Workspaces} from './lib/workspaces.js';
 
 export default class JadeShell extends Extension {
@@ -35,6 +36,7 @@ export default class JadeShell extends Extension {
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
             {key: 'notification-bell', make: () => new Notifications(this)},
             {key: null, make: () => new Updates(this, this._settings)},
+            {key: null, make: () => new Welcome(this, this._settings, () => this._openPicker())},
         ];
         this._partsChanged = this._parts.filter(p => p.key).map(
             part => this._settings.connect(`changed::${part.key}`, () => this._syncPart(part)));
@@ -51,6 +53,10 @@ export default class JadeShell extends Extension {
         this._shellTheme.disable();
         this._shellTheme = null;
         this._settings = null;
+    }
+
+    _openPicker() {
+        this._parts.find(part => part.instance instanceof Picker)?.instance.toggle();
     }
 
     _syncParts() {

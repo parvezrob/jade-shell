@@ -29,7 +29,7 @@ export class Picker {
         this._busy = false;
         this._build();
         Main.wm.addKeybinding('toggle-picker', this._settings, Meta.KeyBindingFlags.NONE,
-            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this._toggle());
+            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this.toggle());
         this._indicatorChanged = this._settings.connect('changed::show-picker', () => this._showIndicator());
         this._showIndicator();
         // A switch rewrites the palette; the picker then marks the new theme.
@@ -53,7 +53,7 @@ export class Picker {
         this._button.visible = this._settings.get_boolean('show-picker');
     }
 
-    _toggle() {
+    toggle() {
         const menu = this._button.menu;
         if (!menu.isOpen && !this._button.mapped) {
             // A hidden icon, or a top bar hidden by a fullscreen window, is

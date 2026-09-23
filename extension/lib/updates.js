@@ -1,9 +1,8 @@
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
 
+import {notify as show, openUri} from './notify.js';
 import {Debouncer, jadeCommand, run, stateDir} from './util.js';
 
 const RELEASES = 'https://github.com/parvezrob/jade-shell/releases';
@@ -14,7 +13,6 @@ const FIRST_CHECK = 3 * 60;
 // Set once a finish has started this session: the part starts again after
 // every unlock, and one setup per login is enough.
 let finishStarted = false;
-// The one notice about updates on screen: a newer one replaces it.
 let notice = null;
 // A check or an update running; one at a time.
 let busy = false;
@@ -176,28 +174,13 @@ function readJson(file) {
     }
 }
 
-function openUri(uri) {
-    try {
-        Gio.AppInfo.launch_default_for_uri(uri, global.create_app_launch_context(0, -1));
-    } catch (e) {
-        console.error(`Jade Shell: could not open ${uri}: ${e.message}`);
-    }
-}
-
+// The one notice about updates on screen: a newer one replaces it.
 function notify(title, body, actions) {
-    const source = new MessageTray.Source({
-        title: 'Jade Shell',
-        icon: new Gio.ThemedIcon({name: 'software-update-available-symbolic'}),
-    });
-    Main.messageTray.add(source);
-    const notification = new MessageTray.Notification({source, title, body});
-    for (const [label, callback] of actions)
-        notification.addAction(label, callback);
     notice?.destroy();
+    const notification = show(title, body, actions, 'software-update-available-symbolic');
     notice = notification;
     notification.connect('destroy', () => {
         if (notice === notification)
             notice = null;
     });
-    source.addNotification(notification);
 }
