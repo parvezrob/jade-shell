@@ -4,50 +4,11 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
+import {aboutPage} from './settings/about.js';
+import {jadeCommand, output, run} from './settings/common.js';
+import {ShortcutRow} from './settings/shortcut.js';
+
 const TIMER = 'jade-usage.timer';
-
-function run(argv) {
-    return new Promise((resolve, reject) => {
-        const proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE);
-        proc.wait_check_async(null, (p, result) => {
-            try {
-                p.wait_check_finish(result);
-                resolve();
-            } catch (e) {
-                reject(e);
-            }
-        });
-    });
-}
-
-// A command's trimmed stdout, whatever its exit status (is-active exits 3
-// for "inactive").
-function output(argv) {
-    return new Promise(resolve => {
-        let proc;
-        try {
-            proc = Gio.Subprocess.new(argv, Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE);
-        } catch (e) {
-            console.error(e);
-            resolve('');
-            return;
-        }
-        proc.communicate_utf8_async(null, null, (p, result) => {
-            try {
-                resolve((p.communicate_utf8_finish(result)[1] ?? '').trim());
-            } catch (e) {
-                console.error(e);
-                resolve('');
-            }
-        });
-    });
-}
-
-// The `jade` command: installed for everyone, or into ~/.local/bin.
-function jadeCommand() {
-    const local = GLib.build_filenamev([GLib.get_home_dir(), '.local', 'bin', 'jade']);
-    return GLib.find_program_in_path('jade') ?? (GLib.file_test(local, GLib.FileTest.IS_EXECUTABLE) ? local : null);
-}
 
 function switchRow(settings, group, key, title, subtitle = null) {
     const row = new Adw.SwitchRow({title, subtitle});
@@ -71,7 +32,7 @@ export default class JadePreferences extends ExtensionPreferences {
         const settings = this.getSettings();
         window._settings = settings;
 
-        const page = new Adw.PreferencesPage({title: 'Jade Shell', icon_name: 'preferences-desktop-appearance-symbolic'});
+        const page = new Adw.PreferencesPage({title: 'Desktop', icon_name: 'preferences-desktop-appearance-symbolic'});
         window.add(page);
 
         const bar = new Adw.PreferencesGroup({title: 'Top bar'});
@@ -80,8 +41,7 @@ export default class JadePreferences extends ExtensionPreferences {
         switchRow(settings, bar, 'show-monitor', 'System monitor', 'An icon that opens CPU, memory, GPU and storage');
         switchRow(settings, bar, 'monitor-show-values', 'Monitor numbers in the top bar', 'Instead of the icon; measures every two seconds');
         switchRow(settings, bar, 'monitor-gpu', 'GPU usage', 'Paused while running on battery');
-        switchRow(settings, bar, 'show-usage', 'AI usage', 'Claude and Codex limits');
-        switchRow(settings, bar, 'show-picker', 'Theme picker icon', 'Super+Ctrl+Shift+Space opens it either way');
+        switchRow(settings, bar, 'show-picker', 'Theme picker icon', 'The shortcut opens it either way');
         switchRow(settings, bar, 'show-clock-format', 'Custom clock format');
         const clock = new Adw.EntryRow({title: 'Clock format (empty: weekday and time, as GNOME’s Settings say)'});
         settings.bind('clock-format', clock, 'text', Gio.SettingsBindFlags.DEFAULT);
@@ -97,9 +57,9 @@ export default class JadePreferences extends ExtensionPreferences {
         spinRow(settings, desktop, 'app-grid-rows', 'App grid rows', null, 0, 8);
         spinRow(settings, desktop, 'app-grid-icon-size', 'App grid icon size', 'In pixels', 0, 192);
 
-        const updates = new Adw.PreferencesGroup({title: 'Updates'});
-        page.add(updates);
-        switchRow(settings, updates, 'check-updates', 'Check for updates', 'Once a day; a notification when a new version is out');
+        const keyboard = new Adw.PreferencesGroup({title: 'Keyboard'});
+        page.add(keyboard);
+        keyboard.add(new ShortcutRow(settings, 'toggle-picker', 'Open the theme picker'));
 
         const apps = new Adw.PreferencesGroup({
             title: 'Apps',
@@ -108,11 +68,16 @@ export default class JadePreferences extends ExtensionPreferences {
         page.add(apps);
         this._fillApps(apps);
 
+        const usagePage = new Adw.PreferencesPage({title: 'AI Usage', icon_name: 'utilities-system-monitor-symbolic'});
+        window.add(usagePage);
         const usage = new Adw.PreferencesGroup({
-            title: 'AI usage',
+            title: 'Collection',
             description: 'Collected in the background while AI usage is on. Opening the menu also fetches current limits, and Refresh rescans everything.',
         });
-        page.add(usage);
+        const usageSwitch = new Adw.PreferencesGroup();
+        usagePage.add(usageSwitch);
+        switchRow(settings, usageSwitch, 'show-usage', 'AI usage in the top bar', 'Claude and Codex limits');
+        usagePage.add(usage);
         settings.bind('show-usage', usage, 'sensitive', Gio.SettingsBindFlags.GET);
         switchRow(settings, usage, 'usage-show-percentages', 'Show percentages',
             'Each provider’s fullest limit, as percent used. Turn off for a single AI logo.');
@@ -126,6 +91,8 @@ export default class JadePreferences extends ExtensionPreferences {
         const usageChanged = settings.connect('changed::show-usage',
             () => this._setTimerEnabled(settings.get_boolean('show-usage'), status));
         window.connect('close-request', () => settings.disconnect(usageChanged));
+
+        window.add(aboutPage(settings, this.metadata, switchRow));
     }
 
     // One switch per app `jade apps` knows, which also does the work: putting

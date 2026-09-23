@@ -7,6 +7,7 @@ so `restore` can return the desktop to exactly how it was.
 import json
 import os
 import pathlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -400,13 +401,30 @@ def setup(ctx, theme_id=None, after_update=False):
     if after_update:
         say(f'Jade Shell {__version__} is set up.')
         return 0
-    say('Change theme with Super+Ctrl+Shift+Space. Undo everything with: jade restore')
+    shortcut = picker_shortcut(ctx)
+    say(f'Change theme with {shortcut or "the palette icon in the top bar"}. Undo everything with: jade restore')
     if needs_login(UUID):
         say('Done. Log out and back in once to start this version of Jade Shell.')
         offer_logout()
     else:
         say('Done.')
     return 0
+
+
+def picker_shortcut(ctx):
+    """The picker's shortcut as people write it ('Super+Ctrl+Shift+Space'), or
+    None when it is turned off."""
+    if not ctx.settings.has(JADE_SCHEMA, 'toggle-picker'):
+        return 'Super+Ctrl+Shift+Space'
+    accels = ctx.settings.get(JADE_SCHEMA).get_strv('toggle-picker')
+    if not accels:
+        return None
+    names = {'super': 'Super', 'control': 'Ctrl', 'primary': 'Ctrl', 'ctrl': 'Ctrl', 'alt': 'Alt', 'shift': 'Shift'}
+    mods = [names.get(m.lower(), m) for m in re.findall(r'<(\w+)>', accels[0])]
+    key = re.sub(r'<\w+>', '', accels[0])
+    order = ['Super', 'Ctrl', 'Alt', 'Shift']
+    mods = sorted(dict.fromkeys(mods), key=lambda m: order.index(m) if m in order else len(order))
+    return '+'.join([*mods, key.upper() if len(key) == 1 else key.capitalize()])
 
 
 def offer_logout():
@@ -511,16 +529,16 @@ def restore(ctx, assume_yes=False):
 
 # ------------------------------------------------------------------ doctor
 
-def doctor(ctx):
-    problems = 0
+def diagnose(ctx):
+    """What `jade doctor` checks, as rows: {'ok': True/False, or None for a
+    note, 'text', 'fix'}. The settings window shows the same rows."""
+    rows = []
 
     def check(ok, text, fix=None):
-        nonlocal problems
-        say(f'{"✓" if ok else "✗"} {text}')
-        if not ok:
-            problems += 1
-            if fix:
-                say(f'    {fix}')
+        rows.append({'ok': bool(ok), 'text': text, 'fix': None if ok else fix})
+
+    def note(text, active=True):
+        rows.append({'ok': None, 'text': text, 'fix': None, 'active': active})
 
     version = shelltheme.installed_shell_version()
     check(version in shelltheme.available_versions(), f'GNOME Shell {version or "not found"}',
@@ -534,9 +552,9 @@ def doctor(ctx):
     if state is not None:
         error = (extension_info(UUID) or {}).get('error')
         check(state == 'active', f'Jade Shell running in GNOME Shell ({state})',
-              '\n    '.join([*([f'GNOME Shell says: {error}'] if error else []),
-                             'Log out and back in (GNOME Shell loads extensions at login).',
-                             'If it stays like this, check: journalctl --user -b | grep -i jade']))
+              '\n'.join([*([f'GNOME Shell says: {error}'] if error else []),
+                          'Log out and back in (GNOME Shell loads extensions at login).',
+                          'If it stays like this, check: journalctl --user -b | grep -i jade']))
     # Packages stamp their version into the extension; the Shell keeps running
     # the code it loaded at login until the next one.
     running = (extension_info(UUID) or {}).get('version-name')
@@ -552,18 +570,33 @@ def doctor(ctx):
           f'Run: jade setup (turns off {", ".join(REPLACED[uuid][0] for uuid in clashing)})')
     paths, units = leftovers()
     check(not paths and not units, 'No older or development copies in your home folder',
-          '\n    '.join(['Remove them with:', *leftover_commands(paths, units)]))
+          '\n'.join(['Remove them with:', *leftover_commands(paths, units)]))
     if not ctx.settings.has(DOCK_SCHEMA):  # optional: the look is complete without it, just dockless
-        say('· No dock installed (optional). For the full look, install Dash to Dock.')
+        note('No dock installed (optional). For the full look, install Dash to Dock.')
 
     current = engine.current().get('theme')
     check(bool(current), f'Theme: {current or "none applied"}', 'Run: jade setup')
     alone = engine.left_alone(ctx.settings)
     for target in engine.selected():
         reason = 'left alone: jade apps on ' + target.name if target.name in alone else target.available(ctx)
-        say(f'  {"·" if reason is None else "-"} {target.label}{"" if reason is None else f" ({reason})"}')
-
+        note(target.label + ('' if reason is None else f' ({reason})'), active=reason is None)
     timer = systemctl('is-active', 'jade-usage.timer').stdout.strip()
-    say(f'  · AI usage collector: {timer or "unknown"}')
+    note(f'AI usage collector: {timer or "unknown"}')
+    return rows
+
+
+def doctor(ctx, as_json=False):
+    rows = diagnose(ctx)
+    problems = sum(row['ok'] is False for row in rows)
+    if as_json:
+        print(json.dumps({'version': __version__, 'problems': problems, 'rows': rows}))
+        return 1 if problems else 0
+    for row in rows:
+        if row['ok'] is None:
+            say(f'  {"·" if row["active"] else "-"} {row["text"]}')
+            continue
+        say(f'{"✓" if row["ok"] else "✗"} {row["text"]}')
+        if row['fix']:
+            say('\n'.join(f'    {line}' for line in row['fix'].splitlines()))
     say('All good.' if not problems else f'{problems} problem(s) found.')
     return 1 if problems else 0

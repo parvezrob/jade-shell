@@ -257,7 +257,7 @@ def run_setup(args, ctx):
 
 
 def run_doctor(args, ctx):
-    return setup.doctor(ctx)
+    return setup.doctor(ctx, as_json=args.json)
 
 
 def run_update(args, ctx):
@@ -321,7 +321,8 @@ def parser():
                                           'top bar choices)')
     p.add_argument('--theme', choices=themes.ids(), help='theme to apply (default: keep the current one, or Osaka Jade)')
     p.add_argument('--after-update', action='store_true', help=argparse.SUPPRESS)  # run by the extension at login
-    commands.add_parser('doctor', help='check that everything Jade Shell needs is in place')
+    commands.add_parser('doctor', help='check that everything Jade Shell needs is in place').add_argument(
+        '--json', action='store_true', help='print the checks as JSON (for the settings window)')
     p = commands.add_parser('update', help='install the latest Jade Shell release')
     p.add_argument('--check', action='store_true', help="only say whether there's a newer version")
     p.add_argument('--json', action='store_true', help='print the check as JSON (for the extension)')
