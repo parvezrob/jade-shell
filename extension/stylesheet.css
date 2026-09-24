@@ -146,3 +146,16 @@
 /* ---------- modes that are on (stay awake, night light, Do Not Disturb) ---------- */
 .jade-modes-box { spacing: 2px; }
 .jade-mode { padding: 0 3px; }
+
+/* ---------- the Jade Menu ---------- */
+.jade-menu { width: 520px; }
+.jade-menu .modal-dialog-content-box { padding: 18px 18px 8px; spacing: 0; }
+.jade-menu-title { padding: 0 2px 10px; }
+.jade-menu-search { margin-bottom: 8px; padding: 8px 10px; }
+.jade-menu-row { padding: 6px 8px; }
+.jade-menu-row-box { spacing: 12px; }
+.jade-menu-icon { icon-size: 16px; }
+.jade-menu-app-icon { icon-size: 20px; }
+.jade-menu-label { font-size: 10pt; }
+.jade-menu-path { font-size: 8.5pt; }
+.jade-menu-mark { font-size: 10pt; min-width: 12px; }

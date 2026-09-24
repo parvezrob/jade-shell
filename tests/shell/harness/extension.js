@@ -96,6 +96,72 @@ async function states(role, name) {
     await wait(300);
 }
 
+// Super+Alt+Space: the Jade Menu, opened, walked into Toggles, searched,
+// and closed with Escape; how long opening takes.
+async function jadeMenu() {
+    const menu = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('JadeMenu');
+    if (!menu) {
+        log('menu: none');
+        return;
+    }
+    const keyboard = Clutter.get_default_backend().get_default_seat().create_virtual_device(
+        Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    const press = async (...keys) => {
+        for (const key of keys)
+            keyboard.notify_keyval(now(), key, Clutter.KeyState.PRESSED);
+        for (const key of keys.reverse())
+            keyboard.notify_keyval(now(), key, Clutter.KeyState.RELEASED);
+        await wait(300);
+    };
+    // An entry of one's own.
+    const config = GLib.build_filenamev([GLib.get_user_config_dir(), 'jade-shell']);
+    GLib.mkdir_with_parents(config, 0o755);
+    GLib.file_set_contents(`${config}/menu.json`,
+        JSON.stringify({items: [{path: 'Setup/Harness Entry', command: 'true'}, {path: 'Mine/Deep/Thing', command: 'true'}]}));
+    const opens = [];
+    for (let i = 0; i < 5; i++) {
+        const t = now();
+        menu.open();
+        const built = now() - t;
+        await new Promise(resolve => {
+            const id = global.stage.connect('after-paint', () => {
+                global.stage.disconnect(id);
+                resolve();
+            });
+        });
+        opens.push([built / 1000, (now() - t) / 1000]);
+        menu._dialog.close();
+        await wait(600);
+    }
+    const median = list => [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)].toFixed(1);
+    log(`menu: open builds in ${median(opens.map(o => o[0]))} ms, first paint after ${median(opens.map(o => o[1]))} ms (median of 5)`);
+    await press(Clutter.KEY_Super_L, Clutter.KEY_Alt_L, Clutter.KEY_space);
+    await wait(700);
+    log(`menu: open ${Boolean(menu._dialog)}, ${menu._rows?.length} rows: ${menu._rows?.map(r => r.entry.label).join(', ')}`);
+    await shoot('menu');
+    await press(Clutter.KEY_Down);
+    await press(Clutter.KEY_Down);
+    await press(Clutter.KEY_Return);
+    await wait(400);
+    log(`menu: → ${menu._title.text}: ${menu._rows?.map(r => r.entry.label).join(', ')}`);
+    await shoot('menu-toggles');
+    await press(Clutter.KEY_Escape);
+    for (const key of [Clutter.KEY_n, Clutter.KEY_i, Clutter.KEY_g, Clutter.KEY_h, Clutter.KEY_t])
+        await press(key);
+    await wait(300);
+    log(`menu: "night" → ${menu._rows?.map(r => `${r.entry.label} (${r.path.join('/')})`).join(', ')}`);
+    await shoot('menu-search');
+    menu._entry.set_text('harness');
+    await wait(300);
+    log(`menu: "harness" → ${menu._rows?.map(r => `${r.entry.label} (${r.path.join('/')})`).join(', ')}; ` +
+        `root has ${menu._root.map(e => e.label).join(', ')}`);
+    menu._entry.set_text('');
+    await press(Clutter.KEY_Escape);
+    await press(Clutter.KEY_Escape);
+    await wait(500);
+    log(`menu: closed ${!menu._dialog}`);
+}
+
 // GNOME's pop-ups and dialogs in the theme: volume, a password prompt (as
 // polkit draws it), Run a Command; the lock screen last (it stays locked).
 async function popups() {
@@ -1286,6 +1352,7 @@ export default class Harness extends Extension {
         await bellShortcuts();
         await cheatSheet();
         await modes();
+        await jadeMenu();
         await popups();
         await clockFollowsGnome();
         await highContrast();

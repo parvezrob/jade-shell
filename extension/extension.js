@@ -14,6 +14,7 @@ import {Desktop} from './lib/desktop.js';
 import {Dock} from './lib/dock/dock.js';
 import {SimpleCalendar} from './lib/datemenu.js';
 import {Modes} from './lib/modes.js';
+import {JadeMenu} from './lib/menu.js';
 import {Monitor} from './lib/monitor.js';
 import {Notifications} from './lib/notifications.js';
 import {Picker} from './lib/picker.js';
@@ -39,6 +40,7 @@ export default class JadeShell extends Extension {
             {key: 'show-usage', make: () => new Usage(this, this._settings, this._shellTheme)},
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
             {key: null, make: () => new CheatSheet(this._settings)},
+            {key: null, make: () => new JadeMenu(this, this._settings, name => this._part(name))},
             {key: 'notification-bell', make: () => new Notifications(this, this._settings)},
             {key: null, make: () => new Modes(this, this._settings)},
             {key: null, make: () => new Updates(this, this._settings)},
@@ -59,6 +61,11 @@ export default class JadeShell extends Extension {
         this._shellTheme.disable();
         this._shellTheme = null;
         this._settings = null;
+    }
+
+    // A running part by its class name (for the Jade Menu), or null.
+    _part(name) {
+        return this._parts?.find(part => part.instance?.constructor.name === name)?.instance ?? null;
     }
 
     _openPicker() {

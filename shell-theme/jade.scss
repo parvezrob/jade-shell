@@ -557,3 +557,24 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
   .button, .icon-button, .login-dialog-button { border-radius: 0; }
   .login-dialog-auth-list-item, .login-dialog-user-list .login-dialog-user-list-item { border-radius: 0; }
 }
+
+// ------------------------------------------------------------------ the Jade Menu (Super+Alt+Space)
+
+.modal-dialog.jade-menu {
+  .jade-menu-title { @include om-caps; color: $jade-accent; }
+  .jade-menu-search {
+    @include om-control;
+    font-family: $jade-panel-font;
+    &:focus { border-color: $jade-accent; }
+    StLabel.hint-text { color: $om-dim; }
+  }
+  .jade-menu-row {
+    color: $jade-foreground;
+    border: 1px solid transparent;
+    &:selected { background-color: $om-fg-12; border-color: $om-fg-25; color: $jade-strong; }
+  }
+  .jade-menu-icon { color: $om-dim; }
+  .jade-menu-row:selected .jade-menu-icon { color: $jade-accent; }
+  .jade-menu-path { color: $om-dimmer; }
+  .jade-menu-mark { color: $jade-accent; font-weight: bold; }
+}
