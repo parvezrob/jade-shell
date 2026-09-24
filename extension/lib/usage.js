@@ -261,7 +261,7 @@ export class Usage {
         this._tick = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 30, () => {
             this._renderPanel();
             if (this._button.menu.isOpen)
-                this._renderMenu();
+                this._refreshClocks();
             return GLib.SOURCE_CONTINUE;
         });
     }
@@ -407,7 +407,7 @@ export class Usage {
         // the 30 s tick keeps it current while open, so only the minutes
         // shown (ages, countdowns) can be behind here.
         if (Date.now() - this._menuRenderedAt >= 30_000)
-            this._renderMenu();
+            this._refreshClocks();
         // Opening the menu is asking for current limits; local scans are reused.
         if (!this._refreshing && Date.now() - this._lastProbe > LIMITS_PROBE_GAP_S * 1000)
             this._runCollector('--limits-only');
@@ -534,10 +534,28 @@ export class Usage {
         if (!providers.some(p => p.id === this._selected) && providers.length)
             this._selected = providers[0].id;
         const record = this._records[this._selected];
+        this._clocks = [];
         this._renderHero(record);
         this._renderSwitch(providers);
         this._renderContent(record);
         this._renderFooter();
+        this._menuRenderedAt = Date.now();
+    }
+
+    // What changes with the clock alone (an age, a countdown): a label and
+    // how to write it, updated on their own. Rebuilding the whole menu for
+    // them cost 15-20 ms at an open.
+    _clock(actor, update) {
+        this._clocks.push(update);
+        update();
+        return actor;
+    }
+
+    _refreshClocks() {
+        if (!this._alive)
+            return;
+        for (const update of this._clocks ?? [])
+            update();
         this._menuRenderedAt = Date.now();
     }
 
@@ -556,8 +574,12 @@ export class Usage {
             ? label(status.toUpperCase(), 'ai-hero-meta ai-urgent')
             : label((record.tierLabel || 'Subscription').toUpperCase(), 'ai-hero-meta'));
         this._hero.add_child(text);
-        const age = this._ageMs(record);
-        this._hero.add_child(label(Number.isFinite(age) ? formatAge(age) : '', `ai-caption${this._isStale(record) ? ' ai-urgent' : ''}`, {y_align: Clutter.ActorAlign.START}));
+        const ageLabel = label('', 'ai-caption', {y_align: Clutter.ActorAlign.START});
+        this._hero.add_child(this._clock(ageLabel, () => {
+            const age = this._ageMs(record);
+            ageLabel.text = Number.isFinite(age) ? formatAge(age) : '';
+            ageLabel[this._isStale(record) ? 'add_style_class_name' : 'remove_style_class_name']('ai-urgent');
+        }));
     }
 
     _renderSwitch(providers) {
@@ -622,9 +644,13 @@ export class Usage {
                 top.add_child(label(`${Math.round(limit.percent * 100)}%`, `ai-value${hot ? ' ai-urgent' : ''}`));
                 row.add_child(top);
                 row.add_child(meter(limit.percent, {color: hot ? RGB.urgent : RGB.jade}));
-                const inMs = resetInMs(limit, nowMs);
-                if (inMs !== null)
-                    row.add_child(label(inMs > 0 ? `Resets in ${formatDuration(inMs)}` : 'Reset due · refresh for new numbers', 'ai-caption'));
+                if (resetInMs(limit, nowMs) !== null) {
+                    const resets = label('', 'ai-caption');
+                    row.add_child(this._clock(resets, () => {
+                        const inMs = resetInMs(limit, Date.now());
+                        resets.text = inMs > 0 ? `Resets in ${formatDuration(inMs)}` : 'Reset due · refresh for new numbers';
+                    }));
+                }
                 section.add_child(row);
             }
             const credits = Number(record.resetCredits) || 0;
