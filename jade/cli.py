@@ -3,6 +3,8 @@ import argparse
 import contextlib
 import json
 import pathlib
+import re
+import subprocess
 import sys
 
 import gi
@@ -269,6 +271,62 @@ def apps_on(args, ctx):
     return 0
 
 
+# ------------------------------------------------------------------ font
+
+def monospace_families():
+    """Installed monospace font families, by fontconfig."""
+    try:
+        out = subprocess.run(['fc-list', ':spacing=100', 'family'], capture_output=True, text=True, timeout=20).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    names = {line.split(',')[0].strip() for line in out.splitlines() if line.strip()}
+    return sorted(name for name in names if 'Emoji' not in name)
+
+
+def current_font(ctx):
+    value = ctx.settings.get('org.gnome.desktop.interface').get_string('monospace-font-name')
+    return re.sub(r'\s+\d+(\.\d+)?$', '', value)
+
+
+def font_list(args, ctx):
+    families = monospace_families()
+    current = current_font(ctx)
+    if getattr(args, 'json', False):
+        print(json.dumps({'families': families, 'current': current}))
+        return 0
+    for family in families:
+        print(f'{"*" if family == current else " "} {family}')
+    if not any('Nerd Font' in family and 'Symbols' not in family for family in families):
+        print('\nPrompts and bars that draw icons (Starship, for one) want a Nerd Font, such as '
+              'JetBrainsMono Nerd Font: https://www.nerdfonts.com/font-downloads')
+    return 0
+
+
+FONT_TARGETS = ['font', 'kitty', 'ghostty', 'alacritty']
+
+
+def font_set(args, ctx):
+    family = ' '.join(args.family)
+    families = monospace_families()
+    match = next((f for f in families if f.lower() == family.lower()), None)
+    if families and not match:
+        print(f'jade: {family} is not an installed monospace font; see: jade font list', file=sys.stderr)
+        return 1
+    ctx.font = match or family
+    state = engine.current()
+    theme = themes.load(state.get('theme') or 'osaka-jade')
+    ctx.wallpaper_index = state.get('wallpaper') or 0
+    changes, _backup = engine.apply(theme, ctx, only=FONT_TARGETS)
+    if not changes:
+        print(f'{ctx.font}: already the font')
+        return 0
+    places = join(['GNOME', *(t.title for t in engine.selected(only=FONT_TARGETS)
+                              if t.name != 'font' and t.name not in ctx.absent and t.name not in ctx.skipped)])
+    print(f'{ctx.font} set for {places} (undo: jade theme undo)')
+    print_skipped(ctx, FONT_TARGETS)
+    return 0
+
+
 # ------------------------------------------------------------------ usage
 
 def usage_collect(args, ctx):
@@ -343,6 +401,13 @@ def parser():
         apps.add_parser(name, help=text).add_argument('names', type=lambda t: target_list(t)[0], nargs='+',
                                                       metavar='NAME', help=', '.join(TARGETS))
 
+    font = commands.add_parser('font', help='the monospace font of GNOME and the terminals').add_subparsers(
+        dest='action', metavar='action')
+    font.add_parser('list', help='installed monospace fonts; * marks the current one').add_argument(
+        '--json', action='store_true')
+    font.add_parser('set', help='use a font in GNOME and every themed terminal').add_argument(
+        'family', nargs='+', help='a family from jade font list, e.g. JetBrains Mono')
+
     usage = commands.add_parser('usage', help='Claude and Codex usage').add_subparsers(
         dest='action', required=True, metavar='action')
     p = usage.add_parser('collect', help='collect usage for the top bar')
@@ -374,6 +439,7 @@ HANDLERS = {
     ('theme', 'set'): theme_set, ('theme', 'wallpaper'): theme_wallpaper, ('theme', 'undo'): theme_undo,
     ('theme', 'reload'): theme_reload, ('theme', 'fetch'): theme_fetch, ('theme', 'thumbs'): theme_thumbs,
     ('usage', 'collect'): usage_collect,
+    ('font', None): font_list, ('font', 'list'): font_list, ('font', 'set'): font_set,
     ('apps', None): apps_list, ('apps', 'list'): apps_list, ('apps', 'off'): apps_off, ('apps', 'on'): apps_on,
     ('setup', None): run_setup, ('doctor', None): run_doctor, ('update', None): run_update, ('restore', None): run_restore,
     ('debug', None): run_debug,
@@ -385,7 +451,7 @@ HANDLERS = {
 # file and moves it into place.
 EXCLUSIVE = {('theme', 'set'), ('theme', 'wallpaper'), ('theme', 'undo'), ('theme', 'reload'),
              ('setup', None), ('restore', None),
-             ('apps', 'off'), ('apps', 'on')}
+             ('apps', 'off'), ('apps', 'on'), ('font', 'set')}
 
 
 def main(argv=None):

@@ -7,7 +7,7 @@ import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/ex
 
 import {aboutPage} from './settings/about.js';
 import {dockPage} from './settings/dock.js';
-import {jadeCommand, output, run} from './settings/common.js';
+import {capture, jadeCommand, output, run} from './settings/common.js';
 import {hero} from './settings/hero.js';
 import {ShortcutRow} from './settings/shortcut.js';
 import {applyStyle, capsTitles} from './settings/style.js';
@@ -71,6 +71,7 @@ export default class JadePreferences extends ExtensionPreferences {
         spinRow(settings, desktop, 'app-grid-columns', 'App grid columns', null, 0, 12);
         spinRow(settings, desktop, 'app-grid-rows', 'App grid rows', null, 0, 8);
         spinRow(settings, desktop, 'app-grid-icon-size', 'App grid icon size', 'In pixels', 0, 192);
+        this._fillFont(desktop);
 
         const keyboard = new Adw.PreferencesGroup({title: 'Keyboard'});
         page.add(keyboard);
@@ -121,6 +122,38 @@ export default class JadePreferences extends ExtensionPreferences {
         window.set_default_size(720, 860);
         capsTitles(window);
         applyStyle(window, top.update);
+    }
+
+    // The monospace font of GNOME and the terminals (`jade font set`).
+    async _fillFont(group) {
+        const jade = jadeCommand();
+        let fonts = null;
+        try {
+            fonts = JSON.parse(jade ? (await capture([jade, 'font', 'list', '--json'])).stdout : '');
+        } catch {}
+        if (!fonts?.families?.length)
+            return;
+        const row = new Adw.ComboRow({
+            title: 'Monospace font', subtitle: 'GNOME and the themed terminals',
+            model: Gtk.StringList.new(fonts.families),
+            selected: Math.max(0, fonts.families.indexOf(fonts.current)),
+        });
+        let current = fonts.current;
+        row.connect('notify::selected', async () => {
+            const family = fonts.families[row.selected];
+            if (!family || family === current)
+                return;
+            row.sensitive = false;
+            const result = await capture([jade, 'font', 'set', family]);
+            row.sensitive = true;
+            if (result.ok) {
+                current = family;
+                row.subtitle = 'GNOME and the themed terminals';
+            } else {
+                row.subtitle = `Did not work: ${(result.stderr || result.stdout).trim().split('\n').pop()}`;
+            }
+        });
+        group.add(row);
     }
 
     // One switch per app `jade apps` knows, which also does the work: putting

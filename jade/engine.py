@@ -28,6 +28,7 @@ class Context:
     skipped: dict = field(default_factory=dict)  # targets that failed or were refused, by name: why
     absent: dict = field(default_factory=dict)  # targets whose app isn't here, by name: why
     hook_failures: list = field(default_factory=list)  # your hooks that failed after a switch
+    font: str | None = None  # a monospace font being chosen (jade font set)
 
 
 class Busy(RuntimeError):

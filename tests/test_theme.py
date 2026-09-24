@@ -836,6 +836,30 @@ class Sandbox(unittest.TestCase):
         self.jade('theme', 'undo')
         self.assertFalse((self.home / '.local/state/jade-shell/themed/colors.sh').exists())
 
+    @unittest.skipUnless('JetBrains Mono' in subprocess.run(['fc-list', ':spacing=100', 'family'], capture_output=True,
+                                                             text=True).stdout, 'needs JetBrains Mono installed')
+    def test_font_set_reaches_gnome_and_terminals_and_undoes(self):
+        interface = ('org.gnome.desktop.interface', 'monospace-font-name')
+        self.gsettings('set', *interface, "'Source Code Pro 13'")
+        out = self.jade('font', 'set', 'jetbrains', 'mono')
+        self.assertIn('JetBrains Mono set for GNOME', out)
+        self.assertEqual(self.gsettings('get', *interface), "'JetBrains Mono 13'")  # the size stays
+        config = self.home / '.config'
+        self.assertIn('include jade-font.conf', (config / 'kitty/kitty.conf').read_text())
+        self.assertEqual((config / 'kitty/jade-font.conf').read_text(), 'font_family JetBrains Mono\n')
+        self.assertIn('config-file = jade-font.conf', (config / 'ghostty/config').read_text())
+        toml = tomllib.loads((config / 'alacritty/jade-theme.toml').read_text())
+        self.assertEqual(toml['font']['normal']['family'], 'JetBrains Mono')
+        # A theme switch keeps the font.
+        self.jade('theme', 'set', 'nord', '--only', 'kitty,font')
+        self.assertIn('include jade-font.conf', (config / 'kitty/kitty.conf').read_text())
+        self.jade('theme', 'undo')
+        self.jade('theme', 'undo')  # the font too
+        self.assertEqual(self.gsettings('get', *interface), "'Source Code Pro 13'")
+        self.assertFalse((config / 'kitty/jade-font.conf').exists())
+        self.assertNotIn('jade-font', (config / 'kitty/kitty.conf').read_text())
+        self.assertEqual(self.run_jade('font', 'set', 'No Such Mono').returncode, 1)
+
     def test_alacritty_keeps_its_own_imports_on_top(self):
         toml = self.home / '.config/alacritty/alacritty.toml'
         toml.write_text('[general]\nimport = ["~/.config/alacritty/mine.toml"]\n')

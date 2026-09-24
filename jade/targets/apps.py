@@ -11,6 +11,7 @@ from typing import ClassVar
 from .. import palette as pal
 from .. import shelltheme, themes
 from ..store import File, Setting, config_home, data_home, read_text, state_home
+from . import font
 from .base import Absent
 
 MARK_BEGIN = '# >>> jade-theme (generated; edits here are replaced)'
@@ -313,7 +314,7 @@ class Kitty:
         folder = config_home() / 'kitty'
         conf = read_text(folder / 'kitty.conf')
         # Included last, so it overrides the inline colors without deleting them.
-        included = managed_block(conf, 'include jade-theme.conf')
+        included = managed_block(conf, 'include jade-theme.conf' + ('\ninclude jade-font.conf' if font.chosen(ctx) else ''))
         return [
             File(folder / 'jade-theme.conf', themes.render(themes.template('kitty.conf.tpl'), theme.colors)),
             File(folder / 'kitty.conf', included),
@@ -342,7 +343,8 @@ class Ghostty:
     def changes(self, theme, ctx):
         config = self.config()
         # Loaded last, so it overrides the colors set above it without deleting them.
-        included = managed_block(read_text(config), 'config-file = jade-theme.conf')
+        included = managed_block(read_text(config), 'config-file = jade-theme.conf' +
+                                 ('\nconfig-file = jade-font.conf' if font.chosen(ctx) else ''))
         return [
             File(config.parent / 'jade-theme.conf', themes.render(themes.template('ghostty.conf.tpl'), theme.colors)),
             File(config, included),
@@ -526,11 +528,11 @@ class Alacritty:
         else:
             # Top-level keys must come before any table: at the very top.
             text = managed_block('', f'general.import = [{self.IMPORT}]') + ('\n' + text if text.strip() else '')
-        return [
-            File(self.config().parent / 'jade-theme.toml',
-                 themes.render(themes.template('alacritty.toml.tpl'), theme.colors)),
-            File(self.config(), text),
-        ]
+        themed = themes.render(themes.template('alacritty.toml.tpl'), theme.colors)
+        family = font.chosen(ctx)
+        if family:  # `jade font set`
+            themed += '\n' + font.font_text('alacritty', family)
+        return [File(self.config().parent / 'jade-theme.toml', themed), File(self.config(), text)]
 
     def revert(self, path, text, old):
         if path != self.config():
