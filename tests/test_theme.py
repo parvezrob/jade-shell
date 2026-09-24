@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import unittest
 from unittest import mock
@@ -758,6 +759,37 @@ class Sandbox(unittest.TestCase):
         self.jade('theme', 'undo')
         self.assertEqual(conf.read_text(), 'set -g mouse on\nset -g status-style "bg=red"\n')
         self.assertEqual(style(), 'bg=red')  # and its own again
+
+    @unittest.skipUnless(shutil.which('nvim'), 'needs nvim')
+    def test_neovim_colorscheme_follows_running_editors(self):
+        runtime = pathlib.Path(self.tmp.name) / 'run'
+        runtime.mkdir(mode=0o700)
+        self.env['XDG_RUNTIME_DIR'] = str(runtime)
+        socket = runtime / 'nvim.4242.0'
+        self.jade('theme', 'set', 'nord', '--only', 'neovim')
+        colors = self.home / '.config/nvim/colors/jade.lua'
+        self.assertIn('generated for the current theme (Nord)', colors.read_text())
+        editor = subprocess.Popen(['nvim', '--headless', '--clean', '--listen', str(socket),
+                                   '--cmd', f'set rtp^={self.home}/.config/nvim', '-c', 'colorscheme jade'], env=self.env,
+                                  stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.addCleanup(editor.wait)
+        self.addCleanup(editor.kill)
+        for _ in range(50):
+            if socket.exists():
+                break
+            time.sleep(0.1)
+
+        def background():
+            expr = 'printf("#%06x", nvim_get_hl(0, {"name": "Normal"}).bg)'
+            return subprocess.run(['nvim', '--server', str(socket), '--remote-expr', expr], env=self.env,
+                                  capture_output=True, text=True).stdout.strip()
+
+        self.assertEqual(background(), themes.load('nord').colors['background'].lower())
+        self.jade('theme', 'set', 'tokyo-night', '--only', 'neovim')  # the running editor follows
+        self.assertEqual(background(), themes.load('tokyo-night').colors['background'].lower())
+        self.jade('theme', 'undo')
+        self.jade('theme', 'undo')
+        self.assertFalse(colors.exists())
 
     def test_alacritty_keeps_its_own_imports_on_top(self):
         toml = self.home / '.config/alacritty/alacritty.toml'

@@ -1,4 +1,5 @@
 """Apps themed through files: the Shell theme, terminals, launcher, editor."""
+import contextlib
 import json
 import os
 import pathlib
@@ -404,6 +405,37 @@ TMUX_STYLES = ['status-style', 'window-status-style', 'window-status-current-sty
                'window-status-bell-style', 'pane-border-style', 'pane-active-border-style', 'message-style',
                'message-command-style', 'mode-style', 'copy-mode-match-style', 'copy-mode-current-match-style',
                'popup-border-style', 'menu-style', 'menu-selected-style', 'menu-border-style', 'clock-mode-colour']
+
+
+class Neovim:
+    """A `jade` colorscheme drawn from the palette (no plugin): chosen with
+    `:colorscheme jade`, rewritten at each switch, and re-applied in every
+    running Neovim that uses it."""
+    name = 'neovim'
+    title = 'Neovim'
+    label = 'Neovim colorscheme (:colorscheme jade)'
+
+    def colors_file(self):
+        return config_home() / 'nvim/colors/jade.lua'
+
+    def available(self, ctx):
+        found = shutil.which('nvim') or (config_home() / 'nvim').exists()
+        return None if found else Absent('Neovim is not installed')
+
+    def changes(self, theme, ctx):
+        values = {**theme.colors, 'name': theme.name}
+        return [File(self.colors_file(), themes.render(themes.template('neovim.lua.tpl'), values))]
+
+    def reload(self, ctx):
+        """Each Neovim listens on $XDG_RUNTIME_DIR/nvim.<pid>.0 (0.9 and later)."""
+        if not shutil.which('nvim'):
+            return
+        runtime = pathlib.Path(os.environ.get('XDG_RUNTIME_DIR') or f'/run/user/{os.getuid()}')
+        expr = 'execute(\'if get(g:, "colors_name", "") ==# "jade" | colorscheme jade | endif\')'
+        for socket in runtime.glob('nvim.*'):
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                subprocess.run(['nvim', '--server', str(socket), '--remote-expr', expr], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=3)
 
 
 class Alacritty:
