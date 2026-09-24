@@ -130,8 +130,19 @@ def load(theme_id):
 TOKEN = re.compile(r'\{\{\s*(\w+?)(_strip|_rgb)?\s*\}\}')
 
 
+MIX = re.compile(r'\{\{\s*mix(_strip|_rgb)?\s+(\w+)\s+(\w+)\s+([0-9.]+)%\s*\}\}')
+
+
 def render(template, colors):
-    """Fill Omarchy-style `{{ key }}`, `{{ key_strip }}` and `{{ key_rgb }}` tokens."""
+    """Fill Omarchy-style `{{ key }}`, `{{ key_strip }}` and `{{ key_rgb }}` tokens,
+    and `{{ mix a b 35% }}` (35% of b blended into a, with _strip and _rgb too)."""
+    def mixed(match):
+        form, start, end, amount = match.groups()
+        color = pal.mix(colors[start], colors[end], float(amount) / 100)
+        return color.lstrip('#') if form == '_strip' else ','.join(map(str, pal.rgb(color))) if form == '_rgb' else color
+
+    template = MIX.sub(mixed, template)
+
     def value(match):
         key, form = match.groups()
         color = colors[key]

@@ -1,5 +1,6 @@
 """Apps themed through files: the Shell theme, terminals, launcher, editor."""
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -321,6 +322,99 @@ class Kitty:
 
     def reload(self, ctx):
         signal('kitty', 'USR1')
+
+
+class Ghostty:
+    name = 'ghostty'
+    title = 'Ghostty'
+    label = 'Ghostty terminal'
+
+    def config(self):
+        # Ghostty 1.3 prefers config.ghostty; older ones read config.
+        folder = config_home() / 'ghostty'
+        return next((path for path in (folder / 'config.ghostty', folder / 'config') if path.exists()), None)
+
+    def available(self, ctx):
+        return None if self.config() else Absent('Ghostty is not configured')
+
+    def changes(self, theme, ctx):
+        config = self.config()
+        # Loaded last, so it overrides the colors set above it without deleting them.
+        included = managed_block(read_text(config), 'config-file = jade-theme.conf')
+        return [
+            File(config.parent / 'jade-theme.conf', themes.render(themes.template('ghostty.conf.tpl'), theme.colors)),
+            File(config, included),
+        ]
+
+    def revert(self, path, text, old):
+        return revert_block(text, old) if path == self.config() else None
+
+    def reload(self, ctx):
+        signal('ghostty', 'USR2')  # Ghostty 1.2+ reloads its config
+
+
+class Alacritty:
+    """Alacritty reloads its config and imports by itself. Colors set in
+    alacritty.toml itself still win over an import, as Alacritty intends."""
+    name = 'alacritty'
+    title = 'Alacritty'
+    label = 'Alacritty terminal'
+    IMPORT = '"~/.config/alacritty/jade-theme.toml"'
+
+    def config(self):
+        return config_home() / 'alacritty/alacritty.toml'
+
+    def available(self, ctx):
+        return None if self.config().exists() else Absent('Alacritty is not configured')
+
+    def changes(self, theme, ctx):
+        text = read_text(self.config())
+        imports = re.search(r'^(\s*(?:general\.)?import\s*=\s*\[)', text, re.M)
+        if self.IMPORT in text:
+            pass
+        elif imports:  # the person's own import list: ours goes first, so theirs win
+            text = text[:imports.end()] + self.IMPORT + ', ' + text[imports.end():]
+        else:
+            # Top-level keys must come before any table: at the very top.
+            text = managed_block('', f'general.import = [{self.IMPORT}]') + ('\n' + text if text.strip() else '')
+        return [
+            File(self.config().parent / 'jade-theme.toml',
+                 themes.render(themes.template('alacritty.toml.tpl'), theme.colors)),
+            File(self.config(), text),
+        ]
+
+    def revert(self, path, text, old):
+        if path != self.config():
+            return None
+        reverted = revert_block(text, old)
+        if reverted is not None:
+            return reverted.lstrip('\n') if not BLOCK.search(old or '') else reverted
+        if self.IMPORT + ', ' in text and self.IMPORT not in (old or ''):
+            return text.replace(self.IMPORT + ', ', '', 1)
+        return None
+
+    def reload(self, ctx):
+        pass  # Alacritty watches its config and its imports
+
+
+class ClaudeCode:
+    """A `jade` theme for Claude Code in ~/.claude/themes, which Claude Code
+    reloads live. Choosing it stays the person's call (/theme → jade)."""
+    name = 'claude'
+    title = 'Claude Code'
+    label = 'Claude Code (choose it with /theme)'
+
+    def folder(self):
+        return pathlib.Path(os.environ.get('CLAUDE_CONFIG_DIR') or pathlib.Path.home() / '.claude')
+
+    def available(self, ctx):
+        return None if self.folder().is_dir() else Absent('Claude Code is not set up')
+
+    def changes(self, theme, ctx):
+        return [File(self.folder() / 'themes/jade.json', themes.render(themes.template('claude.json.tpl'), theme.colors))]
+
+    def reload(self, ctx):
+        pass  # Claude Code watches its themes folder
 
 
 class Starship:

@@ -60,10 +60,13 @@ Log out and back in once to start the extension. A few notes at that first login
 | Ptyxis (`ptyxis`) | an Omarchy palette file, selected in every profile |
 | GNOME apps (`gtk`) | the theme's colors in a marked block of `~/.config/gtk-4.0/gtk.css` and `gtk-3.0/gtk.css` (libadwaita's named colors and CSS variables), so Files, Settings, Text Editor and other GNOME apps follow the theme when they next start; GTK 3 apps follow with the adw-gtk3 theme. Setup lets Flatpak apps read those files; restore takes that back |
 | Kitty (`kitty`) | `jade-theme.conf`, included at the end of `kitty.conf` (your own colors stay, overridden); kitty reloads |
+| Ghostty (`ghostty`) | `jade-theme.conf`, loaded last from Ghostty's config (`config-file`); Ghostty reloads |
+| Alacritty (`alacritty`) | `jade-theme.toml`, imported first in `alacritty.toml` (colors you set there yourself still win); Alacritty reloads by itself |
 | Vicinae (`vicinae`) | an `omarchy-<theme>` theme, selected in its config |
 | Starship (`starship`) | a `jade` palette block (Catppuccin color names mapped to the theme) |
 | btop (`btop`) | a `jade` theme; btop reloads |
 | VS Code (`vscode`) | one local extension providing every theme as "Jade · Name"; switching sets `workbench.colorTheme` |
+| Claude Code (`claude`) | a `jade` theme in `~/.claude/themes`, which Claude Code reloads live; choose it once with `/theme` |
 
 Everything applies live; newly opened GTK apps pick up the accent as they start. Apps you don't have are skipped, and so is one whose config Jade Shell can't read (the switch says why). Symlinked dotfiles stay symlinks: Jade Shell writes through the link. Offline, a switch still changes the colors and keeps your current wallpaper.
 

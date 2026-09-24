@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from unittest import mock
 
@@ -449,6 +450,8 @@ class Sandbox(unittest.TestCase):
             config / 'starship.toml': 'palette = "catppuccin_mocha"\n\n[palettes.catppuccin_mocha]\nred = "#f38ba8"\n',
             config / 'btop/btop.conf': 'color_theme = "catppuccin_mocha"\ntheme_background = true\n',
             config / 'Code/User/settings.json': '{\n    "workbench.colorTheme": "Dark Modern",\n    "editor.fontSize": 14\n}\n',
+            config / 'ghostty/config': 'font-size = 12\nbackground = #1e1e2e\n',
+            config / 'alacritty/alacritty.toml': '[font]\nsize = 11.0\n',
         }
         for path, text in self.originals.items():
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -714,6 +717,33 @@ class Sandbox(unittest.TestCase):
         self.assertEqual(self.keyfile(), before)
         for path, text in self.originals.items():
             self.assertEqual(path.read_text(), text, path)
+
+    def test_new_terminals_and_claude_code_follow_and_undo(self):
+        (self.home / '.claude').mkdir()
+        self.jade('theme', 'set', 'nord', '--only', 'ghostty,alacritty,claude')
+        config = self.home / '.config'
+        self.assertTrue((config / 'ghostty/config').read_text().endswith('config-file = jade-theme.conf\n# <<< jade-theme\n'))
+        self.assertIn('background = #2e3440', (config / 'ghostty/jade-theme.conf').read_text())
+        alacritty = (config / 'alacritty/alacritty.toml').read_text()
+        self.assertTrue(alacritty.startswith('# >>> jade-theme'), alacritty)
+        self.assertTrue(tomllib.loads(alacritty)['general']['import'])
+        tomllib.loads((config / 'alacritty/jade-theme.toml').read_text())
+        claude = json.loads((self.home / '.claude/themes/jade.json').read_text())
+        self.assertEqual(claude['base'], 'dark')
+        self.jade('theme', 'undo')
+        for path in (config / 'ghostty/config', config / 'alacritty/alacritty.toml'):
+            self.assertEqual(path.read_text(), self.originals[path])
+        self.assertFalse((self.home / '.claude/themes/jade.json').exists())
+
+    def test_alacritty_keeps_its_own_imports_on_top(self):
+        toml = self.home / '.config/alacritty/alacritty.toml'
+        toml.write_text('[general]\nimport = ["~/.config/alacritty/mine.toml"]\n')
+        self.jade('theme', 'set', 'nord', '--only', 'alacritty')
+        imports = tomllib.loads(toml.read_text())['general']['import']
+        self.assertEqual(imports, ['~/.config/alacritty/jade-theme.toml', '~/.config/alacritty/mine.toml'])
+        toml.write_text(toml.read_text() + '\n[window]\nopacity = 0.9\n')  # edited since
+        self.jade('theme', 'undo')
+        self.assertEqual(toml.read_text(), '[general]\nimport = ["~/.config/alacritty/mine.toml"]\n\n[window]\nopacity = 0.9\n')
 
     def test_each_theme_keeps_its_wallpaper(self):
         nord = themes.load('nord')
