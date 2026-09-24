@@ -405,6 +405,21 @@ async function glass() {
     settings.reset('glass-tint');
     settings.reset('glass-blur');
     await wait(400);
+    // A theme switch with the glass on (after the sliders moved) still loads the
+    // new theme's colors: the tint stylesheet is in the theme once, never as a null.
+    const sheets = () => St.ThemeContext.get_for_stage(global.stage).get_theme().get_custom_stylesheets();
+    const glassSheets = () => sheets().filter(file => file?.get_basename() === 'jade-shell-glass.css').length;
+    log(`glass: stylesheets ${sheets().length}, nulls ${sheets().filter(file => !file).length}, glass tint loaded ${glassSheets()}x`);
+    await jade('theme', 'set', 'tokyo-night', '--only', 'gnome,shell');
+    await wait(3000);
+    const accent = Main.panel.statusArea['jade-picker'].menu.box.get_theme_node().get_border_color(St.Side.TOP);
+    log(`glass: after a switch to Tokyo Night: nulls ${sheets().filter(file => !file).length}, glass tint ${glassSheets()}x, ` +
+        `picker border #${[accent.red, accent.green, accent.blue].map(c => c.toString(16).padStart(2, '0')).join('')} (Tokyo Night's accent is #7aa2f7)`);
+    await jade('theme', 'set', THEMES[0], '--only', 'gnome,shell');
+    await wait(3000);
+    const back = Main.panel.statusArea['jade-picker'].menu.box.get_theme_node().get_border_color(St.Side.TOP);
+    log(`glass: and back: nulls ${sheets().filter(file => !file).length}, picker border ` +
+        `#${[back.red, back.green, back.blue].map(c => c.toString(16).padStart(2, '0')).join('')}`);
     log(`glass: picker background alpha at the default tint: ${alphaNow()}`);
     const frostedCount = [Main.panel].filter(actor => actor.get_effect('jade-glass')).length;
     log(`glass: frosted, top bar blurred ${frostedCount === 1}, ui group class ${Main.uiGroup.has_style_class_name('jade-frosted')}`);

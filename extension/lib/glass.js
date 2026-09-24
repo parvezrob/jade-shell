@@ -114,26 +114,40 @@ export class Glass {
         this._css.replace_contents(css, null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
     }
 
+    // Unloading and loading each change the theme, which calls back in here
+    // (through the theme context's 'changed'): once only, or the stylesheet
+    // would be in the theme twice, and the copy left behind by the next
+    // unload has no file, which breaks GNOME's next theme load (every
+    // switch after it would keep the old colors).
     _loadTint() {
         const theme = St.ThemeContext.get_for_stage(global.stage).get_theme();
-        if (!active || !theme)
+        if (!active || !theme || this._loadingTint)
             return;
+        this._loadingTint = true;
+        this._tintedTheme = theme;
         try {
             theme.unload_stylesheet(this._css);
-            this._tintedTheme = theme;
             theme.load_stylesheet(this._css);
         } catch (e) {
-            console.error(`Jade Shell: glass tint: ${e.message}\n${e.stack}`);
+            console.error(`Jade Shell: glass tint: ${e.message}`);
+        } finally {
+            this._loadingTint = false;
         }
     }
 
     _unloadTint() {
-        try {
-            this._tintedTheme?.unload_stylesheet(this._css);
-        } catch (e) {
-            console.error(`Jade Shell: glass tint: ${e.message}\n${e.stack}`);
-        }
+        const theme = this._tintedTheme;
         this._tintedTheme = null;
+        if (!theme || this._loadingTint)
+            return;
+        this._loadingTint = true;
+        try {
+            theme.unload_stylesheet(this._css);
+        } catch (e) {
+            console.error(`Jade Shell: glass tint: ${e.message}`);
+        } finally {
+            this._loadingTint = false;
+        }
     }
 
     _sync() {
