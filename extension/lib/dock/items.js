@@ -149,6 +149,16 @@ class JadeDockAppIcon extends AppDisplay.AppIcon {
         }
     }
 
+    // Dragged, the icon stays in its place, faded (GNOME's grid shrinks it,
+    // but the dock owns this icon's scale).
+    scaleAndFade() {
+        this.opacity = 90;
+    }
+
+    undoScaleAndFade() {
+        this.opacity = 255;
+    }
+
     // No folders in the dock: let the drag reach the dock itself.
     handleDragOver() {
         return DND.DragMotionResult.CONTINUE;

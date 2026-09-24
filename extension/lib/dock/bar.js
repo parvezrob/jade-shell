@@ -35,6 +35,7 @@ const PRESSURE = 50;         // px pushed into the bottom edge to reveal it
 const PRESSURE_TIMEOUT = 1000;
 
 const TOP_LEFT = new Graphene.Point({x: 0, y: 0});
+const REMOVE_AFTER_MS = 650;  // held away from the dock this long, a pinned app can be dropped to remove it
 
 // '#rrggbb' at an alpha, as CSS.
 // '#rrggbb' mixed toward '#rrggbb' by `amount`, as CSS.
@@ -117,7 +118,7 @@ export class Bar {
         Main.overview.connectObject(
             'showing', () => this._syncVisible(),
             'hidden', () => this._syncVisible(),
-            'item-drag-begin', () => this._dragBegin(),
+            'item-drag-begin', (_overview, source) => this._dragBegin(source),
             'item-drag-end', () => this._dragEnd(),
             'item-drag-cancelled', () => this._dragEnd(),
             this);
@@ -137,6 +138,9 @@ export class Bar {
     }
 
     destroy() {
+        if (this._dragMonitor)
+            DND.removeDragMonitor(this._dragMonitor);
+        this._disarmRemove();
         for (const id of Object.values(this._timers))
             GLib.source_remove(id);
         this._timers = {};
@@ -740,16 +744,92 @@ export class Bar {
 
     // ---------- dragging apps in ----------
 
-    _dragBegin() {
-        this._dragging = {index: -1};
+    _dragBegin(source) {
+        const item = source?._owner;
+        const pinned = item && this._apps.get(item.id) === item &&
+            AppFavorites.getAppFavorites().isFavorite(item.id);
+        this._dragging = {index: -1, removable: pinned ? item : null};
+        if (pinned) {
+            this._dragMonitor = {dragMotion: () => this._dragMotion()};
+            DND.addDragMonitor(this._dragMonitor);
+        }
         this._syncVisible();
     }
 
     _dragEnd() {
+        if (this._dragMonitor) {
+            DND.removeDragMonitor(this._dragMonitor);
+            this._dragMonitor = null;
+        }
+        this._disarmRemove();
         this._clearPlaceholder();
         this._dragging = null;
         this._syncVisible();
         this.wake();
+    }
+
+    // Dragged away from the dock and held there a moment, a pinned app shows
+    // "Remove" by the pointer, and dropping it there unpins it, as on a Mac.
+    _dragMotion() {
+        const [px, py] = global.get_pointer();
+        const x = px - this._monitor.x;
+        const y = py - this._monitor.y;
+        const [left, right] = this._extent ?? [0, 0];
+        const away = y < this._slabTop - this.metrics.icon || x < left - this.metrics.icon ||
+            x > right + this.metrics.icon;
+        if (!away) {
+            this._disarmRemove();
+        } else if (this._removeLabel) {
+            this._placeRemoveLabel(px, py);
+        } else if (!this._timers.remove) {
+            this._timers.remove = GLib.timeout_add(GLib.PRIORITY_DEFAULT, REMOVE_AFTER_MS, () => {
+                delete this._timers.remove;
+                this._armRemove();
+                return GLib.SOURCE_REMOVE;
+            });
+        }
+        return DND.DragMotionResult.CONTINUE;
+    }
+
+    _armRemove() {
+        const item = this._dragging?.removable;
+        if (!item)
+            return;
+        // A drop target over everything but the dragged icon itself.
+        this._removeShield = new St.Widget({
+            reactive: true, x: this._monitor.x, y: this._monitor.y,
+            width: this._monitor.width, height: this._monitor.height,
+        });
+        this._removeShield._delegate = {
+            handleDragOver: () => DND.DragMotionResult.MOVE_DROP,
+            acceptDrop: () => {
+                GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => AppFavorites.getAppFavorites().removeFavorite(item.id));
+                return true;
+            },
+        };
+        Main.uiGroup.insert_child_below(this._removeShield, Main.uiGroup.get_last_child());
+        this._removeLabel = new St.Label({text: 'Remove', style_class: 'jade-dock-label', style: this._label.style,
+            opacity: 0});
+        Main.uiGroup.add_child(this._removeLabel);
+        const [px, py] = global.get_pointer();
+        this._placeRemoveLabel(px, py);
+        this._removeLabel.ease({opacity: 255, duration: 120, mode: Clutter.AnimationMode.EASE_OUT_QUAD});
+    }
+
+    _placeRemoveLabel(px, py) {
+        const [, , width, height] = this._removeLabel.get_preferred_size();
+        this._removeLabel.set_position(Math.round(px - width / 2), Math.round(py - this.metrics.icon * 0.9 - height));
+    }
+
+    _disarmRemove() {
+        if (this._timers.remove) {
+            GLib.source_remove(this._timers.remove);
+            delete this._timers.remove;
+        }
+        this._removeShield?.destroy();
+        this._removeShield = null;
+        this._removeLabel?.destroy();
+        this._removeLabel = null;
     }
 
     _clearPlaceholder() {

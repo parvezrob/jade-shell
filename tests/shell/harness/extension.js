@@ -728,6 +728,28 @@ class DockScene {
         this.pointer.notify_button(now(), button, Clutter.ButtonState.RELEASED);
     }
 
+    // Press at (x, y), move through `points` a few pixels at a time, hold
+    // `holdMs` at the last one (calling `during` then), release.
+    async drag(x, y, points, holdMs = 300, during = null) {
+        this.move(x, y);
+        await wait(200);
+        this.pointer.notify_button(now(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+        await wait(120);
+        let [cx, cy] = [x, y];
+        for (const [tx, ty] of points) {
+            const steps = Math.max(1, Math.round(Math.hypot(tx - cx, ty - cy) / 6));
+            for (let i = 1; i <= steps; i++) {
+                this.move(cx + (tx - cx) * i / steps, cy + (ty - cy) * i / steps);
+                await wait(8);
+            }
+            [cx, cy] = [tx, ty];
+        }
+        await wait(holdMs);
+        await during?.();
+        this.pointer.notify_button(now(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+        await wait(700);
+    }
+
     // The bottom of the screen, tall enough for magnified icons and labels.
     shootDock(name) {
         const b = this.bar;
@@ -797,7 +819,8 @@ class DockScene {
 
     async run() {
         const bar = this.bar;
-        const apps = bar._items.filter(item => item.kind === 'app');
+        // Fresh each time: items come and go as apps are pinned and unpinned.
+        const appItems = () => bar._items.filter(item => item.kind === 'app');
         log(`DOCK items: ${bar._items.map(item => item.kind === 'app' ? item.id : item.kind).join(', ')}`);
         log(`DOCK metrics ${JSON.stringify(bar.metrics)} slab top ${bar._slabTop} extent ${bar._extent?.map(Math.round)}`);
         this.move(this.monitor.width / 2, 200);
@@ -863,18 +886,38 @@ class DockScene {
         await wait(800);
         log(`DOCK badges cleared: Files ${badge('org.gnome.Nautilus.desktop')?.visible}, Calendar ${badge('org.gnome.Calendar.desktop')?.visible}`);
 
+        // Dragging along the dock reorders it; dragged off and held, a pinned
+        // app shows "Remove", and dropping it there unpins it.
+        const favorites = () => global.settings.get_strv('favorite-apps');
+        const before = favorites();
+        await this.drag(this.centerOf(0), this.iconY, [[this.centerOf(0), this.iconY - 30],
+            [(this.centerOf(3) + this.centerOf(4)) / 2, this.iconY]], 500);
+        log(`DOCK dragged Firefox along: ${favorites().slice(0, 5).map(id => id.split('.').slice(-2, -1)[0]).join(' ')}`);
+        this.move(this.monitor.width / 2, 200);
+        await wait(900);  // at rest again, so the icons are where they rest
+        const weather = bar._items.findIndex(item => item.id === 'org.gnome.Weather.desktop');
+        await this.drag(this.centerOf(weather), this.iconY, [[this.centerOf(weather), this.iconY - 260]], 1000, async () => {
+            log(`DOCK held off the dock: remove label ${bar._removeLabel ? `"${bar._removeLabel.text}"` : 'none'}`);
+            await shoot('dock-remove');
+        });
+        await wait(800);
+        log(`DOCK dropped off the dock: Weather pinned ${favorites().includes('org.gnome.Weather.desktop')}, in dock ${bar._apps.has('org.gnome.Weather.desktop')}`);
+        global.settings.set_strv('favorite-apps', before);
+        this.move(this.monitor.width / 2, 200);
+        await wait(1200);
+
         // Its menu.
         await this.click(this.centerOf(1), this.iconY, Clutter.BUTTON_SECONDARY);
         await wait(900);
         await shoot('dock-menu');
         Main.panel.menuManager.activeMenu?.close();
-        for (const item of apps)
+        for (const item of appItems())
             item.icon._menu?.close();
         this.move(this.monitor.width / 2, 200);
         await wait(800);
 
         // Launch one: it bounces until its window is up.
-        const calculator = apps.find(item => item.id === 'org.gnome.Calculator.desktop') ?? apps[apps.length - 1];
+        const calculator = appItems().find(item => item.id === 'org.gnome.Calculator.desktop');
         const index = bar._items.indexOf(calculator);
         await this.click(this.centerOf(index), this.iconY);
         await wait(200);
@@ -946,7 +989,7 @@ class DockScene {
         const iface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
         iface.set_boolean('enable-animations', false);
         await wait(300);
-        const editor = apps.find(item => item.id === 'org.gnome.TextEditor.desktop');
+        const editor = appItems().find(item => item.id === 'org.gnome.TextEditor.desktop');
         await this.click(this.centerOf(bar._items.indexOf(editor)), this.iconY);
         let editorWindow = null;
         for (let i = 0; i < 60 && !editorWindow; i++) {
