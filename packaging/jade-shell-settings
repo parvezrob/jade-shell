@@ -68,21 +68,29 @@ const JadeShellApp = GObject.registerClass(class JadeShellApp extends Adw.Applic
         return 0;
     }
 
+    // Launches that arrive while the window is being built (the Welcome at
+    // login, then a click on the Settings button) share that one window and
+    // turn it to the last page asked for.
     async _show(page) {
+        this._page = page ?? this._page;
         if (!this._window) {
-            this.hold();
-            try {
-                this._window = await this._build();
-            } catch (e) {
-                printerr(`Jade Shell: could not open its settings: ${e.message}`);
-                logError(e);
-            } finally {
-                this.release();
+            if (!this._building) {
+                this.hold();
+                this._building = this._build().catch(e => {
+                    printerr(`Jade Shell: could not open its settings: ${e.message}`);
+                    logError(e);
+                    return null;
+                }).finally(() => this.release());
             }
+            const window = await this._building;
+            this._building = null;
+            this._window ??= window;
         }
         if (!this._window)
             return;
-        if (page && this._window.get_visible_page_name?.() !== undefined)
+        page = this._page;
+        this._page = null;
+        if (page)
             this._window.set_visible_page_name(page);
         this._window.present();
         if (page === 'welcome')
@@ -107,7 +115,8 @@ const JadeShellApp = GObject.registerClass(class JadeShellApp extends Adw.Applic
         const window = new Adw.PreferencesWindow({application: this, title: 'Jade Shell'});
         new Pages({settings, metadata, dir}).fill(window);
         window.connect('close-request', () => {
-            this._window = null;
+            if (this._window === window)
+                this._window = null;
             return false;
         });
         return window;

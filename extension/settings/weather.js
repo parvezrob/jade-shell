@@ -7,6 +7,8 @@ import GLib from 'gi://GLib';
 import GWeather from 'gi://GWeather?version=4.0';
 import Gtk from 'gi://Gtk';
 
+import {choiceRow} from './common.js';
+
 const RESULTS = 6;
 
 let cities = null;
@@ -61,12 +63,9 @@ export function weatherGroup(settings, {title = 'Weather', description = null} =
     group.add(place);
     const search = new Adw.EntryRow({title: 'Search for a city'});
     group.add(search);
-    const units = [['default', 'Automatic (from your language)'], ['celsius', 'Celsius (°C)'], ['fahrenheit', 'Fahrenheit (°F)']];
-    const unit = new Adw.ComboRow({
-        title: 'Units', model: Gtk.StringList.new(units.map(([, text]) => text)),
-        selected: Math.max(0, units.findIndex(([value]) => value === settings.get_string('weather-unit'))),
-    });
-    unit.connect('notify::selected', () => settings.set_string('weather-unit', units[unit.selected][0]));
+    const unit = choiceRow(settings, 'weather-unit',
+        [['default', 'Automatic (from your language)'], ['celsius', 'Celsius (°C)'], ['fahrenheit', 'Fahrenheit (°F)']],
+        {title: 'Units'});
     group.add(unit);
     let rows = [];
 

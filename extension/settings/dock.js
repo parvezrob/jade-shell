@@ -2,7 +2,7 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
-import {capture, jadeCommand} from './common.js';
+import {capture, choiceRow, jadeCommand} from './common.js';
 
 // "Hide the dock: …"
 const BEHAVIORS = [
@@ -78,6 +78,8 @@ export function scaleRow(settings, group, key, title, subtitle, {lower, upper, s
     const adjustment = new Gtk.Adjustment({lower, upper, step_increment: step, page_increment: step * 4});
     const scale = new Gtk.Scale({
         adjustment, digits, draw_value: false, hexpand: true, width_request: 260, valign: Gtk.Align.CENTER,
+        // The end marks' labels hang past the slider: keep them off the subtitle.
+        margin_start: 24,
     });
     for (const [value, label] of marks)
         scale.add_mark(value, Gtk.PositionType.BOTTOM, label);
@@ -108,22 +110,10 @@ export function dockPage(settings, switchRow) {
 
     const behavior = new Adw.PreferencesGroup({title: 'Behavior'});
     page.add(behavior);
-    const hide = new Adw.ComboRow({
+    const hide = choiceRow(settings, 'dock-behavior', BEHAVIORS, {
         title: 'Hide the dock',
-        subtitle: 'Push the pointer against the bottom edge to bring it back. Never: windows keep clear of it.',
-        model: Gtk.StringList.new(BEHAVIORS.map(([, label]) => label)),
+        subtitle: 'To bring it back, push the pointer against the bottom edge',
     });
-    const sync = () => {
-        hide.selected = Math.max(0, BEHAVIORS.findIndex(([value]) => value === settings.get_string('dock-behavior')));
-    };
-    sync();
-    const changed = settings.connect('changed::dock-behavior', sync);
-    hide.connect('notify::selected', () => {
-        const value = BEHAVIORS[hide.selected]?.[0];
-        if (value && value !== settings.get_string('dock-behavior'))
-            settings.set_string('dock-behavior', value);
-    });
-    page.connect('destroy', () => settings.disconnect(changed));
     behavior.add(hide);
     switchRow(settings, behavior, 'dock-genie', 'Genie effect', 'Windows pour into their icon as they minimize');
     switchRow(settings, behavior, 'dock-bounce', 'Bounce', 'While an app starts, and when it needs your attention');

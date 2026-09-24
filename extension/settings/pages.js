@@ -6,7 +6,7 @@ import Gtk from 'gi://Gtk';
 
 import {aboutPage} from './about.js';
 import {dockPage, iconsRow, scaleRow} from './dock.js';
-import {capture, jadeCommand, output, run} from './common.js';
+import {capture, choiceRow, jadeCommand, output, run} from './common.js';
 import {hero} from './hero.js';
 import {ShortcutRow} from './shortcut.js';
 import {applyStyle, capsTitles} from './style.js';
@@ -110,13 +110,8 @@ export class Pages {
             'After a screenshot: edit it, copy its text, pin it on screen');
         switchRow(settings, desktop, 'start-on-desktop', 'Start on the desktop', 'Skip the overview after logging in');
         switchRow(settings, desktop, 'notification-bell', 'Notification bell', 'Notifications in their own panel, pop-ups at the top right');
-        const glassChoices = [['solid', 'Solid'], ['frosted', 'Frosted']];
-        const glass = new Adw.ComboRow({
-            title: 'Glass', subtitle: 'Frosted: the top bar, menus and pop-ups blur what is behind them',
-            model: Gtk.StringList.new(glassChoices.map(([, text]) => text)),
-            selected: Math.max(0, glassChoices.findIndex(([value]) => value === settings.get_string('glass'))),
-        });
-        glass.connect('notify::selected', () => settings.set_string('glass', glassChoices[glass.selected][0]));
+        const glass = choiceRow(settings, 'glass', [['solid', 'Solid'], ['frosted', 'Frosted']],
+            {title: 'Glass', subtitle: 'Frosted: the top bar, menus and pop-ups blur what is behind them'});
         desktop.add(glass);
         const tint = scaleRow(settings, desktop, 'glass-tint', 'Glass tint', 'How much of the theme shows over the blur',
             {lower: 0.15, upper: 0.95, step: 0.05, digits: 2, marks: [[0.15, 'Clear'], [0.55, null], [0.95, 'Solid']]});
@@ -126,13 +121,8 @@ export class Pages {
         const glassChanged = settings.connect('changed::glass', frostedOnly);
         tint.connect('destroy', () => settings.disconnect(glassChanged));
         frostedOnly();
-        const dotChoices = [['waiting', 'While notifications wait'], ['unread', 'Only for missed pop-ups']];
-        const dot = new Adw.ComboRow({
-            title: 'Bell dot', subtitle: 'When the bell shows its dot',
-            model: Gtk.StringList.new(dotChoices.map(([, text]) => text)),
-            selected: Math.max(0, dotChoices.findIndex(([value]) => value === settings.get_string('bell-dot'))),
-        });
-        dot.connect('notify::selected', () => settings.set_string('bell-dot', dotChoices[dot.selected][0]));
+        const dot = choiceRow(settings, 'bell-dot', [['waiting', 'While notifications wait'], ['unread', 'Only for missed pop-ups']],
+            {title: 'Bell dot', subtitle: 'When the bell shows its dot'});
         settings.bind('notification-bell', dot, 'sensitive', Gio.SettingsBindFlags.GET);
         desktop.add(dot);
         switchRow(settings, desktop, 'simple-calendar', 'Simple calendar', 'Hide world clocks and weather in the clock’s menu');

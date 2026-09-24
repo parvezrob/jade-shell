@@ -8,7 +8,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
-import {capture, jadeCommand} from './common.js';
+import {capture, choiceRow, jadeCommand} from './common.js';
 import {weatherGroup} from './weather.js';
 
 const COLUMNS = 4;
@@ -87,13 +87,8 @@ function themesGroup() {
 
 function lookGroup(settings, iconsRow) {
     const group = new Adw.PreferencesGroup({title: 'Look'});
-    const choices = [['solid', 'Solid'], ['frosted', 'Frosted']];
-    const glass = new Adw.ComboRow({
-        title: 'Glass', subtitle: 'Frosted: the top bar, menus and pop-ups blur what is behind them',
-        model: Gtk.StringList.new(choices.map(([, text]) => text)),
-        selected: Math.max(0, choices.findIndex(([value]) => value === settings.get_string('glass'))),
-    });
-    glass.connect('notify::selected', () => settings.set_string('glass', choices[glass.selected][0]));
+    const glass = choiceRow(settings, 'glass', [['solid', 'Solid'], ['frosted', 'Frosted']],
+        {title: 'Glass', subtitle: 'Frosted: the top bar, menus and pop-ups blur what is behind them'});
     group.add(glass);
     iconsRow(settings, group);
     return group;
