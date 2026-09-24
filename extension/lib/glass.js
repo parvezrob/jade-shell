@@ -73,6 +73,42 @@ const Whole = GObject.registerClass(class JadeGlassWhole extends Clutter.Effect 
     }
 });
 
+// Menus, banners, dialogs and pop-ups float over windows that keep changing
+// (a terminal's spinner): each change still made one wrong frame before
+// Whole's, and many of them flicker. While one of those surfaces is on
+// screen, GNOME redraws whole frames, as with Blur my Shell's strongest
+// setting. The top bar has only the wallpaper behind it and doesn't need it.
+const shown = new Set();
+let wholeFrames = false;  // whether Jade turned whole frames on
+
+function syncWholeFrames() {
+    const want = active && shown.size > 0;
+    if (want === wholeFrames)
+        return;
+    const flag = Clutter.DrawDebugFlag.DISABLE_CLIPPED_REDRAWS;
+    if (want) {
+        const [, draw] = Clutter.get_debug_flags();
+        if (draw & flag)
+            return;  // on already (Blur my Shell's): leave it to whoever turned it on
+        Clutter.add_debug_flags(0, flag, 0);
+    } else {
+        Clutter.remove_debug_flags(0, flag, 0);
+    }
+    wholeFrames = want;
+}
+
+function trackShown(actor) {
+    const sync = () => {
+        if (actor.mapped)
+            shown.add(actor);
+        else
+            shown.delete(actor);
+        syncWholeFrames();
+    };
+    actor.connectObject('notify::mapped', sync, frost);
+    sync();
+}
+
 // Blur what is behind `actor` while frosted glass is on (Jade's own surfaces
 // call this too, such as the screenshot card).
 export function frost(actor) {
@@ -85,7 +121,13 @@ export function frost(actor) {
     actor.add_effect_with_name(EFFECT, effect);
     actor.add_effect_with_name(WHOLE, new Whole());
     frosted.add(actor);
-    actor.connectObject('destroy', () => frosted.delete(actor), frost);
+    actor.connectObject('destroy', () => {
+        frosted.delete(actor);
+        shown.delete(actor);
+        syncWholeFrames();
+    }, frost);
+    if (actor !== Main.panel)
+        trackShown(actor);
     // While it fades in or out it's drawn through a buffer where the blur
     // can't show anyway: skip the work (it's most of the cost in those frames).
     const sync = () => (effect.enabled = actor.get_paint_opacity() === 255);
@@ -285,6 +327,8 @@ export class Glass {
             actor.disconnectObject(frost);
         }
         frosted.clear();
+        shown.clear();
+        syncWholeFrames();
         for (const [actor, redirect] of redirected) {
             actor.set_offscreen_redirect(redirect);
             actor.disconnectObject(redirected);

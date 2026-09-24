@@ -515,6 +515,16 @@ async function glass() {
     log(`glass: picker background alpha at the default tint: ${alphaNow()}`);
     const frostedCount = [Main.panel].filter(actor => actor.get_effect('jade-glass')).length;
     log(`glass: frosted, top bar blurred ${frostedCount === 1}, ui group class ${Main.uiGroup.has_style_class_name('jade-frosted')}`);
+    // Whole frames while a frosted menu is open (windows changing under it
+    // flickered it otherwise), and only then.
+    const whole = () => Boolean(Clutter.get_debug_flags()[1] & Clutter.DrawDebugFlag.DISABLE_CLIPPED_REDRAWS);
+    const idle = whole();
+    Main.panel.statusArea.dateMenu.menu.open();
+    await wait(800);
+    const open = whole();
+    Main.panel.statusArea.dateMenu.menu.close();
+    await wait(800);
+    log(`glass: whole frames at rest ${idle}, calendar open ${open}, closed ${whole()}`);
     settings.set_string('glass', 'solid');
     await wait(500);
     log(`glass: solid again, top bar blurred ${Boolean(Main.panel.get_effect('jade-glass'))}, class ${Main.uiGroup.has_style_class_name('jade-frosted')}`);
