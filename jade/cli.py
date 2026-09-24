@@ -47,6 +47,8 @@ def print_skipped(ctx, only=None):
     asked = {name: reason for name, reason in ctx.absent.items() if name in (only or ())}
     for name, reason in {**ctx.skipped, **asked}.items():
         print(f'skipped {name}: {reason}')
+    for failure in ctx.hook_failures:
+        print(failure, file=sys.stderr)
 
 
 # ------------------------------------------------------------------ theme

@@ -102,6 +102,12 @@ Removing the package another way (`dnf`, `apt`, a software app) skips `jade rest
 
 Pin any color, or reuse wallpapers you already have, in `~/.config/jade-shell/themes/<theme>.toml`. See [examples/osaka-jade.toml](examples/osaka-jade.toml). Besides Omarchy's keys, two GNOME shades can be pinned: `dock_background` and `secondary_text`.
 
+### Your own templates and hooks
+
+For an app Jade Shell doesn't theme, write a template: a copy of its config with placeholders, in `~/.config/jade-shell/themed/NAME.tpl`. At every switch Jade Shell fills it in and writes `~/.local/state/jade-shell/themed/NAME`, for your config to include. Placeholders are those of Jade Shell's own templates: any palette key (`{{ accent }}`, `{{ background }}`…), with `_strip` for no `#` or `_rgb` for `r,g,b`, `{{ mix background accent 20% }}` for a blend, and `{{ name }}`, `{{ id }}` and `{{ mode }}`. A misspelled placeholder is reported and that template skipped.
+
+To run something after a switch (reload an app, say), put an executable in `~/.config/jade-shell/hooks/theme-set.d/`: it gets the theme's id, and `JADE_THEME`, `JADE_THEME_NAME` and `JADE_MODE`. Executables in `hooks/post-update.d/` run after an update. A hook that fails is reported; the switch stands. [examples/themed](examples/themed) and [examples/hooks](examples/hooks) have commented samples.
+
 ## Development
 
 ```bash

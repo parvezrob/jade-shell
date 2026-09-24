@@ -813,6 +813,29 @@ class Sandbox(unittest.TestCase):
         self.assertFalse((mine / '.obsidian/themes/Jade Shell').exists() and
                          any((mine / '.obsidian/themes/Jade Shell').iterdir()))
 
+    def test_your_own_templates_and_hooks(self):
+        themed = self.home / '.config/jade-shell/themed'
+        hooks = self.home / '.config/jade-shell/hooks/theme-set.d'
+        themed.mkdir(parents=True)
+        hooks.mkdir(parents=True)
+        shutil.copy(ROOT / 'examples/themed/colors.sh.tpl', themed)
+        (themed / 'broken.conf.tpl').write_text('color = {{ acent }}\n')
+        shutil.copy(ROOT / 'examples/hooks/theme-set.d/10-example', hooks)
+        (hooks / '20-fails').write_text('#!/bin/sh\necho "no such app" >&2\nexit 3\n')
+        (hooks / '20-fails').chmod(0o755)
+        result = self.run_jade('theme', 'set', 'nord', '--only', 'custom')
+        self.assertEqual(result.returncode, 0, result.stderr)  # a failing hook doesn't fail the switch
+        self.assertIn('hook 20-fails failed (exit 3): no such app', result.stderr)
+        self.assertIn('skipped custom: broken.conf.tpl: no placeholder named acent', result.stdout)
+        out = (self.home / '.local/state/jade-shell/themed/colors.sh').read_text()
+        self.assertIn('export JADE_THEME_NAME="Nord"', out)
+        self.assertIn(f'export JADE_ACCENT="{themes.load("nord").colors["accent"]}"', out)
+        self.assertNotIn('{{', out)
+        self.assertEqual((self.home / '.local/state/jade-shell/hooks.log').read_text(),
+                         'Jade Shell switched to Nord (dark)\n')
+        self.jade('theme', 'undo')
+        self.assertFalse((self.home / '.local/state/jade-shell/themed/colors.sh').exists())
+
     def test_alacritty_keeps_its_own_imports_on_top(self):
         toml = self.home / '.config/alacritty/alacritty.toml'
         toml.write_text('[general]\nimport = ["~/.config/alacritty/mine.toml"]\n')

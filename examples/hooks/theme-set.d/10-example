@@ -1,0 +1,15 @@
+#!/bin/sh
+# A sample hook for Jade Shell. Copy it to ~/.config/jade-shell/hooks/theme-set.d/
+# and make it executable (chmod +x). After every theme switch Jade Shell runs
+# each executable there, in name order, with the theme's id as $1 and:
+#   JADE_THEME       the theme's id (tokyo-night)
+#   JADE_THEME_NAME  its name (Tokyo Night)
+#   JADE_MODE        dark or light
+#   JADE_THEMED      where your templates were filled in
+# A hook that fails (or runs longer than 30 seconds) is reported; the switch
+# itself stands. Hooks in post-update.d/ run after an update, with the version.
+
+# For example, reload an app that reads a file your template writes:
+#   pkill -USR1 -x someapp
+# or tell yourself which theme is on:
+echo "Jade Shell switched to $JADE_THEME_NAME ($JADE_MODE)" >> "$HOME/.local/state/jade-shell/hooks.log"

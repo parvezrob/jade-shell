@@ -14,8 +14,9 @@ from .apps import (
                    Vicinae,
                    VSCode,
 )
+from .custom import Custom
 from .gnome import Dock, Gnome
 from .icons import Icons
 
 ALL = [Gnome(), Dock(), Shell(), Gtk(), Icons(), Ptyxis(), Vicinae(), Kitty(), Ghostty(), Alacritty(), Tmux(), Starship(),
-       Btop(), Neovim(), Obsidian(), VSCode(), ClaudeCode()]
+       Btop(), Neovim(), Obsidian(), VSCode(), ClaudeCode(), Custom()]

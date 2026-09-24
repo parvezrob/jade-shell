@@ -9,7 +9,7 @@ import shutil
 import sys
 from dataclasses import dataclass, field
 
-from . import store, themes
+from . import hooks, store, themes
 from . import targets as registry
 from .store import File, Setting, Settings, read_text, state_home, write_text
 from .targets.base import Absent
@@ -27,6 +27,7 @@ class Context:
     wallpaper_error: str | None = None  # set when the wallpaper could not be downloaded
     skipped: dict = field(default_factory=dict)  # targets that failed or were refused, by name: why
     absent: dict = field(default_factory=dict)  # targets whose app isn't here, by name: why
+    hook_failures: list = field(default_factory=list)  # your hooks that failed after a switch
 
 
 class Busy(RuntimeError):
@@ -199,6 +200,8 @@ def apply(theme, ctx, only=None, skip=None):
     write_text(state_dir() / 'current.json', json.dumps({'theme': theme.id, 'wallpaper': wallpaper,
                                                          'wallpapers': wallpapers}))
     reload(manifest['targets'], ctx)
+    # Your own hooks, last: whatever they do, the switch stands.
+    ctx.hook_failures = hooks.run('theme-set', theme.id, theme=theme)
     try:
         prune()
     except Exception as error:  # the switch is done; an extra old backup is harmless

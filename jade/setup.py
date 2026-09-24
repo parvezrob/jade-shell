@@ -19,7 +19,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
-from . import __version__, engine, icons, migrations, restore_offer, shelltheme, themes
+from . import __version__, engine, hooks, icons, migrations, restore_offer, shelltheme, themes
 from .store import File, Setting, config_home, data_home, write_text
 from .usage import collect
 
@@ -468,6 +468,8 @@ def setup(ctx, theme_id=None, after_update=False):
     say(f'{theme.name} applied to {join(themed)}.')
     for name, reason in ctx.skipped.items():
         say(f'Not themed: {name} ({reason})')
+    for failure in ctx.hook_failures:
+        say(failure)
 
     commands = leftover_commands(*leftovers())
     if commands:
@@ -486,6 +488,8 @@ def setup(ctx, theme_id=None, after_update=False):
     manifest.update(version=__version__, replaced=sorted(out_of_the_way))
     write_text(manifest_path(), json.dumps(manifest, indent=2))
     if after_update:
+        for failure in hooks.run('post-update', __version__, theme=theme):
+            say(failure)
         say(f'Jade Shell {__version__} is set up.')
         return 0
     shortcut = picker_shortcut(ctx)
