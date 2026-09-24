@@ -796,6 +796,42 @@ async function runKill() {
     }
 }
 
+// The top bar's right side as the eye sees it: each visible glyph (icon or
+// text) and the empty space between neighbours.
+async function barSpacing() {
+    await wait(500);
+    const glyphs = [];
+    const walk = actor => {
+        if (!actor.visible)
+            return;
+        if ((actor instanceof St.Icon || actor instanceof St.Label) && actor.width > 0) {
+            const [x] = actor.get_transformed_position();
+            // What is drawn: an icon's content box (its size, without padding),
+            // a label's text.
+            const content = actor.get_theme_node().get_content_box(actor.get_allocation_box());
+            const text = actor instanceof St.Label ? actor.clutter_text.get_layout().get_pixel_extents()[1].width
+                : content.x2 - content.x1;
+            const left = x + content.x1 + (actor instanceof St.Label ? 0 : 0);
+            glyphs.push({name: actor instanceof St.Label ? `"${actor.text}"` : actor.icon_name ?? actor.gicon?.to_string()?.split('/').pop(),
+                left: Math.round(left), right: Math.round(left + text)});
+            return;
+        }
+        actor.get_children().forEach(walk);
+    };
+    walk(Main.panel._rightBox);
+    const buttons = Main.panel._rightBox.get_children().filter(c => c.visible).map(c => {
+        const child = c.get_first_child();
+        const node = child?.get_theme_node?.();
+        return `${child?.constructor.name}(${child?.style_class}) w${Math.round(child?.width)} ` +
+            `pad ${node ? `${node.get_padding(St.Side.LEFT)}/${node.get_padding(St.Side.RIGHT)}` : '?'}`;
+    });
+    log(`bar buttons: ${buttons.join(' | ')}`);
+    await shoot('bar-spacing', Main.panel);
+    glyphs.sort((a, b) => a.left - b.left);
+    log(`bar spacing: ${glyphs.map((g, i) => `${g.name} [${g.left}-${g.right}]` +
+        (i + 1 < glyphs.length ? ` ←${glyphs[i + 1].left - g.right}→ ` : '')).join('')}`);
+}
+
 async function popups() {
     const ModalDialog = await import('resource:///org/gnome/shell/ui/modalDialog.js');
     const Dialog = await import('resource:///org/gnome/shell/ui/dialog.js');
@@ -1642,7 +1678,84 @@ class Timing {
         this.summarise();
     }
 
+    // A long day, compressed: rounds of menus, dialogs, theme switches, locks
+    // and banners. After each round (and a garbage collection) the Shell's
+    // actors and resident memory should stay flat. $JADE_TIMING=soak.
+    async soak() {
+        const {gc} = imports.system;
+        const actors = () => {
+            let n = 0;
+            const walk = a => {
+                n++;
+                a.get_children().forEach(walk);
+            };
+            walk(global.stage);
+            return n;
+        };
+        const state = Main.extensionManager.lookup(UUID).stateObj;
+        const roles = ['jade-monitor', 'jade-usage', 'jade-picker', 'jade-network', 'jade-weather', 'jade-bell',
+            'dateMenu', 'quickSettings'];
+        const themes = ['nord', 'osaka-jade', 'tokyo-night', 'osaka-jade'];
+        const rows = [];
+        const measure = async label => {
+            for (let i = 0; i < 3; i++) {
+                gc();
+                await wait(300);
+            }
+            rows.push({label, actors: actors(), mb: residentMb()});
+            log(`TIMING SOAK ${label}: ${rows.at(-1).actors} actors, ${rows.at(-1).mb} MB resident`);
+        };
+        for (let round = 0; round <= ROUNDS; round++) {
+            for (let i = 0; i < 5; i++) {
+                for (const role of roles) {
+                    const menu = Main.panel.statusArea[role]?.menu;
+                    if (!menu)
+                        continue;
+                    menu.open(BoxPointer.PopupAnimation.NONE);
+                    await wait(60);
+                    menu.close(BoxPointer.PopupAnimation.NONE);
+                    await wait(30);
+                }
+            }
+            for (const name of ['JadeMenu', 'ClipboardHistory', 'CheatSheet']) {
+                for (let i = 0; i < 3; i++) {
+                    state._part(name)?.toggle();
+                    await wait(250);
+                    state._part(name)?.toggle();
+                    await wait(250);
+                }
+            }
+            for (const id of themes) {
+                await jade('theme', 'set', id, '--only', 'gnome,shell');
+                await wait(700);
+            }
+            for (let i = 0; i < 3; i++) {
+                Main.sessionMode.isLocked = true;
+                state._syncParts();
+                await wait(200);
+                Main.sessionMode.isLocked = false;
+                state._syncParts();
+                await wait(500);
+            }
+            const source = new MessageTray.Source({title: 'Soak', iconName: 'dialog-information-symbolic'});
+            Main.messageTray.add(source);
+            const note = new MessageTray.Notification({source, title: `Round ${round}`, body: 'Soak'});
+            source.addNotification(note);
+            await wait(1200);
+            note.destroy();
+            await wait(800);
+            await measure(round === 0 ? 'warm' : `round ${round}`);
+        }
+        const [first, last] = [rows[0], rows.at(-1)];
+        log(`TIMING SOAK over ${rows.length - 1} rounds after warm-up: actors ${first.actors} → ${last.actors}, ` +
+            `resident ${first.mb} → ${last.mb} MB`);
+    }
+
     async run() {
+        if (GLib.getenv('JADE_TIMING') === 'soak') {
+            await this.soak();
+            return;
+        }
         if (GLib.getenv('JADE_TIMING') === 'themes') {
             await this.themeSwitches();
             return;
@@ -2127,7 +2240,7 @@ export default class Harness extends Extension {
         if (only) {
             const scenes = {bellRoundTrip, bellShortcuts, cheatSheet, modes, media, weather, jadeMenu, clipboard, capture,
                 pickerScrolls, networkPanel, glass, overviewDrags, settingsEntries, popups, clockFollowsGnome, highContrast,
-                lockScreen, frostedBanners, dockFits, tintCost, runKill};
+                lockScreen, frostedBanners, dockFits, tintCost, runKill, barSpacing};
             for (const name of only.split(','))
                 await (scenes[name] ?? (() => log(`no scene ${name}`)))();
             return;

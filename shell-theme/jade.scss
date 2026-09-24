@@ -48,6 +48,21 @@ $jade-strong: if(lightness($jade-light_foreground) > lightness($jade-foreground)
   .panel-status-menu-box { spacing: 8px; }
 }
 
+// The right side's rhythm, as in Omarchy Quattro's bar: every icon in a
+// square slot as tall as the bar, its 16 px glyph centred, so neighbours sit
+// 12 px apart whether they're buttons of their own or share one (Quick
+// Settings). GNOME pads a lone icon by 10 px a side and a grouped one not at
+// all, which spaced them anywhere from 12 to 36 px.
+#panel #panelRight .panel-button {
+  -natural-hpadding: 6px;
+  -minimum-hpadding: 6px;
+  .system-status-icon { padding: 0; margin: 0; }
+  .panel-status-indicators-box {
+    spacing: 12px;
+    > .system-status-icon { padding: 0; margin: 0; }
+  }
+}
+
 // Hover and press show on the next frame. GNOME eases them in over 150 ms,
 // which at a high refresh rate reads as lag. The clock's highlight sits on its
 // child, and each selector here matches one of GNOME's so it wins by order.
