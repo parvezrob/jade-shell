@@ -65,7 +65,7 @@ Log out and back in once to start the extension. A few notes at that first login
 | Vicinae (`vicinae`) | an `omarchy-<theme>` theme, selected in its config |
 | Starship (`starship`) | a `jade` palette block (Catppuccin color names mapped to the theme) |
 | btop (`btop`) | a `jade` theme; btop reloads |
-| VS Code (`vscode`) | one local extension providing every theme as "Jade · Name"; switching sets `workbench.colorTheme` |
+| VS Code (`vscode`) | one local extension providing every theme as "Jade · Name"; switching sets `workbench.colorTheme`. The same for VS Code Insiders, VSCodium, Code - OSS and the Flatpak builds of VS Code and VSCodium, whichever are set up |
 | Claude Code (`claude`) | a `jade` theme in `~/.claude/themes`, which Claude Code reloads live; choose it once with `/theme` |
 
 Everything applies live; newly opened GTK apps pick up the accent as they start. Apps you don't have are skipped, and so is one whose config Jade Shell can't read (the switch says why). Symlinked dotfiles stay symlinks: Jade Shell writes through the link. Offline, a switch still changes the colors and keeps your current wallpaper.

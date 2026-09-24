@@ -745,6 +745,22 @@ class Sandbox(unittest.TestCase):
         self.jade('theme', 'undo')
         self.assertEqual(toml.read_text(), '[general]\nimport = ["~/.config/alacritty/mine.toml"]\n\n[window]\nopacity = 0.9\n')
 
+    def test_vscodium_and_flatpak_code_switch_too(self):
+        codium = self.home / '.config/VSCodium/User/settings.json'
+        flatpak = self.home / '.var/app/com.vscodium.codium/config/VSCodium/User/settings.json'
+        for path in (codium, flatpak):
+            path.parent.mkdir(parents=True)
+            path.write_text('{\n    "editor.fontSize": 13\n}\n')
+        (self.home / '.var/app/com.vscodium.codium/data/codium/extensions').mkdir(parents=True)
+        self.jade('theme', 'set', 'nord', '--only', 'vscode')
+        for path in (codium, flatpak, self.home / '.config/Code/User/settings.json'):
+            self.assertIn('"workbench.colorTheme": "Jade · Nord"', path.read_text(), path)
+        for base in ('.vscode-oss/extensions', '.var/app/com.vscodium.codium/data/codium/extensions'):
+            self.assertTrue((self.home / base / 'jade-shell.jade-themes-1.0.0/package.json').exists(), base)
+        self.jade('theme', 'undo')
+        for path in (codium, flatpak):
+            self.assertEqual(path.read_text(), '{\n    "editor.fontSize": 13\n}\n')
+
     def test_each_theme_keeps_its_wallpaper(self):
         nord = themes.load('nord')
         second = self.home / '.local/share/jade-shell/backgrounds/nord' / nord.backgrounds[1]

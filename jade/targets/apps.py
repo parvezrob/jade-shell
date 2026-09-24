@@ -479,28 +479,54 @@ class Btop:
 
 
 class VSCode:
+    """VS Code and its siblings: Insiders, VSCodium, Code - OSS, and the
+    Flatpak builds of VS Code and VSCodium. Every one that is set up gets the
+    extension that provides the themes, and has its theme switched."""
     name = 'vscode'
     title = 'VS Code'
-    label = 'VS Code color theme'
+    label = 'VS Code color theme (and VSCodium, Code - OSS, Flatpak)'
     ID = 'jade-shell.jade-themes'
     VERSION = '1.0.0'
     LABEL = 'Jade · '
 
+    @staticmethod
+    def variants():
+        """(settings.json, extension folders it may read), for each kind.
+        Flatpak VSCodium reads one folder or the other depending on how it
+        was started, so both get the extension."""
+        home, config = pathlib.Path.home(), config_home()
+        flatpak = home / '.var/app'
+        return [
+            (config / 'Code/User/settings.json', [home / '.vscode/extensions']),
+            (config / 'Code - Insiders/User/settings.json', [home / '.vscode-insiders/extensions']),
+            (config / 'VSCodium/User/settings.json', [home / '.vscode-oss/extensions']),
+            (config / 'Code - OSS/User/settings.json', [home / '.vscode-oss/extensions']),
+            (flatpak / 'com.visualstudio.code/config/Code/User/settings.json',
+             [flatpak / 'com.visualstudio.code/data/vscode/extensions', home / '.vscode/extensions']),
+            (flatpak / 'com.vscodium.codium/config/VSCodium/User/settings.json',
+             [flatpak / 'com.vscodium.codium/data/codium/extensions', home / '.vscode-oss/extensions']),
+        ]
+
+    def installs(self):
+        """The variants set up here: (settings.json, extension folders to fill)."""
+        return [(settings, [d for d in folders if d.exists()] or folders[:1])
+                for settings, folders in self.variants() if settings.exists()]
+
     def settings_path(self):
-        return config_home() / 'Code/User/settings.json'
+        return self.variants()[0][0]
 
     def registry_path(self):
-        return pathlib.Path.home() / '.vscode/extensions/extensions.json'
+        return self.variants()[0][1][0] / 'extensions.json'
 
     def available(self, ctx):
-        return None if self.settings_path().exists() else Absent('VS Code is not set up')
+        return None if self.installs() else Absent('VS Code is not set up')
 
     @staticmethod
     def label_for(theme):
         return f'{VSCode.LABEL}{theme.name}'
 
-    def changes(self, theme, ctx):
-        base = pathlib.Path.home() / '.vscode/extensions'
+    def extension(self, theme, base):
+        """The files of the extension providing every theme, in `base`."""
         folder = base / f'{self.ID}-{self.VERSION}'
         template = themes.template('vscode-theme.json.tpl')
         # One extension contributes every theme, so switching is a settings change.
@@ -518,36 +544,48 @@ class VSCode:
             'categories': ['Themes'], 'contributes': {'themes': contributed},
         }
         out.append(File(folder / 'package.json', json.dumps(package, indent=2) + '\n'))
+        return folder, out
 
-        registry = self.registry_path()
+    def register(self, ctx, base, folder):
+        """VS Code lists installed extensions in extensions.json; add ours once."""
+        registry = base / 'extensions.json'
         try:
             entries = json.loads(read_text(registry) or '[]')
             if not isinstance(entries, list):
                 raise ValueError('not a list')
         except ValueError:  # VS Code owns this file; never rewrite one we can't read
-            entries = None
-            ctx.skipped[self.name] = f'could not read {registry}; the themes may not show up in VS Code'
-        if entries is not None and not any((e.get('identifier') or {}).get('id') == self.ID
-                                           for e in entries if isinstance(e, dict)):
-            entries.append({
-                'identifier': {'id': self.ID}, 'version': self.VERSION,
-                'location': {'$mid': 1, 'fsPath': str(folder), 'external': folder.as_uri(),
-                             'path': str(folder), 'scheme': 'file'},
-                'relativeLocation': folder.name,
-            })
-            out.append(File(registry, json.dumps(entries)))
+            ctx.skipped[self.name] = f'could not read {registry}; the themes may not show up there'
+            return []
+        if any((e.get('identifier') or {}).get('id') == self.ID for e in entries if isinstance(e, dict)):
+            return []
+        entries.append({
+            'identifier': {'id': self.ID}, 'version': self.VERSION,
+            'location': {'$mid': 1, 'fsPath': str(folder), 'external': folder.as_uri(),
+                         'path': str(folder), 'scheme': 'file'},
+            'relativeLocation': folder.name,
+        })
+        return [File(registry, json.dumps(entries))]
 
-        settings = read_text(self.settings_path())
-        line = f'"workbench.colorTheme": "{self.label_for(theme)}"'
-        if re.search(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', settings):
-            settings = re.sub(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', lambda _m: line, settings, count=1)
-        else:
-            settings = settings.replace('{', '{\n    ' + line + ',', 1)
-        out.append(File(self.settings_path(), settings))
+    def changes(self, theme, ctx):
+        out, done = [], set()
+        for settings_path, bases in self.installs():
+            for base in bases:
+                if base in done:  # VSCodium and Code - OSS share a folder
+                    continue
+                done.add(base)
+                folder, files = self.extension(theme, base)
+                out += files + self.register(ctx, base, folder)
+            settings = read_text(settings_path)
+            line = f'"workbench.colorTheme": "{self.label_for(theme)}"'
+            if re.search(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', settings):
+                settings = re.sub(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', lambda _m, line=line: line, settings, count=1)
+            else:
+                settings = settings.replace('{', '{\n    ' + line + ',', 1)
+            out.append(File(settings_path, settings))
         return out
 
     def revert(self, path, text, old):
-        if path == self.registry_path():
+        if path in {folder / 'extensions.json' for _s, folders in self.variants() for folder in folders}:
             if old is not None and self.ID in old:
                 return None  # it was registered before the switch
             entries = json.loads(text)
@@ -555,7 +593,7 @@ class VSCode:
                 return None
             return json.dumps([e for e in entries if not (isinstance(e, dict)
                                                           and (e.get('identifier') or {}).get('id') == self.ID)])
-        if path != self.settings_path():
+        if path not in {settings for settings, _f in self.variants()}:
             return None
         ours = r'"workbench\.colorTheme"\s*:\s*"' + re.escape(self.LABEL) + r'[^"]*"'
         if not re.search(ours, text):
