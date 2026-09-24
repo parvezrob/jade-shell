@@ -12,6 +12,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {Glass, hexToRgb} from './glass.js';
 import {AppItem, Separator, ShowAppsItem, TrashItem} from './items.js';
+import {Badges} from './badges.js';
 
 // Magnification, after dash2dock-motion's magnifier (GPL-2.0-or-later, see
 // THIRD_PARTY_LICENSES.md): each icon's size is a raised cosine of its
@@ -130,6 +131,7 @@ export class Bar {
         for (const actor of global.get_window_actors())
             this._trackWindow(actor.meta_window);
         this._unfollow = theme.follow(palette => this._style(palette));
+        this._badges = new Badges(() => this._syncBadges());
 
         this._redisplay();
     }
@@ -141,6 +143,7 @@ export class Bar {
         this._stopTimeline();
         this._settingsChanged.forEach(id => this._settings.disconnect(id));
         this._unfollow();
+        this._badges.destroy();
         this._appSystem.disconnectObject(this);
         AppFavorites.getAppFavorites().disconnectObject(this);
         Main.overview.disconnectObject(this);
@@ -220,6 +223,11 @@ export class Bar {
         const fg = palette.foreground;
         this._dotStyle = `background-color: ${light ? rgba(fg, 0.75) : rgba(fg, 0.9)}; border-radius: ${m.dot}px;`;
         this._separatorStyle = `background-color: ${rgba(fg, light ? 0.22 : 0.26)};`;
+        // Badges in the theme's red, as a Mac's are in the system red.
+        this._badgeColors = [palette.red ?? '#ff453a', '#ffffff'];
+        this._progressStyle = `background-color: ${rgba('#000000', light ? 0.22 : 0.45)};` +
+            ` border-radius: ${Math.round(3 * m.scale)}px;`;
+        this._progressFillStyle = `background-color: ${palette.accent}; border-radius: ${Math.round(3 * m.scale)}px;`;
         // Icons cast a soft shadow on the glass, as a Mac's do.
         this._iconStyle = `icon-shadow: 0 ${Math.round(2 * m.scale)}px ${Math.round(5 * m.scale)}px rgba(0, 0, 0, ${light ? 0.2 : 0.38});`;
         this._label.style = `background-color: ${rgba(palette.background, 0.9)}; color: ${fg};` +
@@ -313,8 +321,18 @@ export class Bar {
         }
         this._items = [...order, ...tail];
         this._built = true;
+        this._syncBadges();
         this._restyleItems();
         this._layoutChanged();
+    }
+
+    _syncBadges() {
+        if (!this._badges)
+            return;
+        for (const [id, item] of this._apps) {
+            item.setBadge(this._badges.badge(id));
+            item.setProgress(this._badges.progress(id));
+        }
     }
 
     // Something moved: run the frame loop until everything has settled.

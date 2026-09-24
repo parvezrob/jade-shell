@@ -831,6 +831,38 @@ class DockScene {
         await wait(1200);
         log(`DOCK overview closed: ${!Main.overview.visible}`);
 
+        // Badges: an app's own count and progress (Unity LauncherEntry), and
+        // notifications waiting for another.
+        Gio.DBus.session.emit_signal(null, '/com/canonical/unity/launcherentry/1', 'com.canonical.Unity.LauncherEntry',
+            'Update', new GLib.Variant('(sa{sv})', ['application://org.gnome.Nautilus.desktop', {
+                'count': new GLib.Variant('x', 3), 'count-visible': new GLib.Variant('b', true),
+                'progress': new GLib.Variant('d', 0.62), 'progress-visible': new GLib.Variant('b', true),
+            }]));
+        const calendarApp = Shell.AppSystem.get_default().lookup_app('org.gnome.Calendar.desktop');
+        const calendarSource = new MessageTray.Source({
+            title: 'Calendar', policy: MessageTray.NotificationPolicy.newForApp(calendarApp),
+        });
+        Main.messageTray.add(calendarSource);
+        for (const title of ['Standup in 10 minutes', 'Lunch with Sam', 'Dentist'])
+            calendarSource.addNotification(new MessageTray.Notification({source: calendarSource, title, body: ''}));
+        await wait(800);
+        const badge = id => bar._apps.get(id)?._badge;
+        log(`DOCK badges: Files "${badge('org.gnome.Nautilus.desktop')?.text}" ${badge('org.gnome.Nautilus.desktop')?.visible}, ` +
+            `Calendar "${badge('org.gnome.Calendar.desktop')?.text}" ${badge('org.gnome.Calendar.desktop')?.visible}, ` +
+            `progress ${bar._apps.get('org.gnome.Nautilus.desktop')?._progress.visible}`);
+        await this.shootDock('dock-badges');
+        this.move(this.centerOf(1), this.iconY);
+        await wait(800);
+        await this.shootDock('dock-badges-magnified');
+        this.move(this.monitor.width / 2, 200);
+        calendarSource.destroy();
+        Gio.DBus.session.emit_signal(null, '/com/canonical/unity/launcherentry/1', 'com.canonical.Unity.LauncherEntry',
+            'Update', new GLib.Variant('(sa{sv})', ['application://org.gnome.Nautilus.desktop', {
+                'count-visible': new GLib.Variant('b', false), 'progress-visible': new GLib.Variant('b', false),
+            }]));
+        await wait(800);
+        log(`DOCK badges cleared: Files ${badge('org.gnome.Nautilus.desktop')?.visible}, Calendar ${badge('org.gnome.Calendar.desktop')?.visible}`);
+
         // Its menu.
         await this.click(this.centerOf(1), this.iconY, Clutter.BUTTON_SECONDARY);
         await wait(900);

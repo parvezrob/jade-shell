@@ -159,6 +159,21 @@ class JadeDockAppItem extends Item {
         this.add_child(this.icon);
         this._dot = new St.Widget({style_class: 'jade-dock-dot'});
         this.add_child(this._dot);
+        // On the icon itself, so they grow with it: the count badge at its top
+        // right, the progress bar across its foot.
+        this._badge = new St.Label({
+            visible: false, x_expand: true, y_expand: true,
+            x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START,
+        });
+        this._badge.clutter_text.x_align = Clutter.ActorAlign.CENTER;
+        this.icon._iconContainer.add_child(this._badge);
+        this._progress = new St.Widget({
+            visible: false, x_expand: true, y_expand: true,
+            x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.END,
+        });
+        this._progressFill = new St.Widget();
+        this._progress.add_child(this._progressFill);
+        this.icon._iconContainer.add_child(this._progress);
         this.resize(bar.metrics.icon, bar.metrics);
 
         this._bouncing = null;
@@ -182,9 +197,56 @@ class JadeDockAppItem extends Item {
         const dot = metrics.dot;
         this._dot.set_size(dot, dot);
         this._dot.set_position(Math.round((size - dot) / 2), size + metrics.dotOffset);
+        const badge = Math.round(size * 0.4);
+        this._badgeSize = badge;
+        this._badge.translation_x = Math.round(badge * 0.3);
+        this._badge.translation_y = -Math.round(badge * 0.25);
+        this._progress.set_size(Math.round(size * 0.72), Math.max(3, Math.round(size * 0.09)));
+        this._progress.translation_y = -Math.round(size * 0.05);
+        this._styleBadge();
+        this._syncProgress();
+    }
+
+    _styleBadge() {
+        const h = this._badgeSize;
+        if (!h || !this._badgeColors)
+            return;
+        const [bg, fg] = this._badgeColors;
+        this._badge.style = `background-color: ${bg}; color: ${fg}; font-weight: 700;` +
+            ` font-size: ${Math.round(h * 0.6)}px; min-width: ${h}px; height: ${h}px;` +
+            ` border-radius: ${Math.round(h / 2)}px; padding: 0 ${this._badge.text.length > 1 ? Math.round(h * 0.28) : 0}px;` +
+            ` box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);`;
+    }
+
+    // An app's unread count, as on a Mac: a number, 99+ past 99.
+    setBadge(count) {
+        this._badge.visible = count > 0;
+        const text = count > 99 ? '99+' : String(count);
+        if (count > 0 && text !== this._badge.text) {
+            this._badge.text = text;
+            this._styleBadge();  // a circle for one digit, a pill for more
+        }
+    }
+
+    setProgress(progress) {
+        this._progressValue = progress;
+        this._syncProgress();
+    }
+
+    _syncProgress() {
+        const progress = this._progressValue ?? null;
+        this._progress.visible = progress !== null;
+        if (progress === null)
+            return;
+        const [width, height] = this._progress.get_size();
+        this._progressFill.set_size(Math.max(height, Math.round(width * progress)), height);
     }
 
     restyle(bar) {
+        this._badgeColors = bar._badgeColors;
+        this._styleBadge();
+        this._progress.style = bar._progressStyle;
+        this._progressFill.style = bar._progressFillStyle;
         this.iconStyle = bar._iconStyle;
         this._dot.set_style(bar._dotStyle);
         if (this.icon.icon.icon)
