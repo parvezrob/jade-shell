@@ -106,6 +106,12 @@ export class Bar {
         // and an autohiding dock would stay).
         this._hit.connect('enter-event', () => this.wake());
         this._hit.connect('leave-event', () => this.wake());
+        // Moving along the strip under the icons crosses no icon: the label
+        // must still follow.
+        this._hit.connect('motion-event', () => {
+            this.wake();
+            return Clutter.EVENT_PROPAGATE;
+        });
         this._content.add_child(this._hit);
         this._icons = new St.Widget({reactive: false});
         this._content.add_child(this._icons);
