@@ -14,8 +14,12 @@ class Icons:
         return None if icons.installed() else Absent('the Mac-style icons are off; turn them on with: jade apps on icons')
 
     def changes(self, theme, ctx):
-        folders = icons.folder_icons(theme.colors['accent'])
+        accent = theme.colors['accent']
+        folders = icons.folder_icons(accent)
         out = [File(folder / 'places/scalable' / name, svg) for folder in icons.theme_dirs() for name, svg in folders.items()]
+        # Files and Software drawn by Jade (the dark variant shares apps/scalable).
+        base = icons.theme_dirs()[0]
+        out += [File(base / 'apps/scalable' / name, svg) for name, svg in icons.own_app_icons(accent, folders).items()]
         return [*out, Setting('org.gnome.desktop.interface', 'icon-theme', icons.variant(theme.colors))]
 
     def reload(self, ctx):

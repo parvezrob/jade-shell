@@ -191,8 +191,11 @@ def build(src):
             if not link.exists():
                 link.symlink_to(section)
     # The folders to repaint at each theme switch, kept with the theme (the
-    # download cache may be cleared).
+    # download cache may be cleared), and the outline of MacTahoe's app tiles.
     merge(src / 'colors/color-blue', base / '.jade-folders')
+    plate = re.search(r'<path fill="url\(#d\)" d="([^"]+)"', (src / 'src/apps/scalable/softwarecenter.svg').read_text())
+    if plate:
+        (base / '.jade-folders/plate.txt').write_text(plate.group(1))
     (base / '.jade-source').write_text(TAG + '\n')
     update_cache()
 
@@ -203,6 +206,52 @@ def folder_icons(accent):
     if not src.exists():
         return {}
     return {path.name: path.read_text().replace(FOLDER_BLUE, accent.lower()) for path in sorted(src.glob('*.svg'))}
+
+
+# MacTahoe draws Files as Finder and Software as the App Store: Apple's own
+# marks, which make the whole desktop look like a knock-off. Jade draws those
+# two itself: Files as the theme's folder, Software as a tile in the accent
+# with a shopping bag (GNOME Software's own symbol), on MacTahoe's tile.
+OWN_APPS = {'file-manager.svg': 'files', 'softwarecenter.svg': 'software'}
+
+
+def mix(color, toward, amount):
+    a = [int(color.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)]
+    b = [int(toward.lstrip('#')[i:i + 2], 16) for i in (0, 2, 4)]
+    return '#' + ''.join(f'{round(x + (y - x) * amount):02x}' for x, y in zip(a, b, strict=True))
+
+
+def software_icon(accent):
+    plate_file = icons_home() / NAME / '.jade-folders/plate.txt'
+    if not plate_file.exists():
+        return None
+    top, bottom = mix(accent, '#ffffff', 0.28), mix(accent, '#000000', 0.12)
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 16.933 16.933">
+<defs><linearGradient id="t" x1="8.466" x2="8.466" y1="1.058" y2="15.875" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="{top}"/><stop offset="1" stop-color="{bottom}"/></linearGradient>
+<linearGradient id="s" x1="8.466" x2="8.466" y1="1.058" y2="8.466" gradientUnits="userSpaceOnUse">
+<stop offset="0" stop-color="#fff" stop-opacity=".22"/>
+<stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient></defs>
+<path fill="url(#t)" d="{plate_file.read_text()}"/>
+<path fill="url(#s)" d="{plate_file.read_text()}"/>
+<g fill="none" stroke="#fff" stroke-width=".62" stroke-linecap="round">
+<path d="M6.95 6.9V5.95a1.52 1.52 0 0 1 3.04 0v.95"/></g>
+<path fill="#fff" d="M4.93 6.3h7.07c.3 0 .55.23.58.53l.5 5.35c.08.83-.57 1.55-1.4 1.55H5.25
+c-.83 0-1.48-.72-1.4-1.55l.5-5.35c.03-.3.28-.53.58-.53z"/>
+<path fill="none" stroke="{bottom}" stroke-width=".6" stroke-linecap="round" d="M6.95 8.6a1.52 1.52 0 0 0 3.04 0"/>
+</svg>
+'''
+
+
+def own_app_icons(accent, folders):
+    """{file name under apps/scalable: SVG text} for the apps Jade draws."""
+    out = {}
+    if 'folder.svg' in folders:
+        out['file-manager.svg'] = folders['folder.svg']
+    software = software_icon(accent)
+    if software:
+        out['softwarecenter.svg'] = software
+    return out
 
 
 def update_cache(wait=True):
