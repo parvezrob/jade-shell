@@ -374,6 +374,11 @@ async function glass() {
         await shoot(`glass-${look}-menu`);
         menu._dialog?.close();
         await wait(700);
+        Main.overview.showApps();
+        await wait(1800);
+        await shoot(`glass-${look}-appgrid`);
+        Main.overview.hide();
+        await wait(1200);
         Main.osdWindowManager.showAll(new Gio.ThemedIcon({name: 'audio-volume-high-symbolic'}), 'Speakers', 0.8, 1);
         await wait(500);
         await shoot(`glass-${look}-osd`);

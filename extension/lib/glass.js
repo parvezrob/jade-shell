@@ -1,6 +1,7 @@
 // Frosted glass for the Shell (Settings › Glass): the top bar, every menu,
 // dialogs, notification banners and the volume and brightness pop-ups blur
-// what is behind them, as the dock does, tinted by the theme.
+// what is behind them, as the dock does, tinted by the theme; the overview
+// sits on the blurred wallpaper.
 //
 // Each surface gets a Shell.BlurEffect in background mode (whatever is behind
 // it, windows too, blurred as it paints), and the theme's `.jade-frosted`
@@ -11,6 +12,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
+import * as Background from 'resource:///org/gnome/shell/ui/background.js';
 import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
@@ -106,6 +108,7 @@ export class Glass {
         const alpha = this._settings.get_double('glass-tint');
         const rgba = a => `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`;
         const css = `.jade-frosted #panel { background-color: ${rgba(Math.max(0.1, alpha - 0.05))}; }\n` +
+            '.jade-frosted #overviewGroup { background-color: transparent; }\n' +
             '.jade-frosted #panel:overview { background-color: transparent; }\n' +
             `${SURFACES.map(s => `.jade-frosted ${s}`).join(',\n')} { background-color: ${rgba(alpha)}; }\n`;
         this._css.replace_contents(css, null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
@@ -151,6 +154,51 @@ export class Glass {
         }
         this._writeTint();
         this._loadTint();
+        this._styleOverview();
+    }
+
+    // ---------------------------------------------------------------- the overview
+
+    // Behind the app grid and the workspaces, as macOS's Launchpad has it:
+    // each monitor's wallpaper, blurred once and kept (the blur is cached, so
+    // the overview's animations cost nothing more), tinted like the glass.
+    _buildOverview() {
+        this._destroyOverview();
+        if (Main.extensionManager.lookup(BLUR_MY_SHELL)?.state === 1)
+            return;  // it blurs the overview itself
+        this._overview = Main.layoutManager.monitors.map((monitor, index) => {
+            const group = new Clutter.Actor({x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height,
+                clip_to_allocation: true});
+            const wall = new Clutter.Actor({width: monitor.width, height: monitor.height});
+            const blur = new Shell.BlurEffect({mode: Shell.BlurMode.ACTOR, radius, brightness: 1});
+            wall.add_effect(blur);
+            group.add_child(wall);
+            const tint = new St.Widget({width: monitor.width, height: monitor.height});
+            group.add_child(tint);
+            const backgrounds = new Background.BackgroundManager({container: wall, monitorIndex: index,
+                vignette: false, controlPosition: false});
+            Main.layoutManager.overviewGroup.insert_child_at_index(group, 0);
+            return {group, blur, tint, backgrounds};
+        });
+        this._styleOverview();
+    }
+
+    _styleOverview() {
+        const hex = this._palette?.background ?? '#1a1b26';
+        const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+        const alpha = this._settings.get_double('glass-tint');
+        for (const {blur, tint} of this._overview ?? []) {
+            blur.radius = radius;
+            tint.style = `background-color: rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)});`;
+        }
+    }
+
+    _destroyOverview() {
+        for (const {group, backgrounds} of this._overview ?? []) {
+            backgrounds.destroy();
+            group.destroy();
+        }
+        this._overview = null;
     }
 
     _start() {
@@ -174,10 +222,14 @@ export class Glass {
         // Blur my Shell blurs the top bar itself when it's on: leave the bar to it.
         if (Main.extensionManager.lookup(BLUR_MY_SHELL)?.state !== 1)
             frost(Main.panel);
+        this._buildOverview();
+        Main.layoutManager.connectObject('monitors-changed', () => this._buildOverview(), this);
     }
 
     _stop() {
         active = false;
+        Main.layoutManager.disconnectObject(this);
+        this._destroyOverview();
         Main.uiGroup.remove_style_class_name('jade-frosted');
         this._injections?.clear();
         this._injections = null;
