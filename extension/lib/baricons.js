@@ -24,9 +24,10 @@ export function familyGicon(name) {
 
 // The name an icon in the bar asks for. Once Jade's drawing is swapped in,
 // the icon's own icon-name is empty: code following another icon (Jade's
-// network icon follows GNOME's hidden one) reads it here.
+// network icon follows GNOME's hidden one) reads it here. A name set since
+// wins (a handler can run before the swap for it).
 export function askedIconName(icon) {
-    return icon?._jadeAsked ?? icon?.icon_name ?? null;
+    return icon?.icon_name || icon?._jadeAsked || null;
 }
 
 export class BarIcons {
