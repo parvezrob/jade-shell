@@ -102,6 +102,9 @@ export class Bar {
         // Wayland: only reactive actors take the pointer, so the monitor-sized
         // container lets every click through except on the dock itself.
         Main.layoutManager.addChrome(this.actor, {trackFullscreen: true});
+        // At logout GNOME Shell tears its actors down without disabling
+        // extensions: clean up with the actor, not only in destroy().
+        this.actor.connect('destroy', () => this._teardown());
 
         this._readSettings();
         this._separator = new Separator(this);
@@ -145,6 +148,13 @@ export class Bar {
     }
 
     destroy() {
+        this.actor.destroy();  // the rest in _teardown
+    }
+
+    _teardown() {
+        if (this._tornDown)
+            return;
+        this._tornDown = true;
         if (this._dragMonitor)
             DND.removeDragMonitor(this._dragMonitor);
         this._disarmRemove();
@@ -168,7 +178,6 @@ export class Bar {
             item.setRest(new Mtk.Rectangle({x: 0, y: 0, width: 0, height: 0}));
         setTint(null);
         this._glass.destroy();
-        this.actor.destroy();
     }
 
     // ---------- geometry ----------

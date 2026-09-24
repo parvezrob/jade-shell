@@ -18,6 +18,14 @@ export class Workspaces {
         this._button.add_style_class_name('jade-workspaces');
         this._box = new St.BoxLayout();
         this._button.add_child(this._box);
+        // Torn down with the Shell at logout (no disable() then): stop listening.
+        this._box.connect('destroy', () => {
+            this._disconnectWorkspaces();
+            for (const id of this._managerSignals ?? [])
+                global.workspace_manager.disconnect(id);
+            this._managerSignals = null;
+            this._box = null;
+        });
         this._button.connect('scroll-event', (_a, event) => this._onScroll(event));
         this._workspaceSignals = [];
 
@@ -59,6 +67,8 @@ export class Workspaces {
     }
 
     _rebuild() {
+        if (!this._box)
+            return;
         this._disconnectWorkspaces();
         this._box.destroy_all_children();
         const names = this._names.get_strv('workspace-names');
@@ -81,6 +91,8 @@ export class Workspaces {
     }
 
     _restyle() {
+        if (!this._box)
+            return;
         const manager = global.workspace_manager;
         const active = manager.get_active_workspace_index();
         this._box.get_children().forEach((button, i) => {

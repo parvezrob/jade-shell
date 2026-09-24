@@ -11,6 +11,7 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GioUnix from 'gi://GioUnix';
 import Meta from 'gi://Meta';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
@@ -225,7 +226,7 @@ export class Capture {
     _editor() {
         if (GLib.find_program_in_path('gradia'))
             return ['gradia'];
-        if (Gio.DesktopAppInfo.new(GRADIA))
+        if (GioUnix.DesktopAppInfo.new(GRADIA))
             return ['flatpak', 'run', GRADIA.replace(/\.desktop$/, '')];
         if (GLib.find_program_in_path('satty'))
             return ['satty', '--filename'];
