@@ -793,6 +793,27 @@ class Sandbox(unittest.TestCase):
         # Running setup by hand is asking for Jade Shell's layout again.
         self.assertIn('Turned off Blur my Shell', self.jade('setup'))
 
+    def test_tahoe_icons_take_the_accent_and_leave_with_restore(self):
+        from jade import icons
+        icons_home = self.home / '.local/share/icons'
+        for name in (icons.NAME, f'{icons.NAME}-dark'):
+            (icons_home / name / 'places/scalable').mkdir(parents=True)
+            (icons_home / name / 'index.theme').write_text(f'[Icon Theme]\nName={name}\n')
+        (icons_home / icons.NAME / '.jade-source').write_text(icons.TAG + '\n')
+        (icons_home / icons.NAME / '.jade-folders').mkdir()
+        (icons_home / icons.NAME / '.jade-folders/folder.svg').write_text('<svg fill="#006efd"/>')
+        self.gsettings('set', 'org.gnome.desktop.interface', 'icon-theme', "'Papirus'")
+        self.jade('theme', 'set', 'tokyo-night', '--only', 'icons')
+        accent = themes.load('tokyo-night').colors['accent'].lower()
+        for name in (icons.NAME, f'{icons.NAME}-dark'):
+            self.assertEqual((icons_home / name / 'places/scalable/folder.svg').read_text(), f'<svg fill="{accent}"/>')
+        self.assertEqual(self.gsettings('get', 'org.gnome.desktop.interface', 'icon-theme'), f"'{icons.NAME}-dark'")
+        self.jade('theme', 'set', 'catppuccin-latte', '--only', 'icons')  # a light theme: the light folder
+        self.assertEqual(self.gsettings('get', 'org.gnome.desktop.interface', 'icon-theme'), f"'{icons.NAME}'")
+        self.jade('restore', '--yes')
+        self.assertEqual(self.gsettings('get', 'org.gnome.desktop.interface', 'icon-theme'), "'Papirus'")
+        self.assertFalse((icons_home / icons.NAME).exists())
+
     @needs_compiler
     def test_the_jade_dock_replaces_other_docks_until_restore(self):
         extensions = self.home / '.local/share/gnome-shell/extensions'

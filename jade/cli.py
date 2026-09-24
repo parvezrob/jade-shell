@@ -10,7 +10,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio
 
-from . import __version__, debug, engine, setup, themes, update
+from . import __version__, debug, engine, icons, setup, themes, update
 from . import targets as registry
 from .setup import join
 from .store import File, Settings, read_text
@@ -248,6 +248,12 @@ def apps_off(args, ctx):
 def apps_on(args, ctx):
     if not set_left_alone(ctx, args.names, alone=False):
         return 1
+    if 'icons' in args.names:
+        try:
+            icons.install(lambda text: text and print(text))
+        except (icons.IconsUnavailable, OSError) as error:
+            print(f'jade: no Mac-style icons: {error}', file=sys.stderr)
+            return 1
     state = engine.current()
     titles = join([engine.target_named(n).title for n in dict.fromkeys(args.names)])
     if not state.get('theme'):

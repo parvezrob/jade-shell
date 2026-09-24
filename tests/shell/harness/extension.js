@@ -965,7 +965,8 @@ export default class Harness extends Extension {
         if (this._ran)
             return;
         this._ran = true;
-        const run = {timing: () => this._timing(), dock: () => this._dock()}[MODE]?.() ?? this._run();
+        const run = {timing: () => this._timing(), dock: () => this._dock(), looks: () => this._looks()}[MODE]?.() ??
+            this._run();
         run.catch(e => log(`failed: ${e}\n${e.stack}`))
             .finally(() => GLib.file_set_contents(`${OUT}/done`, 'ok'));
     }
@@ -981,6 +982,42 @@ export default class Harness extends Extension {
             await timing.run();
         } finally {
             timing.stop();
+        }
+    }
+
+    // The dock in each theme ($JADE_THEMES) with each kind of icons: GNOME's
+    // and the Mac-style ones, in color and tinted. Needs $JADE_ICONS.
+    async _looks() {
+        await wait(6000);
+        const jadeShell = Main.extensionManager.lookup(UUID);
+        const settings = jadeShell.getSettings?.() ?? Extension.lookupByUUID(UUID).getSettings();
+        const iface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        const dock = jadeShell?.stateObj?._parts?.find(part => part.key === 'show-dock')?.instance;
+        for (const theme of THEMES) {
+            await jade('theme', 'set', theme, '--only', 'gnome,shell,icons');
+            await wait(2500);
+            const mac = iface.get_string('icon-theme');
+            for (const [name, icons, style] of [['gnome', 'Adwaita', 'color'], ['tahoe', mac, 'color'],
+                ['tahoe-tinted', mac, 'tinted'], ['gnome-tinted', 'Adwaita', 'tinted']]) {
+                iface.set_string('icon-theme', icons);
+                settings.set_string('dock-icon-style', style);
+                await wait(1500);
+                const scene = new DockScene(dock.bar);
+                scene.move(scene.centerOf(3), scene.iconY);
+                await wait(900);
+                await scene.shootDock(`look-${theme}-${name}`);
+                scene.move(scene.monitor.width / 2, 200);
+                await wait(500);
+                if (theme === THEMES[0] && name.startsWith('tahoe')) {  // the app grid follows
+                    Main.overview.showApps();
+                    await wait(1800);
+                    await shoot(`look-${theme}-${name}-grid`);
+                    Main.overview.hide();
+                    await wait(1200);
+                }
+            }
+            iface.set_string('icon-theme', mac);
+            settings.set_string('dock-icon-style', 'color');
         }
     }
 

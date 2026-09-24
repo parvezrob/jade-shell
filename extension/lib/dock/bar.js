@@ -11,7 +11,7 @@ import * as Layout from 'resource:///org/gnome/shell/ui/layout.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {Glass, hexToRgb} from './glass.js';
-import {AppItem, Separator, ShowAppsItem, TrashItem} from './items.js';
+import {AppItem, Separator, ShowAppsItem, TrashItem, setTint} from './items.js';
 import {Badges} from './badges.js';
 
 // Magnification, after dash2dock-motion's magnifier (GPL-2.0-or-later, see
@@ -105,7 +105,7 @@ export class Bar {
         this._separator = new Separator(this);
         this._showApps = new ShowAppsItem(this);
         this._settingsChanged = [
-            'dock-icon-size', 'dock-magnification', 'dock-behavior', 'dock-show-trash', 'dock-bounce',
+            'dock-icon-size', 'dock-magnification', 'dock-behavior', 'dock-show-trash', 'dock-bounce', 'dock-icon-style',
         ].map(key => settings.connect(`changed::${key}`, () => this._queueReadSettings()));
 
         this._appSystem = Shell.AppSystem.get_default();
@@ -154,6 +154,7 @@ export class Bar {
         this._removeBarrier();
         for (const item of this._apps.values())
             item.setRest(new Mtk.Rectangle({x: 0, y: 0, width: 0, height: 0}));
+        setTint(null);
         this._glass.destroy();
         this.actor.destroy();
     }
@@ -196,6 +197,7 @@ export class Bar {
         this._behavior = this._settings.get_string('dock-behavior');
         this._showTrash = this._settings.get_boolean('dock-show-trash');
         this.bounces = this._settings.get_boolean('dock-bounce');
+        this._tinted = this._settings.get_string('dock-icon-style') === 'tinted';
 
         const m = this.metrics;
         const height = this._monitor.height;
@@ -217,6 +219,7 @@ export class Bar {
 
     _style(palette) {
         this._palette = palette;
+        setTint(this._tinted ? palette : null);
         const m = this.metrics;
         this._glass.style(palette, {radius: m.radius * 1.25, scale: m.scale});
         const light = palette.mode === 'light';
@@ -237,6 +240,7 @@ export class Bar {
             ` color: ${palette.accent_fg ?? palette.background}; border-radius: ${Math.round(m.icon * 0.23)}px;` +
             ` box-shadow: 0 ${Math.round(2 * m.scale)}px ${Math.round(5 * m.scale)}px rgba(0, 0, 0, ${light ? 0.18 : 0.34});`;
         this._restyleItems();
+        this.onRestyle?.();
     }
 
     _restyleItems() {

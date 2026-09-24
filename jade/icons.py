@@ -1,0 +1,240 @@
+"""Mac-style app icons: MacTahoe, with its folders in the theme's accent.
+
+Opt-in (`jade apps on icons`, or the switch in the settings). MacTahoe
+(vinceliuice/MacTahoe-icon-theme, GPL-3.0) is downloaded once, at a pinned
+release checked against its SHA-256, and built into ~/.local/share/icons as
+Jade-MacTahoe (for light themes) and Jade-MacTahoe-dark (light symbolic
+icons, for dark ones). The build follows the theme's own install.sh (which
+leaves stray cursor-only folders behind when a color is chosen, so it is
+not run). Every theme switch then repaints the 18 folder icons in the
+theme's exact accent: MacTahoe's blue folders are one flat color, with
+their shading and glyphs in black and white on top.
+
+Nothing is bundled in the package: the icons imitate trademarked logos,
+and they are 10 MB to download, about 90 MB built.
+"""
+import hashlib
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import tarfile
+import urllib.request
+
+from .store import data_home
+
+TAG = '2026-09-10'
+URL = f'https://github.com/vinceliuice/MacTahoe-icon-theme/archive/refs/tags/{TAG}.tar.gz'
+SHA256 = '6330369e9e10a28cfc8da598ebf63a7204be705403519963ff84e1cb84719d35'
+NAME = 'Jade-MacTahoe'
+FOLDER_BLUE = '#006efd'  # the one color of colors/color-blue's folders
+SECTIONS = ['actions', 'animations', 'apps', 'categories', 'devices', 'emotes', 'emblems', 'mimes', 'places',
+            'preferences']
+
+
+class IconsUnavailable(Exception):
+    pass
+
+
+def cache_home():
+    return pathlib.Path(os.environ.get('XDG_CACHE_HOME') or pathlib.Path.home() / '.cache')
+
+
+def icons_home():
+    return data_home() / 'icons'
+
+
+def theme_dirs():
+    return [icons_home() / NAME, icons_home() / f'{NAME}-dark']
+
+
+def installed():
+    """Built from the pinned release (a new one is built again)."""
+    stamp = icons_home() / NAME / '.jade-source'
+    return all((d / 'index.theme').exists() for d in theme_dirs()) and stamp.exists() and stamp.read_text().strip() == TAG
+
+
+def variant(colors):
+    return NAME if colors.get('mode') == 'light' else f'{NAME}-dark'
+
+
+def source_dir():
+    return cache_home() / 'jade-shell' / f'MacTahoe-icon-theme-{TAG}'
+
+
+def download():
+    """The release, unpacked into the cache: its folder."""
+    folder = source_dir()
+    if (folder / 'src/index.theme').exists():
+        return folder
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    archive = folder.with_name(f'.{folder.name}.{os.getpid()}.tar.gz')
+    try:
+        digest = hashlib.sha256()
+        with urllib.request.urlopen(URL, timeout=30) as response, archive.open('wb') as out:
+            while chunk := response.read(1 << 16):
+                digest.update(chunk)
+                out.write(chunk)
+        if digest.hexdigest() != SHA256:
+            raise IconsUnavailable('the download did not match its checksum')
+        unpacked = folder.with_name(f'.{folder.name}.{os.getpid()}')
+        shutil.rmtree(unpacked, ignore_errors=True)
+        with tarfile.open(archive) as tar:
+            members = [m for m in tar.getmembers() if not re.match(r'[^/]+/(cursors|bold|bolder|release)(/|$)', m.name)
+                       and not m.name.endswith(('.png', '.jpg'))]
+            tar.extractall(unpacked, members=members, filter='data')
+        top = next(unpacked.iterdir())
+        shutil.rmtree(folder, ignore_errors=True)
+        top.rename(folder)
+        shutil.rmtree(unpacked, ignore_errors=True)
+    except OSError as error:
+        raise IconsUnavailable(f'could not download MacTahoe ({getattr(error, "reason", None) or error})') from None
+    finally:
+        archive.unlink(missing_ok=True)
+    return folder
+
+
+def merge(src, dst):
+    """cp -r src/. dst: files and symlinks replace what is there."""
+    for root, dirs, files in os.walk(src):
+        rel = pathlib.Path(root).relative_to(src)
+        (dst / rel).mkdir(parents=True, exist_ok=True)
+        for name in dirs + files:
+            source, target = pathlib.Path(root) / name, dst / rel / name
+            if source.is_symlink():
+                if target.is_symlink() or target.is_file():
+                    target.unlink()
+                elif target.is_dir():
+                    shutil.rmtree(target)
+                target.symlink_to(os.readlink(source))
+                if name in dirs:
+                    dirs.remove(name)
+            elif name in files:
+                if target.is_symlink():
+                    target.unlink()
+                shutil.copyfile(source, target)
+
+
+def recolor(files, old, new):
+    for path in files:
+        if path.is_file() and not path.is_symlink():
+            text = path.read_text(errors='replace')
+            if old in text:
+                path.write_text(text.replace(old, new))
+
+
+def svgs(folder, sizes):
+    return [path for size in sizes for path in (folder / size).glob('*.svg')]
+
+
+def build(src):
+    """Jade-MacTahoe and Jade-MacTahoe-dark from the unpacked release."""
+    home = icons_home()
+    base, dark = home / NAME, home / f'{NAME}-dark'
+    for folder in (base, dark):
+        shutil.rmtree(folder, ignore_errors=True)
+        folder.mkdir(parents=True)
+        for name in ('COPYING', 'AUTHORS'):
+            shutil.copyfile(src / name, folder / name)
+        (folder / 'index.theme').write_text((src / 'src/index.theme').read_text().replace('MacTahoe', folder.name))
+
+    for section in SECTIONS:
+        merge(src / 'src' / section, base / section)
+    for size in ('16', '22', '24', '32', 'symbolic'):
+        merge(src / 'src/status' / size, base / 'status' / size)
+    for name in ('user-trash-dark.svg', 'user-trash-full-dark.svg'):
+        (base / 'places/scalable' / name).unlink(missing_ok=True)
+    for section in [*SECTIONS, 'status']:
+        if (src / 'links' / section).exists():
+            merge(src / 'links' / section, base / section)
+
+    # The dark variant: its own light symbolic and small icons, the rest shared.
+    parts = {'actions': None, 'apps': ['16', '22', '32', 'symbolic'], 'categories': ['22', 'symbolic'],
+             'emblems': ['symbolic'], 'mimes': ['symbolic'], 'devices': ['16', '22', '24', '32', 'symbolic'],
+             'places': ['16', '22', '24', 'scalable', 'symbolic'], 'status': ['symbolic']}
+    for section, sizes in parts.items():
+        if sizes is None:
+            merge(src / 'src' / section, dark / section)
+        else:
+            for size in sizes:
+                merge(src / 'src' / section / size, dark / section / size)
+    # MacTahoe's dark variant swaps in a dark trash can; a Mac keeps the light
+    # one in dark mode too, and so does Jade's dock.
+    for name in ('user-trash-dark.svg', 'user-trash-full-dark.svg'):
+        (dark / 'places/scalable' / name).unlink(missing_ok=True)
+    recolor(svgs(dark, [f'{s}/{n}' for s in ('actions', 'devices', 'places') for n in ('16', '22', '24')])
+            + svgs(dark, ['apps/16', 'apps/22', 'apps/32', 'categories/22', 'actions/32', 'devices/32'])
+            + svgs(dark, [f'{s}/symbolic' for s in ('actions', 'apps', 'categories', 'emblems', 'devices', 'mimes',
+                                                   'places', 'status')]),
+            '#363636', '#dedede')
+    for section, sizes in (('actions', ['16', '22', '24', '32', 'symbolic']),
+                           ('devices', ['16', '22', '24', '32', 'symbolic']),
+                           ('places', ['16', '22', '24', 'scalable', 'symbolic']),
+                           ('apps', ['16', '22', '32', 'symbolic']), ('categories', ['22', 'symbolic']),
+                           ('mimes', ['symbolic']), ('status', ['symbolic'])):
+        for size in sizes:
+            if (src / 'links' / section / size).exists():
+                merge(src / 'links' / section / size, dark / section / size)
+    for section in ('animations', 'emotes', 'preferences'):
+        (dark / section).symlink_to(f'../{NAME}/{section}')
+    for section, size in (('categories', '32'), ('emblems', '16'), ('emblems', '22'), ('emblems', '24'),
+                          ('mimes', '16'), ('mimes', '22'), ('mimes', 'scalable'), ('apps', 'scalable'),
+                          ('devices', 'scalable'), ('status', '16'), ('status', '22'), ('status', '24'),
+                          ('status', '32')):
+        (dark / section).mkdir(exist_ok=True)
+        (dark / section / size).symlink_to(f'../../{NAME}/{section}/{size}')
+
+    for folder in (base, dark):
+        for section in [*SECTIONS, 'status']:
+            link = folder / f'{section}@2x'
+            if not link.exists():
+                link.symlink_to(section)
+    # The folders to repaint at each theme switch, kept with the theme (the
+    # download cache may be cleared).
+    merge(src / 'colors/color-blue', base / '.jade-folders')
+    (base / '.jade-source').write_text(TAG + '\n')
+    update_cache()
+
+
+def folder_icons(accent):
+    """The folder icons in `accent`: {file name: SVG text}."""
+    src = icons_home() / NAME / '.jade-folders'
+    if not src.exists():
+        return {}
+    return {path.name: path.read_text().replace(FOLDER_BLUE, accent.lower()) for path in sorted(src.glob('*.svg'))}
+
+
+def update_cache(wait=True):
+    """Tell GTK and GNOME Shell the icons changed: a theme folder that is newer
+    makes them look again (and ignore the old icon cache), and the cache is
+    then rebuilt, in the background unless `wait` (0.7 s, not worth holding a
+    theme switch for)."""
+    folders = [str(folder) for folder in theme_dirs() if folder.exists()]
+    for folder in folders:
+        os.utime(folder)
+    tool = shutil.which('gtk-update-icon-cache') or shutil.which('gtk4-update-icon-cache')
+    if not tool or not folders:
+        return
+    script = '; '.join(f'"$0" -f -q -t "${i + 1}"' for i in range(len(folders)))
+    process = subprocess.Popen(['sh', '-c', script, tool, *folders], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, start_new_session=True)
+    if wait:
+        process.wait()
+
+
+def install(progress=lambda _text: None):
+    """Download and build, unless the pinned release is built already."""
+    if installed():
+        return False
+    progress('Downloading the Mac-style icons…')
+    src = download()
+    progress('Building the Mac-style icons…')
+    build(src)
+    return True
+
+
+def remove():
+    for folder in theme_dirs():
+        shutil.rmtree(folder, ignore_errors=True)
+    shutil.rmtree(source_dir(), ignore_errors=True)

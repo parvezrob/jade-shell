@@ -11,6 +11,8 @@ import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+import {TintEffect} from './tint.js';
+
 // Icons are rendered this many times larger than they sit in the dock, so a
 // magnified icon is as sharp as a resting one.
 const OVERSAMPLE = 3;
@@ -30,12 +32,32 @@ const URGENT_GIVE_UP_S = 20;
 
 // An icon drawn from a texture several times its size needs mipmaps, or its
 // edges shimmer; St.Icon puts the texture in a child actor when it loads.
-function smooth(icon) {
-    const filter = child => child.set_content_scaling_filters(Clutter.ScalingFilter.TRILINEAR,
-        Clutter.ScalingFilter.LINEAR);
-    icon.get_children().forEach(filter);
-    icon.connect('child-added', (_icon, child) => filter(child));
+export function smooth(icon) {
+    const prepare = child => {
+        child.set_content_scaling_filters(Clutter.ScalingFilter.TRILINEAR, Clutter.ScalingFilter.LINEAR);
+        tintTexture(child);
+    };
+    icon.get_children().forEach(prepare);
+    icon.connect('child-added', (_icon, child) => prepare(child));
     return icon;
+}
+
+// The palette while the dock's icons are tinted (Settings › Dock), else null.
+let tint = null;
+
+export function setTint(palette) {
+    tint = palette;
+}
+
+function tintTexture(texture) {
+    texture.remove_effect_by_name('jade-tint');
+    if (tint)
+        texture.add_effect_with_name('jade-tint', new TintEffect(tint));
+}
+
+export function retint(icon) {
+    if (icon instanceof St.Icon)
+        icon.get_children().forEach(tintTexture);
 }
 
 // Everything the dock lines up: apps, the separator, Show Apps and the trash.
@@ -249,8 +271,10 @@ class JadeDockAppItem extends Item {
         this._progressFill.style = bar._progressFillStyle;
         this.iconStyle = bar._iconStyle;
         this._dot.set_style(bar._dotStyle);
-        if (this.icon.icon.icon)
+        if (this.icon.icon.icon) {
             this.icon.icon.icon.style = this.iconStyle;
+            retint(this.icon.icon.icon);
+        }
     }
 
     syncRunning() {
@@ -427,12 +451,26 @@ class JadeDockShowApps extends ButtonItem {
     _init(bar) {
         super._init('show-apps', bar, 'Show Apps');
         this.button.add_style_class_name('jade-dock-tile');
+        this._interface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        this._interface.connectObject('changed::icon-theme', () => this.setIconSize(this._size, this._metrics), this);
+        this.connect('destroy', () => this._interface.disconnectObject(this));
+        this.setIconSize(this._size, this._metrics);  // first drawn before the setting was at hand
     }
 
-    // A tile like an app icon's: rounded, in the theme's accent, inset by
-    // the margin app icons have around their artwork.
+    // With the Mac-style icons, their Launchpad icon. Otherwise a tile like
+    // an app icon's: rounded, in the theme's accent, inset by the margin app
+    // icons have around their artwork.
     setIconSize(size, metrics) {
+        this._size = size;
+        this._metrics = metrics;
         this.button.child?.destroy();
+        this._tile = null;
+        if (this._interface?.get_string('icon-theme').startsWith('Jade-MacTahoe')) {
+            this.button.child = smooth(new St.Icon({icon_name: 'view-app-grid', icon_size: metrics.logical * OVERSAMPLE}));
+            this.button.child.set_size(size, size);
+            this.button.child.style = this._iconStyle ?? null;
+            return;
+        }
         const tile = Math.round(size * 0.8);
         this._tile = new St.Bin({
             style_class: 'jade-dock-tile', width: tile, height: tile,
@@ -446,7 +484,13 @@ class JadeDockShowApps extends ButtonItem {
 
     restyle(bar) {
         this._style = bar._tileStyle;
-        this._tile?.set_style(this._style);
+        this._iconStyle = bar._iconStyle;
+        if (this._tile) {
+            this._tile.set_style(this._style);
+        } else if (this.button.child) {
+            this.button.child.style = this._iconStyle;
+            retint(this.button.child);
+        }
     }
 
     // Opens the app grid; a second click closes it, as Launchpad does.
@@ -514,8 +558,10 @@ class JadeDockTrash extends ButtonItem {
 
     restyle(bar) {
         this._iconStyle = bar._iconStyle;
-        if (this.button.child)
+        if (this.button.child) {
             this.button.child.style = this._iconStyle;
+            retint(this.button.child);
+        }
     }
 
     activate(button) {

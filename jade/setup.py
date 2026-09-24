@@ -19,7 +19,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
-from . import __version__, engine, migrations, restore_offer, shelltheme, themes
+from . import __version__, engine, icons, migrations, restore_offer, shelltheme, themes
 from .store import File, Setting, config_home, data_home, write_text
 from .usage import collect
 
@@ -456,7 +456,8 @@ def setup(ctx, theme_id=None, after_update=False):
     home = pathlib.Path.home()
     edited = [(target, change.path) for target, change in engine.plan(theme, ctx, skip=['gnome', 'dock', 'shell'])
               if isinstance(change, File) and change.path.exists() and change.path.is_relative_to(home)
-              and not change.path.is_relative_to(engine.state_dir())]
+              and not change.path.is_relative_to(engine.state_dir())
+              and not change.path.is_relative_to(icons.icons_home())]
     if edited:
         paths = join([f'~/{path.relative_to(home)}' for _t, path in edited])
         say(f'Adding the theme to {paths}.')
@@ -607,6 +608,9 @@ def restore(ctx, assume_yes=False):
     for unit in manifest['disabled_units']:
         systemctl('enable', '--now', unit)
     revoke_flatpak(manifest)
+    # The Mac-style icons are Jade Shell's own download: gone with the rest.
+    kept = [path for path in kept if not pathlib.Path(path).is_relative_to(icons.icons_home())]
+    icons.remove()
     manifest_path().unlink(missing_ok=True)
     restore_offer.drop_kit()  # nothing left to offer after a removal
     for path in dict.fromkeys(merged):

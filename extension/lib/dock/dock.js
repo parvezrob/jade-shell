@@ -1,9 +1,12 @@
 import GLib from 'gi://GLib';
+import St from 'gi://St';
+import * as AppDisplay from 'resource:///org/gnome/shell/ui/appDisplay.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {ExtensionState} from 'resource:///org/gnome/shell/misc/extensionUtils.js';
 
 import {Bar} from './bar.js';
 import {Genie} from './genie.js';
+import {retint, smooth} from './items.js';
 
 // Docks that would sit in the same place. Setup turns them off; while one is
 // still running (the user turned it back on), Jade's dock stays out of its way.
@@ -66,6 +69,9 @@ export class Dock {
             this._destroyBar();
         } else if (!other && !this._bar && Main.layoutManager.primaryMonitor) {
             this._bar = new Bar(Main.layoutManager.primaryIndex, this._settings, this._theme);
+            this._bar.onRestyle = () => this._retintGrid();
+            this._patchGrid();
+            this._retintGrid();
             Main.overview.dash.hide();
         }
         this._syncGenie();
@@ -83,6 +89,51 @@ export class Dock {
         }
     }
 
+    // The app grid's icons follow the dock's: tinted with it (Settings ›
+    // Dock › Icons), so the look is one across the Shell.
+    _patchGrid() {
+        if (this._createIcon)
+            return;
+        const createIcon = AppDisplay.AppIcon.prototype._createIcon;
+        this._createIcon = createIcon;
+        AppDisplay.AppIcon.prototype._createIcon = function (size) {
+            return smooth(createIcon.call(this, size));
+        };
+        // A folder's preview: four of its apps' icons.
+        const createFolderIcon = AppDisplay.FolderView.prototype.createFolderIcon;
+        this._createFolderIcon = createFolderIcon;
+        AppDisplay.FolderView.prototype.createFolderIcon = function (size) {
+            const icon = createFolderIcon.call(this, size);
+            for (const bin of icon.get_children()) {
+                if (bin.child instanceof St.Icon)
+                    smooth(bin.child);
+            }
+            return icon;
+        };
+    }
+
+    _unpatchGrid() {
+        if (!this._createIcon)
+            return;
+        AppDisplay.AppIcon.prototype._createIcon = this._createIcon;
+        AppDisplay.FolderView.prototype.createFolderIcon = this._createFolderIcon;
+        this._createIcon = this._createFolderIcon = null;
+    }
+
+    _retintGrid() {
+        const appDisplay = Main.overview._overview?.controls?.appDisplay;
+        const views = [appDisplay, ...(appDisplay?._orderedItems ?? []).map(item => item._folderView ?? item.view)];
+        for (const view of views) {
+            for (const item of view?._orderedItems ?? []) {
+                const icon = item.icon?.icon;
+                if (icon instanceof St.Icon)
+                    retint(icon);
+                else  // a folder's preview
+                    icon?.get_children().forEach(bin => bin.child instanceof St.Icon && retint(bin.child));
+            }
+        }
+    }
+
     _rebuild() {
         this._destroyBar();
         this._sync();
@@ -93,6 +144,8 @@ export class Dock {
             return;
         this._bar.destroy();
         this._bar = null;
+        this._unpatchGrid();
+        this._retintGrid();  // the tint is off with the dock
         this._syncGenie();
         // Another dock may have taken the overview's dash over meanwhile.
         if (!this._otherDock())

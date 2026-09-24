@@ -17,6 +17,7 @@ mode=${JADE_MODE:-shots}
 default_out=$root/build/shell-shots
 [[ $mode == timing ]] && default_out=$root/build/shell-timing
 [[ $mode == dock ]] && default_out=$root/build/shell-dock
+[[ $mode == looks ]] && default_out=$root/build/shell-looks
 out=$(realpath -m "${1:-$default_out}")
 work=$(mktemp -d)
 runtime=$(mktemp -d /tmp/jade-rt.XXXX)  # short: a Wayland socket path must fit 108 bytes
@@ -47,6 +48,9 @@ done
 if [[ -n ${JADE_RECORDS:-} ]]; then  # usage records to show, e.g. from an older install
     mkdir -p "$home/.cache/jade-shell/usage"; cp -a "$JADE_RECORDS" "$home/.cache/jade-shell/usage/records"
 fi
+if [[ -n ${JADE_ICONS:-} ]]; then  # built Mac-style icons (~/.local/share/icons after `jade apps on icons`)
+    mkdir -p "$home/.local/share/icons"; cp -a "$JADE_ICONS"/Jade-MacTahoe* "$home/.local/share/icons/"
+fi
 [[ -d $home/.cache/jade-shell/usage/records ]] && chmod -R a-w "$home/.cache/jade-shell/usage/records"  # no refresh without sign-in
 favorites="'org.mozilla.firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Ptyxis.desktop', 'org.gnome.Calendar.desktop', 'org.gnome.TextEditor.desktop', 'org.gnome.Loupe.desktop', 'org.gnome.Weather.desktop', 'org.gnome.Calculator.desktop', 'org.gnome.Software.desktop', 'org.gnome.Settings.desktop'"
 printf "[org/gnome/shell]\nenabled-extensions=['jade-shell@parvezrob.github.io', 'jade-shell-harness@local']\ndisable-user-extensions=false\nwelcome-dialog-last-shown-version='999'\nfavorite-apps=[%s]\n" "$favorites" \
@@ -54,7 +58,7 @@ printf "[org/gnome/shell]\nenabled-extensions=['jade-shell@parvezrob.github.io',
 
 monitor=1400x900
 timeout=600  # half seconds
-[[ $mode == dock ]] && monitor=1400x900@${JADE_HZ:-180}
+[[ $mode == dock || $mode == looks ]] && monitor=1400x900@${JADE_HZ:-180}
 if [[ $mode == timing ]]; then
     # The live display runs at 180 Hz; frame counts only mean something at its rate.
     monitor=1400x900@${JADE_HZ:-180}

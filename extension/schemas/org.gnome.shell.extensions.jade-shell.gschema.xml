@@ -110,6 +110,14 @@
       <default>true</default>
       <summary>Show the trash in the dock</summary>
     </key>
+    <key name="dock-icon-style" type="s">
+      <choices>
+        <choice value="color"/>
+        <choice value="tinted"/>
+      </choices>
+      <default>'color'</default>
+      <summary>Dock icons in their own colors, or tinted in the theme's</summary>
+    </key>
     <key name="dock-genie" type="b">
       <default>true</default>
       <summary>Windows minimize into the dock with a genie effect</summary>

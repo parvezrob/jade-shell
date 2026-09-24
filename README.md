@@ -36,6 +36,7 @@ Log out and back in once to start the extension. A few notes at that first login
 
 - **Picker:** click the palette icon in the top bar, or press **Super+Ctrl+Shift+Space**. Arrow keys move, Enter applies. The menu stays open while you try themes. Each theme keeps the wallpaper you last gave it; pick the current theme again for its next wallpaper.
 - **Dock:** icons grow under the pointer, a label names each one, running apps have a dot, and an app's icon bounces until its window is up (or when it asks for attention). Windows pour into their icon when minimized (the genie), and the trash and the app grid sit past the separator. It hides when a window comes near it; push the pointer against the bottom edge to bring it back. Right-click an icon for its windows, New Window, Pin or Unpin and Quit; drag apps from the app grid onto it, or along it, to pin and order them. It is drawn on frosted glass in the theme's colors, and moves by transforms on the GPU, so it keeps up with high refresh rate screens. Size, magnification, when it hides and its effects are under **Dock** in the settings.
+- **Icons:** under **Dock › Icons** in the settings, pick GNOME's own or **Tahoe**, Mac-style icons (the [MacTahoe](https://github.com/vinceliuice/MacTahoe-icon-theme) theme, downloaded once, 10 MB) with their folders in the theme's exact accent, and either one **tinted**: every icon in the dock and the app grid redrawn in the theme's own shades, as macOS 26 tints them. `jade apps on icons` and `jade apps off icons` switch the Tahoe icons from a terminal; `jade restore` puts your icons back and deletes the download.
 - **Command line:**
 
   ```bash
@@ -58,6 +59,7 @@ Log out and back in once to start the extension. A few notes at that first login
 | GNOME Shell (`shell`) | a Shell theme compiled from GNOME's own theme sources (the light ones for light themes) with the Omarchy palette and the theme's exact accent: top bar, menus, quick settings, calendar, notifications, dialogs, lock screen |
 | GNOME (`gnome`) | light or dark style to match the theme, the nearest named accent for apps, wallpaper (desktop and lock screen) |
 | Dock (`dock`) | Dash to Dock or Ubuntu Dock colors, if you use one instead of Jade Shell's dock (which follows the theme by itself) |
+| Icons (`icons`) | once turned on: the Tahoe icons' folders in the accent, and their light or dark variant |
 | Ptyxis (`ptyxis`) | an Omarchy palette file, selected in every profile |
 | GNOME apps (`gtk`) | the theme's colors in a marked block of `~/.config/gtk-4.0/gtk.css` and `gtk-3.0/gtk.css` (libadwaita's named colors and CSS variables), so Files, Settings, Text Editor and other GNOME apps follow the theme when they next start; GTK 3 apps follow with the adw-gtk3 theme. Setup lets Flatpak apps read those files; restore takes that back |
 | Kitty (`kitty`) | `jade-theme.conf`, included at the end of `kitty.conf` (your own colors stay, overridden); kitty reloads |
