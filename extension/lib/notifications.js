@@ -8,8 +8,11 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GObject from 'gi://GObject';
+import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
 import {addToPanel, label} from './util.js';
@@ -25,9 +28,19 @@ function gnomeBannerAlignment() {
     return Clutter.ActorAlign.CENTER;
 }
 
+// Shortcuts, on Omarchy's keys (Super+comma and friends).
+const SHORTCUTS = {
+    'bell-dismiss': n => n._dismissNewest(),
+    'bell-dismiss-all': n => n._view.clear(),
+    'bell-toggle-dnd': n => n._settings.set_boolean('show-banners', !n._settings.get_boolean('show-banners')),
+    'bell-open-newest': n => n._newest()?.activate(),
+    'bell-show': () => Main.panel.toggleCalendar(),
+};
+
 export class Notifications {
-    constructor(extension) {
+    constructor(extension, jadeSettings) {
         this._extension = extension;
+        this._jadeSettings = jadeSettings;
     }
 
     enable() {
@@ -58,7 +71,15 @@ export class Notifications {
         this._clockBox.remove_child(this._unread);
         this._unreadChanged = this._unread.connect('notify::visible', () => this._sync());
         this._dndChanged = this._settings.connect('changed::show-banners', () => this._sync());
+        this._view.connectObject('notify::can-clear', () => this._sync(), this);
+        this._jadeSettings.connectObject('changed::bell-dot', () => this._sync(), this);
         this._sync();
+
+        for (const [name, action] of Object.entries(SHORTCUTS)) {
+            Main.wm.addKeybinding(name, this._jadeSettings, Meta.KeyBindingFlags.NONE,
+                Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => action(this));
+        }
+        this._shortcuts = true;
 
         // Super+V, and whatever closes "the calendar" after activating a
         // notification, now mean the bell's panel.
@@ -78,6 +99,13 @@ export class Notifications {
     // Also undoes an enable() that failed partway.
     disable() {
         const dateMenu = Main.panel.statusArea.dateMenu;
+        if (this._shortcuts) {
+            for (const name of Object.keys(SHORTCUTS))
+                Main.wm.removeKeybinding(name);
+            this._shortcuts = false;
+        }
+        this._view?.disconnectObject(this);
+        this._jadeSettings.disconnectObject(this);
         if (this._sessionChanged)
             Main.sessionMode.disconnect(this._sessionChanged);
         Main.messageTray.bannerAlignment = gnomeBannerAlignment();
@@ -170,9 +198,25 @@ export class Notifications {
         return new Gio.FileIcon({file: this._extension.dir.get_child('icons').get_child(name)});
     }
 
+    // The dot: notifications are waiting in the panel (Settings: or, as GNOME
+    // has it, only ones whose pop-up never showed).
     _sync() {
         const dnd = !this._settings.get_boolean('show-banners');
         this._icon.gicon = dnd ? this._bellOffIcon : this._bellIcon;
-        this._dot.visible = this._unread.visible;
+        this._dot.visible = this._jadeSettings.get_string('bell-dot') === 'unread'
+            ? this._unread.visible : this._view.can_clear;
+    }
+
+    _notifications() {
+        return Main.messageTray.getSources().flatMap(source => source.notifications);
+    }
+
+    _newest() {
+        return this._notifications().reduce((newest, n) =>
+            !newest || n.datetime.compare(newest.datetime) > 0 ? n : newest, null);
+    }
+
+    _dismissNewest() {
+        this._newest()?.destroy(MessageTray.NotificationDestroyedReason.DISMISSED);
     }
 }

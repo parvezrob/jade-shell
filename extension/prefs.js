@@ -58,6 +58,15 @@ export default class JadePreferences extends ExtensionPreferences {
         page.add(desktop);
         switchRow(settings, desktop, 'start-on-desktop', 'Start on the desktop', 'Skip the overview after logging in');
         switchRow(settings, desktop, 'notification-bell', 'Notification bell', 'Notifications in their own panel, pop-ups at the top right');
+        const dotChoices = [['waiting', 'While notifications wait'], ['unread', 'Only for missed pop-ups']];
+        const dot = new Adw.ComboRow({
+            title: 'Bell dot', subtitle: 'When the bell shows its dot',
+            model: Gtk.StringList.new(dotChoices.map(([, text]) => text)),
+            selected: Math.max(0, dotChoices.findIndex(([value]) => value === settings.get_string('bell-dot'))),
+        });
+        dot.connect('notify::selected', () => settings.set_string('bell-dot', dotChoices[dot.selected][0]));
+        settings.bind('notification-bell', dot, 'sensitive', Gio.SettingsBindFlags.GET);
+        desktop.add(dot);
         switchRow(settings, desktop, 'simple-calendar', 'Simple calendar', 'Hide world clocks and weather in the clock’s menu');
         spinRow(settings, desktop, 'app-grid-columns', 'App grid columns', null, 0, 12);
         spinRow(settings, desktop, 'app-grid-rows', 'App grid rows', null, 0, 8);
@@ -66,6 +75,10 @@ export default class JadePreferences extends ExtensionPreferences {
         const keyboard = new Adw.PreferencesGroup({title: 'Keyboard'});
         page.add(keyboard);
         keyboard.add(new ShortcutRow(settings, 'toggle-picker', 'Open the theme picker'));
+        for (const [key, title] of [['bell-show', 'Open the notifications'], ['bell-dismiss', 'Dismiss the newest notification'],
+            ['bell-dismiss-all', 'Dismiss all notifications'], ['bell-open-newest', 'Open the newest notification'],
+            ['bell-toggle-dnd', 'Do Not Disturb on or off']])
+            keyboard.add(new ShortcutRow(settings, key, title));
 
         const apps = new Adw.PreferencesGroup({
             title: 'Apps',

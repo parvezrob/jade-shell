@@ -34,6 +34,36 @@
       <summary>Notifications behind a bell in the top bar</summary>
       <description>Like Omarchy's notification center: a panel of their own, with pop-ups at the top right. Off: GNOME's layout, beside the calendar.</description>
     </key>
+    <key name="bell-dot" type="s">
+      <choices>
+        <choice value="waiting"/>
+        <choice value="unread"/>
+      </choices>
+      <default>'waiting'</default>
+      <summary>When the bell shows its dot</summary>
+      <description>waiting: while notifications wait in its panel; unread: only for ones whose pop-up never showed (GNOME's rule).</description>
+    </key>
+    <key name="bell-dismiss" type="as">
+      <default><![CDATA[['<Super>comma']]]></default>
+      <summary>Dismiss the newest notification</summary>
+    </key>
+    <key name="bell-dismiss-all" type="as">
+      <default><![CDATA[['<Super><Shift>comma']]]></default>
+      <summary>Dismiss all notifications</summary>
+    </key>
+    <key name="bell-toggle-dnd" type="as">
+      <default><![CDATA[['<Super><Control>comma']]]></default>
+      <summary>Turn Do Not Disturb on or off</summary>
+    </key>
+    <key name="bell-open-newest" type="as">
+      <default><![CDATA[['<Super><Alt>comma']]]></default>
+      <summary>Open the newest notification</summary>
+    </key>
+    <key name="bell-show" type="as">
+      <default><![CDATA[['<Super><Shift><Alt>comma']]]></default>
+      <summary>Open the notifications panel</summary>
+      <description>Super+V opens it too.</description>
+    </key>
     <key name="start-on-desktop" type="b">
       <default>true</default>
       <summary>Start on the desktop instead of the overview</summary>

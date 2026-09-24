@@ -36,7 +36,7 @@ export default class JadeShell extends Extension {
             {key: 'show-monitor', make: () => new Monitor(this, this._settings, this._shellTheme)},
             {key: 'show-usage', make: () => new Usage(this, this._settings, this._shellTheme)},
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
-            {key: 'notification-bell', make: () => new Notifications(this)},
+            {key: 'notification-bell', make: () => new Notifications(this, this._settings)},
             {key: null, make: () => new Updates(this, this._settings)},
             {key: null, make: () => new Welcome(this, this._settings, () => this._openPicker())},
         ];

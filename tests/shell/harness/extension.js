@@ -96,6 +96,43 @@ async function states(role, name) {
     await wait(300);
 }
 
+// The bell's shortcuts, pressed on a virtual keyboard, and its dot.
+async function bellShortcuts() {
+    const bell = Main.extensionManager.lookup(UUID)?.stateObj?._parts?.find(p => p.key === 'notification-bell')?.instance;
+    if (!bell) {
+        log('bell shortcuts: no bell');
+        return;
+    }
+    const keyboard = Clutter.get_default_backend().get_default_seat().create_virtual_device(
+        Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    const press = async (...keys) => {
+        for (const key of keys)
+            keyboard.notify_keyval(now(), key, Clutter.KeyState.PRESSED);
+        for (const key of keys.reverse())
+            keyboard.notify_keyval(now(), key, Clutter.KeyState.RELEASED);
+        await wait(500);
+    };
+    const count = () => Main.messageTray.getSources().flatMap(source => source.notifications).length;
+    const source = new MessageTray.Source({title: 'Harness'});
+    Main.messageTray.add(source);
+    for (const title of ['One', 'Two', 'Three'])
+        source.addNotification(new MessageTray.Notification({source, title, body: ''}));
+    await wait(800);
+    log(`bell shortcuts: ${count()} notifications, dot ${bell._dot.visible}`);
+    await press(Clutter.KEY_Super_L, Clutter.KEY_comma);
+    log(`bell shortcuts: Super+comma → ${count()}`);
+    const dnd = () => !bell._settings.get_boolean('show-banners');
+    await press(Clutter.KEY_Super_L, Clutter.KEY_Control_L, Clutter.KEY_comma);
+    log(`bell shortcuts: Super+Ctrl+comma → Do Not Disturb ${dnd()}`);
+    await press(Clutter.KEY_Super_L, Clutter.KEY_Control_L, Clutter.KEY_comma);
+    await press(Clutter.KEY_Super_L, Clutter.KEY_Shift_L, Clutter.KEY_comma);
+    log(`bell shortcuts: Super+Shift+comma → ${count()}, dot ${bell._dot.visible}`);
+    await press(Clutter.KEY_Super_L, Clutter.KEY_Shift_L, Clutter.KEY_Alt_L, Clutter.KEY_comma);
+    log(`bell shortcuts: Super+Shift+Alt+comma → panel open ${bell._button.menu.isOpen}`);
+    bell._button.menu.close();
+    await wait(300);
+}
+
 // The bell off puts GNOME's list, Clear row, unread dot and pop-up place back;
 // on again takes them. Logs "HARNESS bell …" lines and shoots the calendar.
 async function bellRoundTrip() {
@@ -1126,6 +1163,7 @@ export default class Harness extends Extension {
             await panel('quickSettings', `${theme}-quick-settings`);
         }
         await bellRoundTrip();
+        await bellShortcuts();
         await clockFollowsGnome();
         await highContrast();
     }
