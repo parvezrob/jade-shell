@@ -18,7 +18,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {familyGicon} from './baricons.js';
+import {askedIconName, familyGicon} from './baricons.js';
 import {SPAWN, VERTICAL, addToPanel, cairoRgb, jadeCommand, label, run} from './util.js';
 
 const SWEEP = 1.5 * Math.PI;  // the dials' arc: 270°
@@ -203,10 +203,10 @@ export class Network {
         if (!gnome)
             return;  // no NetworkManager: GNOME shows no network icon either
         this._gnome = gnome;
-        const icon = () => (this._icon.icon_name = gnome._primaryIndicator?.icon_name || 'network-offline-symbolic');
+        const icon = () => (this._icon.icon_name = askedIconName(gnome._primaryIndicator) || 'network-offline-symbolic');
         const vpn = () => {
             this._vpnIcon.visible = Boolean(gnome._vpnIndicator?.visible);
-            this._vpnIcon.icon_name = gnome._vpnIndicator?.icon_name || 'network-vpn-symbolic';
+            this._vpnIcon.icon_name = askedIconName(gnome._vpnIndicator) || 'network-vpn-symbolic';
         };
         gnome._primaryIndicator?.connectObject('notify::icon-name', icon, this);
         gnome._vpnIndicator?.connectObject('notify::visible', vpn, 'notify::icon-name', vpn, this);

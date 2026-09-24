@@ -22,6 +22,13 @@ export function familyGicon(name) {
     return drawn.get(name) ?? new Gio.ThemedIcon({name});
 }
 
+// The name an icon in the bar asks for. Once Jade's drawing is swapped in,
+// the icon's own icon-name is empty: code following another icon (Jade's
+// network icon follows GNOME's hidden one) reads it here.
+export function askedIconName(icon) {
+    return icon?._jadeAsked ?? icon?.icon_name ?? null;
+}
+
 export class BarIcons {
     constructor(extension) {
         this._dir = extension.dir.get_child('icons').get_child('bar');
@@ -51,6 +58,7 @@ export class BarIcons {
         this._watched.clear();
         this._swapping = true;
         for (const [icon, original] of this._originals) {
+            delete icon._jadeAsked;
             if (original.gicon)
                 icon.gicon = original.gicon;
             else
@@ -98,9 +106,11 @@ export class BarIcons {
         const name = this._names(icon).find(n => this._files.has(n));
         if (!name) {
             this._originals.delete(icon);  // a name we don't draw: the theme's, as set
+            delete icon._jadeAsked;
             return;
         }
         this._originals.set(icon, {gicon: icon.gicon, iconName: icon.icon_name});
+        icon._jadeAsked = this._names(icon)[0];
         this._swapping = true;
         icon.gicon = this._files.get(name);
         this._swapping = false;
