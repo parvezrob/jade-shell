@@ -103,3 +103,29 @@
 .jade-monitor-panel .jade-action { padding: 6px 10px; border-radius: 0; }
 .jade-monitor-panel .jade-action-content { spacing: 6px; }
 .jade-monitor-panel .jade-action-label { font-size: 9pt; }
+
+/* ---------- dock ---------- */
+/* GNOME's app icons, without the grid's tile: no padding, no hover square. */
+.jade-dock-icon,
+.jade-dock-icon:hover,
+.jade-dock-icon:active,
+.jade-dock-icon:checked,
+.jade-dock-icon:focus,
+.jade-dock-icon:selected,
+.jade-dock-icon:drop,
+.jade-dock-button,
+.jade-dock-button:hover,
+.jade-dock-button:active,
+.jade-dock-button:focus {
+    padding: 0; margin: 0; border-width: 0; border-radius: 0;
+    background: none; box-shadow: none !important; transition-duration: 0ms;
+}
+.jade-dock-icon .overview-icon,
+.jade-dock-icon:hover .overview-icon,
+.jade-dock-icon:active .overview-icon,
+.jade-dock-icon:checked .overview-icon,
+.jade-dock-icon:focus .overview-icon,
+.jade-dock-icon:selected .overview-icon {
+    padding: 0; spacing: 0; border-width: 0; background: none; box-shadow: none;
+}
+.jade-dock-label { padding: 5px 11px; font-size: 10pt; font-weight: 500; }

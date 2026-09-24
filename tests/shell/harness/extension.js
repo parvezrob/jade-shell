@@ -5,6 +5,9 @@
 //           screenshots it into $JADE_SHOTS and logs "HARNESS …" lines.
 //   timing  measures how fast the top-bar menus open and switch, and logs
 //           "HARNESS TIMING …" lines (see Timing below).
+//   dock    screenshots the dock at rest, magnified, with a label, a menu, a
+//           launch bounce and hidden, and times its frames during sweeps
+//           ("HARNESS DOCK …" lines).
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -700,12 +703,206 @@ class Timing {
     }
 }
 
+
+// The dock, driven with a virtual pointer. Screenshots go to $JADE_SHOTS;
+// "HARNESS DOCK …" lines report what happened and how long frames took.
+class DockScene {
+    constructor(bar) {
+        this.bar = bar;
+        const backend = Clutter.get_default_backend();
+        this.pointer = backend.get_default_seat().create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+        this.monitor = Main.layoutManager.primaryMonitor;
+        const view = global.stage.peek_stage_views()[0];
+        this.hz = view?.get_refresh_rate?.() ?? view?.refresh_rate ?? 60;
+    }
+
+    move(x, y) {
+        this.pointer.notify_absolute_motion(now(), this.monitor.x + x, this.monitor.y + y);
+    }
+
+    async click(x, y, button = Clutter.BUTTON_PRIMARY) {
+        this.move(x, y);
+        await wait(120);
+        this.pointer.notify_button(now(), button, Clutter.ButtonState.PRESSED);
+        await wait(90);
+        this.pointer.notify_button(now(), button, Clutter.ButtonState.RELEASED);
+    }
+
+    // The bottom of the screen, tall enough for magnified icons and labels.
+    shootDock(name) {
+        const b = this.bar;
+        const top = b._slabTop - b.metrics.icon * b._maxScale - 70;
+        return new Promise(resolve => {
+            const stream = Gio.File.new_for_path(`${OUT}/${name}.png`).replace(null, false, Gio.FileCreateFlags.NONE, null);
+            new Shell.Screenshot().screenshot_area(this.monitor.x, this.monitor.y + top, this.monitor.width,
+                this.monitor.height - top, stream, (o, res) => {
+                    try {
+                        o.screenshot_area_finish(res);
+                    } catch (e) {
+                        log(`shot ${name}: ${e}`);
+                    }
+                    stream.close(null);
+                    resolve();
+                });
+        });
+    }
+
+    centerOf(index) {
+        const item = this.bar._items[index];
+        return item.translation_x + item.span / 2;
+    }
+
+    get iconY() {
+        return this.bar._iconTop + this.bar.metrics.icon / 2;
+    }
+
+    // Sweep the pointer across the dock and back, one step a frame, timing
+    // the dock's work per frame and the gaps between frames.
+    async sweep(label, seconds = 2) {
+        const bar = this.bar;
+        const work = [];
+        const original = bar._frame;
+        bar._frame = delta => {
+            const t = now();
+            original.call(bar, delta);
+            work.push(now() - t);
+        };
+        const gaps = [];
+        let last = 0;
+        const clock = Clutter.Timeline.new_for_actor(global.stage, 1000 * 60);
+        clock.connect('new-frame', () => {
+            const t = now();
+            if (last)
+                gaps.push(t - last);
+            last = t;
+        });
+        clock.start();
+        const [left, right] = bar._extent;
+        const steps = Math.round(seconds * this.hz);
+        for (let i = 0; i <= steps; i++) {
+            const f = i / steps;
+            const x = left + 10 + (right - left - 20) * (f < 0.5 ? f * 2 : 2 - f * 2);
+            this.move(x, this.iconY);
+            await wait(1000 / this.hz);
+        }
+        clock.stop();
+        bar._frame = original;
+        const sorted = [...work].sort((a, b) => a - b);
+        const period = 1e6 / this.hz;
+        const drops = gaps.filter(g => g > period * 1.5).length;
+        const q = f => sorted.length ? (sorted[Math.floor((sorted.length - 1) * f)] / 1000).toFixed(3) : '-';
+        log(`DOCK sweep ${label}: ${work.length} dock frames, work median ${q(0.5)} ms p95 ${q(0.95)} ms max ${q(1)} ms; ` +
+            `${gaps.length} stage frames at ${this.hz.toFixed(0)} Hz, ${drops} longer than 1.5 periods`);
+    }
+
+    async run() {
+        const bar = this.bar;
+        const apps = bar._items.filter(item => item.kind === 'app');
+        log(`DOCK items: ${bar._items.map(item => item.kind === 'app' ? item.id : item.kind).join(', ')}`);
+        log(`DOCK metrics ${JSON.stringify(bar.metrics)} slab top ${bar._slabTop} extent ${bar._extent?.map(Math.round)}`);
+        this.move(this.monitor.width / 2, 200);
+        await wait(1500);
+        await this.shootDock('dock-rest');
+        await shoot('dock-desktop');
+
+        // Magnified over the third app, and between two apps.
+        this.move(this.centerOf(2), this.iconY);
+        await wait(900);
+        await this.shootDock('dock-magnified');
+        log(`DOCK label "${bar._label.text}" opacity ${bar._label.opacity}; envelope ${bar._envelope.toFixed(3)}`);
+        this.move((this.centerOf(4) + this.centerOf(5)) / 2, this.iconY);
+        await wait(700);
+        await this.shootDock('dock-magnified-between');
+        this.move(this.centerOf(0) - 20, this.iconY);
+        await wait(700);
+        await this.shootDock('dock-magnified-edge');
+        await this.sweep('magnified');
+
+        // The overview and the app grid: the dock stays, GNOME's dash is gone.
+        this.move(this.monitor.width / 2, 200);
+        Main.overview.show();
+        await wait(1500);
+        log(`DOCK overview: dock shown ${bar._shown}, GNOME dash visible ${Main.overview.dash.visible}`);
+        await shoot('dock-overview');
+        bar._showApps.activate();
+        await wait(1500);
+        await shoot('dock-app-grid');
+        bar._showApps.activate();
+        await wait(1200);
+        log(`DOCK overview closed: ${!Main.overview.visible}`);
+
+        // Its menu.
+        await this.click(this.centerOf(1), this.iconY, Clutter.BUTTON_SECONDARY);
+        await wait(900);
+        await shoot('dock-menu');
+        Main.panel.menuManager.activeMenu?.close();
+        for (const item of apps)
+            item.icon._menu?.close();
+        this.move(this.monitor.width / 2, 200);
+        await wait(800);
+
+        // Launch one: it bounces until its window is up.
+        const calculator = apps.find(item => item.id === 'org.gnome.Calculator.desktop') ?? apps[apps.length - 1];
+        const index = bar._items.indexOf(calculator);
+        await this.click(this.centerOf(index), this.iconY);
+        await wait(200);
+        this.move(this.monitor.width / 2, 200);
+        await wait(80);
+        await this.shootDock('dock-bounce');
+        log(`DOCK launched ${calculator.id}: bouncing ${calculator.isBouncing}, state ${calculator.app.state}`);
+        let window = null;
+        for (let i = 0; i < 60 && !window; i++) {
+            await wait(250);
+            window = calculator.app.get_windows()[0] ?? null;
+        }
+        await wait(1500);
+        log(`DOCK window ${window ? 'up' : 'never came'}; bouncing ${calculator.isBouncing}; dot ${calculator._dot.visible}`);
+        await this.shootDock('dock-running');
+        await shoot('dock-running-desktop');
+        if (!window)
+            return;
+
+        // A window over it: the dock gets out of the way, and a push on the
+        // bottom edge brings it back.
+        const frame = window.get_frame_rect();
+        window.move_frame(true, this.monitor.x + (this.monitor.width - frame.width) / 2,
+            this.monitor.y + this.monitor.height - frame.height + 20);
+        await wait(1200);
+        log(`DOCK window over it: overlap ${bar._overlap}, shown ${bar._shown}, slide ${Math.round(bar._slide)}`);
+        await shoot('dock-hidden');
+        this.move(this.monitor.width / 2, this.monitor.height - 2);
+        for (let i = 0; i < 40; i++) {
+            this.pointer.notify_relative_motion(now(), 0, 6);
+            await wait(12);
+        }
+        await wait(700);
+        log(`DOCK after a push on the edge: shown ${bar._shown}, slide ${Math.round(bar._slide)}, hover ${bar._hover}`);
+        await shoot('dock-revealed');
+        this.move(this.monitor.width / 2, 200);
+        await wait(1400);
+        log(`DOCK pointer away again: shown ${bar._shown}, slide ${Math.round(bar._slide)}`);
+
+        // Minimizing flies into the icon.
+        const [ok, rect] = window.get_icon_geometry();
+        log(`DOCK minimize target ${ok ? `${rect.x},${rect.y} ${rect.width}x${rect.height}` : 'none'}`);
+        window.minimize();
+        await wait(150);
+        await shoot('dock-minimizing');
+        await wait(1200);
+        log(`DOCK minimized: overlap ${bar._overlap}, shown ${bar._shown}`);
+        await this.shootDock('dock-after-minimize');
+        window.delete(global.get_current_time());
+        await wait(1500);
+        log(`DOCK closed: items ${bar._items.filter(item => item.kind === 'app').length} apps`);
+    }
+}
+
 export default class Harness extends Extension {
     enable() {
         if (this._ran)
             return;
         this._ran = true;
-        const run = MODE === 'timing' ? this._timing() : this._run();
+        const run = {timing: () => this._timing(), dock: () => this._dock()}[MODE]?.() ?? this._run();
         run.catch(e => log(`failed: ${e}\n${e.stack}`))
             .finally(() => GLib.file_set_contents(`${OUT}/done`, 'ok'));
     }
@@ -721,6 +918,35 @@ export default class Harness extends Extension {
             await timing.run();
         } finally {
             timing.stop();
+        }
+    }
+
+    async _dock() {
+        await wait(6000);
+        const jadeShell = Main.extensionManager.lookup(UUID);
+        log(`jade-shell state ${jadeShell?.state} ${jadeShell?.error ?? ''}`);
+        const dock = jadeShell?.stateObj?._parts?.find(part => part.key === 'show-dock')?.instance;
+        if (!dock?.bar) {
+            log('DOCK no dock');
+            return;
+        }
+        for (const theme of THEMES) {
+            if (theme !== THEMES[0]) {
+                await jade('theme', 'set', theme, '--only', 'gnome,shell');
+                await wait(2500);
+            }
+            const bar = dock.bar;
+            const scene = new DockScene(bar);
+            scene.move(scene.monitor.width / 2, 200);
+            await wait(1000);
+            if (theme !== THEMES[0]) {
+                await scene.shootDock(`dock-rest-${theme}`);
+                scene.move(scene.centerOf(3), scene.iconY);
+                await wait(900);
+                await scene.shootDock(`dock-magnified-${theme}`);
+                continue;
+            }
+            await scene.run();
         }
     }
 

@@ -10,6 +10,7 @@ import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 import {Clock} from './lib/clock.js';
 import {Desktop} from './lib/desktop.js';
+import {Dock} from './lib/dock/dock.js';
 import {SimpleCalendar} from './lib/datemenu.js';
 import {Monitor} from './lib/monitor.js';
 import {Notifications} from './lib/notifications.js';
@@ -28,6 +29,7 @@ export default class JadeShell extends Extension {
         // Parts the user can turn off; null key means always on.
         this._parts = [
             {key: null, keepWhileLocked: true, make: () => new Desktop(this._settings)},
+            {key: 'show-dock', make: () => new Dock(this._settings, this._shellTheme)},
             {key: 'show-workspaces', make: () => new Workspaces()},
             {key: 'show-clock-format', make: () => new Clock(this._settings)},
             {key: 'simple-calendar', make: () => new SimpleCalendar()},

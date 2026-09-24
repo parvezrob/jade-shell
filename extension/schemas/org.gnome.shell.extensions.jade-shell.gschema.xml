@@ -80,6 +80,41 @@
       <description>Asks the latest GitHub release for its version (a few bytes) and shows a notification when a newer one is out.</description>
     </key>
 
+    <key name="show-dock" type="b">
+      <default>true</default>
+      <summary>Jade's dock</summary>
+      <description>A dock at the bottom of the screen, which is also the overview's dock. Off, GNOME's own dash is back in the overview.</description>
+    </key>
+    <key name="dock-icon-size" type="i">
+      <range min="24" max="96"/>
+      <default>48</default>
+      <summary>Dock icon size, in logical pixels</summary>
+    </key>
+    <key name="dock-magnification" type="d">
+      <range min="1.0" max="2.5"/>
+      <default>1.6</default>
+      <summary>How large icons grow under the pointer</summary>
+      <description>1 turns magnification off.</description>
+    </key>
+    <key name="dock-behavior" type="s">
+      <choices>
+        <choice value="intellihide"/>
+        <choice value="autohide"/>
+        <choice value="always"/>
+      </choices>
+      <default>'intellihide'</default>
+      <summary>When the dock hides</summary>
+      <description>intellihide: when a window comes near it; autohide: whenever the pointer is not on it; always: never (windows keep clear of it).</description>
+    </key>
+    <key name="dock-show-trash" type="b">
+      <default>true</default>
+      <summary>Show the trash in the dock</summary>
+    </key>
+    <key name="dock-bounce" type="b">
+      <default>true</default>
+      <summary>Bounce icons as apps start and when they need attention</summary>
+    </key>
+
     <key name="show-usage" type="b">
       <default>true</default>
       <summary>Show Claude and Codex usage in the top bar</summary>
