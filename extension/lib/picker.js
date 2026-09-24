@@ -9,6 +9,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+import {familyGicon} from './baricons.js';
 import {VERTICAL, addToPanel, jadeCommand, label, openSettings, run} from './util.js';
 
 const COLUMNS = 5;
@@ -91,7 +92,7 @@ export class Picker {
         menu.box.add_style_class_name('jade-picker');
 
         const hero = new St.BoxLayout({x_expand: true, style_class: 'jade-hero'});
-        hero.add_child(new St.Icon({gicon: new Gio.ThemedIcon({names: ICONS}), style_class: 'jade-hero-icon', y_align: Clutter.ActorAlign.CENTER}));
+        hero.add_child(new St.Icon({gicon: familyGicon(ICONS[0]), style_class: 'jade-hero-icon', y_align: Clutter.ActorAlign.CENTER}));
         const text = new St.BoxLayout({orientation: VERTICAL, x_expand: true, y_align: Clutter.ActorAlign.CENTER});
         this._heroTitle = label('Themes', 'jade-title');
         text.add_child(this._heroTitle);
@@ -157,7 +158,7 @@ export class Picker {
     _footerButton(text, iconName) {
         const button = new St.Button({can_focus: true, reactive: true, track_hover: true, style_class: 'jade-action', accessible_name: text});
         const box = new St.BoxLayout({style_class: 'jade-action-content'});
-        box.add_child(new St.Icon({icon_name: iconName, icon_size: 14}));
+        box.add_child(new St.Icon({gicon: familyGicon(iconName), icon_size: 14}));
         box.add_child(label(text, 'jade-action-label'));
         button.set_child(box);
         return button;

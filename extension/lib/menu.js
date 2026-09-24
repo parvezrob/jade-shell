@@ -16,6 +16,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
 
+import {familyGicon} from './baricons.js';
 import {notify} from './notify.js';
 import {jadeCommand, openSettings, run, SPAWN} from './util.js';
 
@@ -365,7 +366,7 @@ export class JadeMenu {
     _row({entry, path}, index) {
         const box = new St.BoxLayout({style_class: 'jade-menu-row-box', x_expand: true});
         const icon = entry.appIcon ? new St.Icon({gicon: entry.appIcon, style_class: 'jade-menu-app-icon'})
-            : new St.Icon({gicon: entry.gicon ?? new Gio.ThemedIcon({name: entry.icon ?? 'emblem-default-symbolic'}),
+            : new St.Icon({gicon: entry.gicon ?? familyGicon(entry.icon ?? 'emblem-default-symbolic'),
                 style_class: 'jade-menu-icon'});
         box.add_child(icon);
         box.add_child(new St.Label({text: entry.label, style_class: 'jade-menu-label', y_align: Clutter.ActorAlign.CENTER}));

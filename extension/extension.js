@@ -46,7 +46,7 @@ export default class JadeShell extends Extension {
             {key: 'show-clock-format', make: () => new Clock(this._settings)},
             {key: 'simple-calendar', make: () => new SimpleCalendar()},
             {key: 'show-media', make: () => new Media()},
-            {key: 'show-weather', make: () => new Weather(this._settings, this.dir)},
+            {key: 'show-weather', make: () => new Weather(this._settings)},
             {key: 'show-monitor', make: () => new Monitor(this, this._settings, this._shellTheme)},
             {key: 'show-usage', make: () => new Usage(this, this._settings, this._shellTheme)},
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},

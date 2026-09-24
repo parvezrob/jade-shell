@@ -13,6 +13,7 @@ import Gettext from 'gettext';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
+import {familyGicon} from './baricons.js';
 import {addToPanel, VERTICAL} from './util.js';
 
 // What GNOME puts in place of a missing artist (Firefox often sends none).
@@ -36,7 +37,7 @@ class JadeMediaButton extends PanelMenu.Button {
 function iconButton(name, accessibleName, action) {
     const button = new St.Button({
         style_class: 'jade-media-control', can_focus: true, accessible_name: accessibleName,
-        child: new St.Icon({icon_name: name}),
+        child: new St.Icon({gicon: familyGicon(name)}),
     });
     button.connect('clicked', action);
     return button;
@@ -62,7 +63,7 @@ export class Media {
         menu.box.add_style_class_name('jade-frame');
         menu.box.add_style_class_name('jade-media-menu');
         const card = new St.BoxLayout({style_class: 'jade-media-card'});
-        this._cover = new St.Icon({style_class: 'jade-media-cover', icon_size: 72, icon_name: 'audio-x-generic-symbolic'});
+        this._cover = new St.Icon({style_class: 'jade-media-cover', icon_size: 72, gicon: familyGicon('audio-x-generic-symbolic')});
         card.add_child(this._cover);
         const text = new St.BoxLayout({orientation: VERTICAL, y_align: Clutter.ActorAlign.CENTER, x_expand: true});
         this._title = new St.Label({style_class: 'jade-media-title'});
@@ -149,7 +150,7 @@ export class Media {
         this._artist.text = artists;
         this._artist.visible = Boolean(artists);
         this._appName.text = player.app?.get_name() ?? '';
-        this._playPause.child.icon_name = playing ? 'media-playback-pause-symbolic' : 'media-playback-start-symbolic';
+        this._playPause.child.gicon = familyGicon(playing ? 'media-playback-pause-symbolic' : 'media-playback-start-symbolic');
         this._previous.reactive = player.canGoPrevious;
         this._next.reactive = player.canGoNext;
         const cover = player.trackCoverUrl;
@@ -158,7 +159,7 @@ export class Media {
         else if (player.app)
             this._cover.gicon = player.app.get_icon();
         else
-            this._cover.icon_name = 'audio-x-generic-symbolic';
+            this._cover.gicon = familyGicon('audio-x-generic-symbolic');
     }
 
     _skip(step) {

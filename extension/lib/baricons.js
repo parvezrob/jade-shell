@@ -9,6 +9,19 @@ import Gio from 'gi://Gio';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
+// Jade's own drawing of an icon for its menus, the Jade Menu and the
+// screenshot card, or the icon theme's when the family has none by that name.
+const FAMILY = Gio.File.new_for_uri(import.meta.url).get_parent().get_parent().get_child('icons').get_child('bar');
+const drawn = new Map();
+
+export function familyGicon(name) {
+    if (!drawn.has(name)) {
+        const file = FAMILY.get_child(`${name}.svg`);
+        drawn.set(name, file.query_exists(null) ? new Gio.FileIcon({file}) : null);
+    }
+    return drawn.get(name) ?? new Gio.ThemedIcon({name});
+}
+
 export class BarIcons {
     constructor(extension) {
         this._dir = extension.dir.get_child('icons').get_child('bar');

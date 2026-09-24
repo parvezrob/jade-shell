@@ -18,6 +18,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+import {familyGicon} from './baricons.js';
 import {SPAWN, VERTICAL, addToPanel, cairoRgb, jadeCommand, label, run} from './util.js';
 
 const SWEEP = 1.5 * Math.PI;  // the dials' arc: 270°
@@ -263,7 +264,7 @@ export class Network {
         const button = new St.Button({can_focus: true, track_hover: true, x_expand: true, style_class: 'jade-action', accessible_name: text});
         const box = new St.BoxLayout({style_class: 'jade-action-content', x_align: Clutter.ActorAlign.CENTER});
         const gicon = icon.endsWith('.svg')  // Jade's own
-            ? new Gio.FileIcon({file: this._extension.dir.get_child('icons').get_child(icon)}) : new Gio.ThemedIcon({name: icon});
+            ? new Gio.FileIcon({file: this._extension.dir.get_child('icons').get_child(icon)}) : familyGicon(icon);
         box.add_child(new St.Icon({gicon, icon_size: 14}));
         button._label = label(text, 'jade-action-label');
         box.add_child(button._label);
@@ -306,7 +307,7 @@ export class Network {
 
         // The connection.
         const hero = this._item(new St.BoxLayout({x_expand: true, style_class: 'jm-hero'}));
-        this._heroIcon = new St.Icon({icon_name: 'network-wired-symbolic', style_class: 'jm-hero-icon', y_align: Clutter.ActorAlign.START});
+        this._heroIcon = new St.Icon({gicon: familyGicon('network-wired-symbolic'), style_class: 'jm-hero-icon', y_align: Clutter.ActorAlign.START});
         hero.add_child(this._heroIcon);
         const text = new St.BoxLayout({orientation: VERTICAL, x_expand: true});
         this._title = label('Network', 'jm-title');
@@ -417,7 +418,7 @@ export class Network {
     _show(status) {
         this._status = status;
         if (!status.connected) {
-            this._heroIcon.icon_name = 'network-offline-symbolic';
+            this._heroIcon.gicon = familyGicon('network-offline-symbolic');
             this._title.text = 'Not connected';
             this._meta.text = '';
             this._tagline.text = '';
@@ -426,7 +427,7 @@ export class Network {
             return;
         }
         const wifi = status.type === 'wifi';
-        this._heroIcon.icon_name = wifi ? wifiIcon(status.signal ?? 0) : 'network-wired-symbolic';
+        this._heroIcon.gicon = familyGicon(wifi ? wifiIcon(status.signal ?? 0) : 'network-wired-symbolic');
         this._title.text = wifi ? status.ssid || 'Wi-Fi' : status.connection || 'Wired';
         this._meta.text = wifi
             ? [`${status.band ?? '?'} GHz`, status.channel && `channel ${status.channel}`, status.rate].filter(Boolean).join(' · ')

@@ -13,6 +13,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
+import {familyGicon} from './baricons.js';
 import {clockTime, openSettings, VERTICAL} from './util.js';
 
 const HOURS = 5;
@@ -59,17 +60,9 @@ function placeName(location) {
     return city && location.get_name().includes(city) ? city : location.get_name();
 }
 
-// A weather icon from Jade's bar family (icons/bar), or the theme's when the
-// family has none by that name.
-function familyIcon(dir, name) {
-    const file = dir.get_child('icons').get_child('bar').get_child(`${name}.svg`);
-    return file.query_exists(null) ? new Gio.FileIcon({file}) : new Gio.ThemedIcon({name});
-}
-
 export class Weather {
-    constructor(settings, dir) {
+    constructor(settings) {
         this._settings = settings;
-        this._dir = dir;
     }
 
     enable() {
@@ -220,7 +213,7 @@ export class Weather {
             const hour = new St.BoxLayout({orientation: VERTICAL, style_class: 'jade-weather-hour'});
             hour.add_child(new St.Label({text: clockTime(time, {hourOnly: true}), style_class: 'jade-weather-hour-time',
                 x_align: Clutter.ActorAlign.CENTER}));
-            hour.add_child(new St.Icon({gicon: familyIcon(this._dir, forecast.get_symbolic_icon_name()), style_class: 'jade-weather-hour-icon',
+            hour.add_child(new St.Icon({gicon: familyGicon(forecast.get_symbolic_icon_name()), style_class: 'jade-weather-hour-icon',
                 x_align: Clutter.ActorAlign.CENTER}));
             hour.add_child(new St.Label({text: temperature(forecast), style_class: 'jade-weather-hour-temp',
                 x_align: Clutter.ActorAlign.CENTER}));

@@ -16,6 +16,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+import {familyGicon} from './baricons.js';
 import {SPAWN, VERTICAL, addToPanel, cairoRgb, label} from './util.js';
 
 const INTERVAL_S = 2;
@@ -371,7 +372,7 @@ export class Monitor {
     _gicon(name) {
         return name.endsWith('.svg')
             ? new Gio.FileIcon({file: this._extension.dir.get_child('icons').get_child(name)})
-            : new Gio.ThemedIcon({name});
+            : familyGicon(name);
     }
 
     // ---------------------------------------------------------------- panel

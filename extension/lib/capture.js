@@ -19,6 +19,7 @@ import Gettext from 'gettext';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {PickPixel, SelectArea} from 'resource:///org/gnome/shell/ui/screenshot.js';
 
+import {familyGicon} from './baricons.js';
 import {frost} from './glass.js';
 import {run, SPAWN, VERTICAL} from './util.js';
 
@@ -83,7 +84,7 @@ function iconButton(icon, label, action) {
         style_class: 'jade-capture-button', can_focus: true, accessible_name: label,
         child: new St.BoxLayout({orientation: VERTICAL, style_class: 'jade-capture-button-box'}),
     });
-    button.child.add_child(new St.Icon({icon_name: icon, style_class: 'jade-capture-button-icon', x_align: Clutter.ActorAlign.CENTER}));
+    button.child.add_child(new St.Icon({gicon: familyGicon(icon), style_class: 'jade-capture-button-icon', x_align: Clutter.ActorAlign.CENTER}));
     button.child.add_child(new St.Label({text: label, style_class: 'jade-capture-button-label', x_align: Clutter.ActorAlign.CENTER}));
     button.connect('clicked', action);
     return button;
@@ -276,7 +277,7 @@ export class Capture {
         const image = new Clutter.Actor({content, width: Math.round(w * scale), height: Math.round(h * scale),
             content_gravity: Clutter.ContentGravity.RESIZE_ASPECT, x_expand: true, y_expand: true});
         pin.add_child(image);
-        const close = new St.Button({style_class: 'jade-capture-pin-close', child: new St.Icon({icon_name: 'window-close-symbolic'}),
+        const close = new St.Button({style_class: 'jade-capture-pin-close', child: new St.Icon({gicon: familyGicon('window-close-symbolic')}),
             x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START, opacity: 0});
         close.connect('clicked', () => pin.destroy());
         pin.add_child(close);

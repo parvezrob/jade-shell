@@ -27,6 +27,8 @@ const wait = ms => new Promise(resolve => GLib.timeout_add(GLib.PRIORITY_DEFAULT
     return GLib.SOURCE_REMOVE;
 }));
 const log = message => console.log(`HARNESS ${message}`);
+// What an icon shows: its name, or the file Jade's icon family drew it from.
+const iconName = icon => icon.icon_name ?? icon.gicon?.get_file?.()?.get_basename() ?? icon.gicon?.to_string();
 
 function shoot(name, actor = null) {
     return new Promise(resolve => {
@@ -114,7 +116,6 @@ async function weather() {
     // The place picked in the Jade Shell app: Jade fetches it itself.
     settings.set_value('weather-location', new GLib.Variant('(sdd)', ['Dhaka', 23.72, 90.41]));
     const own = await shownWithin();
-    const iconName = icon => icon.icon_name ?? icon.gicon?.get_file?.()?.get_basename() ?? icon.gicon?.to_string();
     log(`weather: Jade's own place Dhaka → shown ${own}, "${part._temp.text}" ${iconName(part._icon)}, ` +
         `${part._hours.get_n_children()} hours, menu says ${part._place.text}`);
     const temps = [];
@@ -214,7 +215,7 @@ async function media() {
     log(`media: scrolled down → "${part._chipLabel.text}"`);
     player.PlayPause();
     await wait(600);
-    log(`media: paused → shown ${part._button.visible}, icon ${part._state.icon_name}`);
+    log(`media: paused → shown ${part._button.visible}, icon ${iconName(part._state)}`);
     Gio.bus_unown_name(owner);
     rootObject.unexport();
     playerObject.unexport();
@@ -582,7 +583,7 @@ async function networkPanel() {
     // In the bar, in place of GNOME's network icon (and GNOME's back when it's off).
     const gnome = Main.panel.statusArea.quickSettings._network;
     const settings = Main.extensionManager.lookup(UUID).stateObj._settings;
-    log(`network: bar icon shown ${part._button.visible} (${part._icon.icon_name}), GNOME's icon shown ${gnome?.visible}`);
+    log(`network: bar icon shown ${part._button.visible} (${iconName(part._icon)}), GNOME's icon shown ${gnome?.visible}`);
     await shoot('network-bar', Main.panel);
     settings.set_boolean('show-network', false);
     await wait(300);

@@ -462,6 +462,108 @@ def icons():
         i.add(line(1.75, 13, 7, 13))
     make('weather-windy-symbolic', wind)
     make('weather-tornado-symbolic', wind)
+    # Actions in Jade's menus, the Jade Menu and the screenshot card
+    def gear(i):
+        pts = []
+        for k in range(8):
+            base = k * 45
+            for a, r in ((base - 14, 4.6), (base - 9, 6.4), (base + 9, 6.4), (base + 14, 4.6)):
+                t = math.radians(a)
+                pts.append((8 + r * math.cos(t), 8 + r * math.sin(t)))
+        i.add(polyline(pts, closed=True))
+        i.add(ring(8, 8, 1.75), evenodd=True)
+    make('emblem-system-symbolic', gear)
+    make('preferences-system-symbolic', gear)
+
+    def refresh(i):
+        # A circle going clockwise, the head at its end pointing on.
+        cx, cy, r, a0, a1 = 8, 8.25, 5.25, -40, 250
+        i.add(arc(cx, cy, r, a0, a1))
+        t = math.radians(a1)
+        tip = (cx + r * math.cos(t), cy + r * math.sin(t))
+        ahead = (-math.sin(t), math.cos(t))  # clockwise
+        wings = []
+        for turn in (35, -35):
+            u = math.radians(turn)
+            back = (ahead[0] * math.cos(u) - ahead[1] * math.sin(u), ahead[0] * math.sin(u) + ahead[1] * math.cos(u))
+            wings.append((tip[0] - 3 * back[0], tip[1] - 3 * back[1]))
+        i.add(polyline([wings[0], tip, wings[1]]))
+    make('view-refresh-symbolic', refresh)
+    make('system-reboot-symbolic', refresh)
+    make('edit-undo-symbolic', lambda i: [i.add(polyline([(3, 6.25), (10, 6.25), *circle_points(10, 9.5, 3.25, -90, 90, 12)[1:],
+                                                          (5.5, 12.75)])),
+                                           i.add(polyline([(5.75, 3.5), (3, 6.25), (5.75, 9)]))])
+
+    def picture(i):
+        i.add(box(1.75, 2.75, 12.5, 10.5, 1.5), evenodd=True)
+        i.add(polyline([(3.75, 11.25), (6.5, 8), (9, 10.5), (10.5, 9), (12.25, 11)]))
+        i.add(disc(10.75, 5.75, 1.15))
+    make('image-x-generic-symbolic', picture)
+    make('preferences-desktop-wallpaper-symbolic', picture)
+    pencil = [(3, 13), (3.5, 10.25), (10.75, 3), (13, 5.25), (5.75, 12.5)]
+    make('document-edit-symbolic', lambda i: [i.add(polyline(pencil, closed=True)),
+                                               i.add(line(9.25, 4.5, 11.5, 6.75))])
+    make('format-text-plaintext-symbolic', lambda i: [i.add(line(3.5, 3.25, 12.5, 3.25)), i.add(line(8, 3.25, 8, 13))])
+    pin_head = [(5.25, 2), (10.75, 2), (10, 6.25), (12.5, 9), (3.5, 9), (6, 6.25)]
+    make('view-pin-symbolic', lambda i: [i.add(polyline(pin_head, closed=True)),
+                                         i.add(line(8, 9, 8, 14.25))])
+    make('folder-symbolic', lambda i: i.add(polyline([(1.75, 3.25), (6, 3.25), (7.5, 5), (14.25, 5), (14.25, 13), (1.75, 13)],
+                                                     closed=True)))
+    make('window-close-symbolic', lambda i: [i.add(line(3.5, 3.5, 12.5, 12.5)), i.add(line(12.5, 3.5, 3.5, 12.5))])
+    make('drive-harddisk-symbolic', lambda i: [i.add(box(1.75, 4.75, 12.5, 6.5, 1.5), evenodd=True),
+                                               i.add(disc(11.5, 8, 0.9)), i.add(line(4.25, 8, 8, 8))])
+    make('edit-paste-symbolic', lambda i: [i.add(box(3.25, 3, 9.5, 11.25, 1.5), evenodd=True),
+                                           i.add(filled(5.75, 1.25, 4.5, 3, 0.75))])
+    make('emblem-default-symbolic', lambda i: i.add(polyline([(3.25, 8.5), (6.5, 11.75), (12.75, 4.5)])))
+
+    def help_mark(i):
+        i.add(ring(8, 8, 6.25), evenodd=True)
+        i.add(polyline([*circle_points(8, 6.25, 1.9, 190, 400, 10), (8, 9.25)]))
+        i.add(disc(8, 11.6, 0.9))
+    make('help-browser-symbolic', help_mark)
+
+    def keyboard(i):
+        i.add(box(1.5, 4, 13, 8.5, 1.5), evenodd=True)
+        for x in (4.25, 6.75, 9.25, 11.75):
+            i.add(disc(x, 6.9, 0.75))
+        i.add(line(5.25, 9.75, 10.75, 9.75))
+    make('input-keyboard-symbolic', keyboard)
+    make('camera-photo-symbolic', lambda i: [i.add(box(1.75, 4.75, 12.5, 8.5, 1.75), evenodd=True),
+                                             i.add(polyline([(5, 4.75), (6.25, 2.75), (9.75, 2.75), (11, 4.75)])),
+                                             i.add(ring(8, 9, 2.25), evenodd=True)])
+    make('camera-web-symbolic', lambda i: [i.add(ring(8, 6.75, 4.75), evenodd=True), i.add(disc(8, 6.75, 1.5)),
+                                           i.add(line(8, 11.5, 8, 14)), i.add(line(5, 14.25, 11, 14.25))])
+    make('color-select-symbolic', lambda i: [i.add(line(2.75, 13.25, 9, 7)), i.add(line(6.75, 5, 11, 9.25)),
+                                             i.add(line(9.75, 6.25, 12.5, 3.5, 3.25))])
+    make('audio-x-generic-symbolic', lambda i: [i.add(ring(7.75, 11.75, 2.25), evenodd=True), i.add(line(10, 11.75, 10, 2.25)),
+                                                i.add(line(10, 2.25, 13.25, 3.75))])
+    make('media-skip-forward-symbolic', lambda i: [i.add(polyline([(3, 3.5), (9.5, 8), (3, 12.5)], closed=True)),
+                                                   i.add(line(12.75, 3.5, 12.75, 12.5))])
+    make('media-skip-backward-symbolic', lambda i: [i.add(polyline([(13, 3.5), (6.5, 8), (13, 12.5)], closed=True)),
+                                                    i.add(line(3.25, 3.5, 3.25, 12.5))])
+    make('network-transmit-receive-symbolic', lambda i: [i.add(line(5.25, 13.25, 5.25, 2.75)),
+                                                         i.add(polyline([(2.5, 5.5), (5.25, 2.75), (8, 5.5)])),
+                                                         i.add(line(10.75, 2.75, 10.75, 13.25)),
+                                                         i.add(polyline([(8, 10.5), (10.75, 13.25), (13.5, 10.5)]))])
+    make('preferences-desktop-font-symbolic', lambda i: [i.add(polyline([(1.75, 13.5), (5.75, 2.75), (9.75, 13.5)])),
+                                                         i.add(line(3.25, 9.75, 8.25, 9.75)),
+                                                         i.add(ring(12.25, 11.25, 1.9), evenodd=True),
+                                                         i.add(line(14.15, 9.25, 14.15, 13.5))])
+    make('software-update-available-symbolic', lambda i: [i.add(line(8, 2, 8, 9.75)),
+                                                          i.add(polyline([(4.75, 6.5), (8, 9.75), (11.25, 6.5)])),
+                                                          i.add(polyline([(2, 9.5), (2, 13.5), (14, 13.5), (14, 9.5)]))])
+    make('system-lock-screen-symbolic', lock)
+    make('system-log-out-symbolic', lambda i: [i.add(polyline([(8.5, 2.25), (2.75, 2.25), (2.75, 13.75), (8.5, 13.75)])),
+                                               i.add(line(6.25, 8, 14, 8)), i.add(polyline([(11, 5), (14, 8), (11, 11)]))])
+    make('system-run-symbolic', lambda i: [i.add(box(1.75, 2.75, 12.5, 10.5, 1.5), evenodd=True),
+                                           i.add(polyline([(4.75, 6), (7, 8), (4.75, 10)])),
+                                           i.add(line(8.5, 10.25, 11.25, 10.25))])
+    make('user-bookmarks-symbolic', lambda i: i.add(polyline([(4, 2), (12, 2), (12, 14), (8, 10.75), (4, 14)], closed=True)))
+    make('view-app-grid-symbolic', lambda i: [i.add(disc(x, y, 1.3)) for x in (3.5, 8, 12.5) for y in (3.5, 8, 12.5)])
+    make('view-grid-symbolic', lambda i: [i.add(box(x, y, 4.25, 4.25, 1), evenodd=True)
+                                          for x in (2.25, 9.5) for y in (2.25, 9.5)])
+    make('view-restore-symbolic', lambda i: [i.add(box(5.25, 2.25, 8.5, 8.5, 1.25), evenodd=True),
+                                             i.add(polyline([(2.25, 5.5), (2.25, 13.75), (10.5, 13.75)]))])
     for name in ('clear', 'clear-night', 'few-clouds', 'few-clouds-night', 'overcast', 'fog', 'showers',
                  'showers-scattered', 'snow', 'storm', 'severe-alert', 'windy', 'tornado'):
         out[f'weather-{name}'] = out[f'weather-{name}-symbolic']

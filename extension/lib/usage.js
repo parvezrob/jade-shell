@@ -10,6 +10,7 @@ import St from 'gi://St';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
+import {familyGicon} from './baricons.js';
 import {SPAWN, VERTICAL, addToPanel, cairoRgb, jadeCommand, label as baseLabel, openSettings} from './util.js';
 
 // Providers in display order. A record for any of them in the records
@@ -510,7 +511,7 @@ export class Usage {
         const action = (text, iconName, callback) => {
             const button = new St.Button({can_focus: true, reactive: true, track_hover: true, x_expand: true, style_class: 'ai-action'});
             const box = new St.BoxLayout({style_class: 'ai-action-content', x_align: Clutter.ActorAlign.CENTER});
-            const icon = new St.Icon({icon_name: iconName, icon_size: 14});
+            const icon = new St.Icon({gicon: familyGicon(iconName), icon_size: 14});
             const text_ = label(text);
             box.add_child(icon);
             box.add_child(text_);
