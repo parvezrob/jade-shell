@@ -58,6 +58,10 @@ printf "[org/gnome/shell]\nenabled-extensions=['jade-shell@parvezrob.github.io',
     > "$home/.config/glib-2.0/settings/keyfile"
 # JADE_GLASS=frosted: start with frosted glass (e.g. to time it).
 [[ -n ${JADE_GLASS:-} ]] && printf "\n[org/gnome/shell/extensions/jade-shell]\nglass='%s'\n" "$JADE_GLASS" >> "$home/.config/glib-2.0/settings/keyfile"
+# JADE_SCALE=2: a HiDPI screen (twice the pixels, everything drawn at 2x).
+if [[ -n ${JADE_SCALE:-} ]]; then
+    printf "\n[org/gnome/desktop/interface]\nscaling-factor=uint32 %s\n" "$JADE_SCALE" >> "$home/.config/glib-2.0/settings/keyfile"
+fi
 
 monitor=1400x900
 timeout=600  # half seconds
@@ -85,7 +89,11 @@ export HOME=$home XDG_RUNTIME_DIR=$runtime XDG_DATA_HOME=$home/.local/share XDG_
 unset WAYLAND_DISPLAY DISPLAY DBUS_SESSION_BUS_ADDRESS
 "$home/.local/bin/jade" theme set osaka-jade --only gnome,shell >/dev/null
 
-setsid dbus-run-session -- gnome-shell --headless --no-x11 --virtual-monitor "$monitor" --wayland-display jade-test \
+# JADE_MONITORS=2: a second screen to the right of the first.
+monitors=(--virtual-monitor "$monitor")
+[[ ${JADE_MONITORS:-1} == 2 ]] && monitors+=(--virtual-monitor "${JADE_SECOND:-1280x800}")
+[[ -n ${JADE_SCALE:-} ]] && monitors=(--virtual-monitor "$((1400 * JADE_SCALE))x$((900 * JADE_SCALE))" "${monitors[@]:2}")
+setsid dbus-run-session -- gnome-shell --headless --no-x11 "${monitors[@]}" --wayland-display jade-test \
     > "$out/shell.log" 2>&1 &
 shell_pid=$!
 for _ in $(seq 1 "$timeout"); do [[ -e $out/done ]] && break; sleep 0.5; done

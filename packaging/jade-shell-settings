@@ -88,6 +88,12 @@ const JadeShellApp = GObject.registerClass(class JadeShellApp extends Adw.Applic
         }
         if (!this._window)
             return;
+        // JADE_SETTINGS_TIMING=1: when the window is first on screen (wall
+        // clock, µs), for measuring how fast the app opens.
+        if (GLib.getenv('JADE_SETTINGS_TIMING') && !this._timed) {
+            this._timed = true;
+            this._window.connect('map', () => print(`jade-shell-settings mapped at ${GLib.get_real_time()}`));
+        }
         page = this._page;
         this._page = null;
         if (page)
