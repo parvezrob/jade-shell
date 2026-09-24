@@ -10,6 +10,8 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
+import Mtk from 'gi://Mtk';
 import Shell from 'gi://Shell';
 import St from 'gi://St';
 import * as Background from 'resource:///org/gnome/shell/ui/background.js';
@@ -20,6 +22,7 @@ import * as OsdWindow from 'resource:///org/gnome/shell/ui/osdWindow.js';
 import {InjectionManager} from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const EFFECT = 'jade-glass';
+const WHOLE = 'jade-glass-whole';
 const BLUR_MY_SHELL = 'blur-my-shell@aunetx';
 
 let active = false;
@@ -43,6 +46,33 @@ function unredirect(actor) {
     }
 }
 
+// The blur copies what is on screen under the surface as it paints. When
+// only part of the screen is redrawn (the clock ticking, a button lighting up
+// as its menu opens), the rest of that copy is the last frame: the surface
+// itself, already tinted, so the redrawn part came out a flat patch of
+// another color until something redrew all of it. Whenever a surface is only
+// partly redrawn, redraw all of it in the next frame.
+const Whole = GObject.registerClass(class JadeGlassWhole extends Clutter.Effect {
+    vfunc_paint(node, context, flags) {
+        const actor = this.get_actor();
+        const clip = context.get_redraw_clip();
+        const monitor = clip && Main.layoutManager.findMonitorForActor(actor);
+        if (monitor && actor.get_effect(EFFECT)?.enabled) {
+            const box = actor.get_transformed_extents();
+            const x = Math.floor(box.get_x());
+            const y = Math.floor(box.get_y());
+            const rect = new Mtk.Rectangle({x, y,
+                width: Math.ceil(box.get_x() + box.get_width()) - x,
+                height: Math.ceil(box.get_y() + box.get_height()) - y});
+            const [visible, shown] = rect.intersect(new Mtk.Rectangle({  // the part on its monitor
+                x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height}));
+            if (visible && clip.contains_rectangle(shown) !== Mtk.RegionOverlap.IN)
+                actor.queue_redraw();
+        }
+        super.vfunc_paint(node, context, flags);
+    }
+});
+
 // Blur what is behind `actor` while frosted glass is on (Jade's own surfaces
 // call this too, such as the screenshot card).
 export function frost(actor) {
@@ -53,6 +83,7 @@ export function frost(actor) {
         return;
     const effect = new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND, radius, brightness: 1});
     actor.add_effect_with_name(EFFECT, effect);
+    actor.add_effect_with_name(WHOLE, new Whole());
     frosted.add(actor);
     actor.connectObject('destroy', () => frosted.delete(actor), frost);
     // While it fades in or out it's drawn through a buffer where the blur
@@ -250,6 +281,7 @@ export class Glass {
         Main.messageTray._bannerBin?.disconnectObject(this);
         for (const actor of frosted) {
             actor.remove_effect_by_name(EFFECT);
+            actor.remove_effect_by_name(WHOLE);
             actor.disconnectObject(frost);
         }
         frosted.clear();
