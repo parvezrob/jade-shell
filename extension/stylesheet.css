@@ -136,6 +136,7 @@
 .jade-cheatsheet-title { padding: 0 2px 12px; }
 .jade-cheatsheet-search { margin-bottom: 8px; padding: 8px 10px; }
 .jade-cheatsheet-section { padding: 14px 4px 6px; }
+.jade-cheatsheet-list { padding-right: 14px; }
 .jade-cheatsheet-row { padding: 4px 4px; spacing: 16px; }
 .jade-cheatsheet-name { font-size: 9.5pt; }
 .jade-cheatsheet-keys { spacing: 4px; }

@@ -613,7 +613,9 @@ export class Monitor {
             this._diskViews = list.map(disk => {
                 const box = new St.BoxLayout({orientation: VERTICAL, x_expand: true, style_class: 'jm-disk'});
                 const top = new St.BoxLayout({x_expand: true});
-                top.add_child(label(disk.model ?? disk.mount, 'jm-disk-name', {x_expand: true}));
+                // A disk without a model name (a virtual one) is named by its place.
+                const name = disk.model ?? (disk.mount === '/' ? 'System' : GLib.path_get_basename(disk.mount));
+                top.add_child(label(name, 'jm-disk-name', {x_expand: true}));
                 const value = label('', 'jm-section-value');
                 top.add_child(value);
                 box.add_child(top);

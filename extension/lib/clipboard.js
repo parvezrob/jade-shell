@@ -18,6 +18,8 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 
+import {clockTime} from './util.js';
+
 const LIMIT = 40;
 const SECRET = 'x-kde-passwordManagerHint';
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
@@ -176,6 +178,10 @@ export class ClipboardHistory {
         }
         this._rows.forEach((entry, i) => this._list.add_child(this._row(entry, i)));
         this._select(0);
+        // Nothing to clear: Clear All rests.
+        const clear = this._dialog?.buttonLayout.get_first_child();
+        if (clear)
+            clear.reactive = clear.can_focus = this.entries.length > 0;
     }
 
     _row(entry, index) {
@@ -200,7 +206,7 @@ export class ClipboardHistory {
                     y_align: Clutter.ActorAlign.CENTER}));
             }
         }
-        box.add_child(new St.Label({text: entry.time.format('%H:%M'), style_class: 'jade-menu-path',
+        box.add_child(new St.Label({text: clockTime(entry.time), style_class: 'jade-menu-path',
             y_align: Clutter.ActorAlign.CENTER}));
         const button = new St.Button({style_class: 'jade-menu-row', child: box, x_expand: true, can_focus: false});
         button.connect('clicked', () => this._choose(index));

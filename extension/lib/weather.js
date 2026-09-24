@@ -6,13 +6,14 @@
 // GNOME's place when there is one, and stays out of sight while there's no
 // place or no forecast.
 import Clutter from 'gi://Clutter';
+import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GWeather from 'gi://GWeather';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
-import {addToPanel, openSettings, VERTICAL} from './util.js';
+import {addToPanel, clockTime, openSettings, VERTICAL} from './util.js';
 
 const HOURS = 5;
 const REFRESH_MINUTES = 30;
@@ -105,6 +106,9 @@ export class Weather {
         });
 
         addToPanel('jade-weather', this._button);
+        // The hours as the clock shows them: 2 PM, or 14:00.
+        this._interface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        this._interface.connectObject('changed::clock-format', () => this._sync(), this);
         this._settings.connectObject('changed::weather-location', () => this._locate(),
             'changed::weather-unit', () => {
                 unit = UNITS[this._settings.get_string('weather-unit')] ?? GWeather.TemperatureUnit.DEFAULT;
@@ -129,13 +133,14 @@ export class Weather {
             GLib.source_remove(this._timer);
         this._timer = 0;
         this._settings.disconnectObject(this);
+        this._interface?.disconnectObject(this);
         this._client?.disconnectObject(this);
         if (this._updated)
             this._info.disconnect(this._updated);
         this._updated = 0;
         this._info?.abort();
         this._button?.destroy();
-        this._button = this._client = this._info = null;
+        this._button = this._client = this._info = this._interface = null;
     }
 
     // The place Jade was given, if any.
@@ -151,10 +156,13 @@ export class Weather {
             return;
         this._key = key;
         this._shown = false;
-        if (!location) {
-            this._button.visible = false;
+        // The last place's requests would otherwise answer for the new one.
+        this._info.abort();
+        this._loading = false;
+        this._fetched = 0;
+        this._button.visible = false;
+        if (!location)
             return;
-        }
         this._info.set_location(location);
         this._update();
     }
@@ -184,7 +192,7 @@ export class Weather {
         this._hours.destroy_all_children();
         for (const {time, forecast} of nextHours(info)) {
             const hour = new St.BoxLayout({orientation: VERTICAL, style_class: 'jade-weather-hour'});
-            hour.add_child(new St.Label({text: time.format('%H:%M'), style_class: 'jade-weather-hour-time',
+            hour.add_child(new St.Label({text: clockTime(time, {hourOnly: true}), style_class: 'jade-weather-hour-time',
                 x_align: Clutter.ActorAlign.CENTER}));
             hour.add_child(new St.Icon({icon_name: forecast.get_symbolic_icon_name(), style_class: 'jade-weather-hour-icon',
                 x_align: Clutter.ActorAlign.CENTER}));

@@ -158,3 +158,13 @@ export function shortcutKeys(accel) {
 export function shortcutText(accel) {
     return accel ? shortcutKeys(accel).join('+') : null;
 }
+
+// A time of day as the clock in the top bar shows it: 2:05 PM or 14:05
+// (GNOME's Settings › Date & Time). hourOnly: 2 PM or 14:00.
+let clockSettings = null;
+export function clockTime(dateTime, {hourOnly = false} = {}) {
+    clockSettings ??= new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+    if (clockSettings.get_string('clock-format') !== '12h')
+        return dateTime.format(hourOnly ? '%H:00' : '%H:%M');
+    return dateTime.format(hourOnly ? '%l %p' : '%l:%M %p').trim();
+}
