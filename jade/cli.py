@@ -12,7 +12,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio
 
-from . import __version__, debug, engine, icons, setup, themes, update
+from . import __version__, debug, engine, icons, keys, setup, themes, update
 from . import targets as registry
 from .setup import join
 from .store import File, Settings, read_text
@@ -271,6 +271,37 @@ def apps_on(args, ctx):
     return 0
 
 
+# ------------------------------------------------------------------ keys
+
+def keys_list(args, ctx):
+    if getattr(args, 'json', False):
+        print(json.dumps({'applied': keys.applied(), 'keys': [{'keys': k, 'what': w} for k, w in keys.rows(ctx)]}))
+        return 0
+    print('The Omarchy keymap is on.' if keys.applied() else 'The Omarchy keymap is off; turn it on with: jade keys apply')
+    width = max(len(k) for k, _w in keys.rows(ctx))
+    for combo, what in keys.rows(ctx):
+        print(f'  {combo.ljust(width)}  {what}')
+    return 0
+
+
+def keys_apply(args, ctx):
+    changes = keys.apply(ctx)
+    print(f'The Omarchy keymap is on ({plural(len(changes), "shortcut")} changed). '
+          'Super+K shows every key; jade keys revert puts yours back.')
+    return 0
+
+
+def keys_revert(args, ctx):
+    skipped = keys.revert(ctx)
+    if skipped is None:
+        print('The Omarchy keymap is not on: nothing to put back.')
+        return 0
+    print('Your shortcuts are back as they were.')
+    for item in skipped:
+        print(f'  Skipped {item}')
+    return 0
+
+
 # ------------------------------------------------------------------ font
 
 def monospace_families():
@@ -408,6 +439,12 @@ def parser():
     font.add_parser('set', help='use a font in GNOME and every themed terminal').add_argument(
         'family', nargs='+', help='a family from jade font list, e.g. JetBrains Mono')
 
+    keymap = commands.add_parser('keys', help="Omarchy's keys on GNOME's shortcuts").add_subparsers(
+        dest='action', metavar='action')
+    keymap.add_parser('list', help='the keymap, and whether it is on').add_argument('--json', action='store_true')
+    keymap.add_parser('apply', help="use Omarchy's keys (your shortcuts are saved first)")
+    keymap.add_parser('revert', help='put your shortcuts back')
+
     usage = commands.add_parser('usage', help='Claude and Codex usage').add_subparsers(
         dest='action', required=True, metavar='action')
     p = usage.add_parser('collect', help='collect usage for the top bar')
@@ -439,6 +476,8 @@ HANDLERS = {
     ('theme', 'set'): theme_set, ('theme', 'wallpaper'): theme_wallpaper, ('theme', 'undo'): theme_undo,
     ('theme', 'reload'): theme_reload, ('theme', 'fetch'): theme_fetch, ('theme', 'thumbs'): theme_thumbs,
     ('usage', 'collect'): usage_collect,
+    ('keys', None): keys_list, ('keys', 'list'): keys_list, ('keys', 'apply'): keys_apply,
+    ('keys', 'revert'): keys_revert,
     ('font', None): font_list, ('font', 'list'): font_list, ('font', 'set'): font_set,
     ('apps', None): apps_list, ('apps', 'list'): apps_list, ('apps', 'off'): apps_off, ('apps', 'on'): apps_on,
     ('setup', None): run_setup, ('doctor', None): run_doctor, ('update', None): run_update, ('restore', None): run_restore,
@@ -451,7 +490,7 @@ HANDLERS = {
 # file and moves it into place.
 EXCLUSIVE = {('theme', 'set'), ('theme', 'wallpaper'), ('theme', 'undo'), ('theme', 'reload'),
              ('setup', None), ('restore', None),
-             ('apps', 'off'), ('apps', 'on'), ('font', 'set')}
+             ('apps', 'off'), ('apps', 'on'), ('font', 'set'), ('keys', 'apply'), ('keys', 'revert')}
 
 
 def main(argv=None):

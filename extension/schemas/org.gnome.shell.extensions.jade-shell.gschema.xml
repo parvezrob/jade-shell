@@ -40,6 +40,23 @@
       <default><![CDATA[['<Super>Print']]]></default>
       <summary>Pick a color from the screen</summary>
     </key>
+    <key name="capture-text" type="as">
+      <default><![CDATA[['<Super><Control>Print']]]></default>
+      <summary>Copy text from part of the screen</summary>
+    </key>
+    <key name="menu-capture" type="as">
+      <default><![CDATA[['<Super><Control>c']]]></default>
+      <summary>Open the Jade Menu at Capture</summary>
+    </key>
+    <key name="menu-toggles" type="as">
+      <default><![CDATA[['<Super><Control>o']]]></default>
+      <summary>Open the Jade Menu at Toggles</summary>
+    </key>
+    <key name="menu-system" type="as">
+      <default><![CDATA[[]]]></default>
+      <summary>Open the Jade Menu at System</summary>
+      <description>Super+Escape with the Omarchy keymap (GNOME uses it to give shortcuts back to an app that took them).</description>
+    </key>
     <key name="show-picker" type="b">
       <default>true</default>
       <summary>Show the theme picker in the top bar</summary>

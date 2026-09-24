@@ -12,6 +12,35 @@ import {hero} from './settings/hero.js';
 import {ShortcutRow} from './settings/shortcut.js';
 import {applyStyle, capsTitles} from './settings/style.js';
 
+// "Omarchy keymap": `jade keys apply` or `revert`, which saves and puts back
+// GNOME's shortcuts; its state is whether jade keys.json exists.
+function keymapRow() {
+    const row = new Adw.SwitchRow({
+        title: 'Omarchy keymap',
+        subtitle: 'Super+Space for the Jade Menu, Super+1–9 for workspaces, Super+W to close, Super+Return for a terminal. Your shortcuts come back when it’s off.',
+    });
+    const state = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_state_dir(), 'jade-shell', 'keys.json']));
+    let syncing = true;
+    row.active = state.query_exists(null);
+    syncing = false;
+    row.connect('notify::active', async () => {
+        if (syncing)
+            return;
+        const jade = jadeCommand();
+        if (!jade)
+            return;
+        row.sensitive = false;
+        const result = await capture([jade, 'keys', row.active ? 'apply' : 'revert']);
+        syncing = true;
+        row.active = state.query_exists(null);
+        syncing = false;
+        row.sensitive = true;
+        if (!result.ok)
+            row.subtitle = `Did not work: ${(result.stderr || result.stdout).trim().split('\n').pop()}`;
+    });
+    return row;
+}
+
 const TIMER = 'jade-usage.timer';
 
 function switchRow(settings, group, key, title, subtitle = null) {
@@ -81,10 +110,15 @@ export default class JadePreferences extends ExtensionPreferences {
 
         const keyboard = new Adw.PreferencesGroup({title: 'Keyboard'});
         page.add(keyboard);
+        keyboard.add(keymapRow());
         keyboard.add(new ShortcutRow(settings, 'toggle-picker', 'Open the theme picker'));
         keyboard.add(new ShortcutRow(settings, 'toggle-menu', 'Open the Jade Menu'));
         keyboard.add(new ShortcutRow(settings, 'toggle-clipboard', 'Clipboard history'));
         keyboard.add(new ShortcutRow(settings, 'pick-color', 'Pick a color'));
+        keyboard.add(new ShortcutRow(settings, 'capture-text', 'Copy text from the screen'));
+        keyboard.add(new ShortcutRow(settings, 'menu-capture', 'Capture menu'));
+        keyboard.add(new ShortcutRow(settings, 'menu-toggles', 'Toggles menu'));
+        keyboard.add(new ShortcutRow(settings, 'menu-system', 'System menu'));
         keyboard.add(new ShortcutRow(settings, 'show-cheatsheet', 'Show the keyboard shortcuts'));
         for (const [key, title] of [['bell-show', 'Open the notifications'], ['bell-dismiss', 'Dismiss the newest notification'],
             ['bell-dismiss-all', 'Dismiss all notifications'], ['bell-open-newest', 'Open the newest notification'],

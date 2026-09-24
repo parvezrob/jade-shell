@@ -10,6 +10,7 @@ import io
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -424,7 +425,8 @@ class Sandbox(unittest.TestCase):
         self.env = dict(os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(self.home / '.config'),
                         XDG_DATA_HOME=str(self.home / '.local/share'), XDG_STATE_HOME=str(self.home / '.local/state'),
                         XDG_CACHE_HOME=str(self.home / '.cache'), GSETTINGS_BACKEND='keyfile', PYTHONPATH=pythonpath,
-                        DBUS_SESSION_BUS_ADDRESS='unix:path=/nonexistent', JADE_BIN='/usr/bin/jade')
+                        DBUS_SESSION_BUS_ADDRESS='unix:path=/nonexistent', JADE_BIN='/usr/bin/jade',
+                        JADE_SYSTEM_EXTENSIONS=str(t / 'system-extensions'))
         self.env.pop('XDG_SESSION_TYPE', None)
         for name in ('no_proxy', 'NO_PROXY'):
             self.env.pop(name, None)
@@ -919,6 +921,43 @@ class Sandbox(unittest.TestCase):
         self.assertIn(blur, self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'))
         # Running setup by hand is asking for Jade Shell's layout again.
         self.assertIn('Turned off Blur my Shell', self.jade('setup'))
+
+    def test_the_omarchy_keymap_goes_back_exactly(self):
+        custom = '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/'
+        self.gsettings('set', 'org.gnome.desktop.wm.keybindings', 'switch-to-workspace-1', "['<Super>Home', '<Super>1']")
+        self.gsettings('set', 'org.gnome.settings-daemon.plugins.media-keys', 'custom-keybindings', f"['{custom}']")
+        custom_schema = f'org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:{custom}'
+        self.gsettings('set', custom_schema, 'binding', '<Super>Return')
+        self.gsettings('set', custom_schema, 'command', 'my-terminal')
+        before = self.keyfile()
+
+        out = self.jade('keys', 'apply')
+        self.assertIn('keymap is on', out)
+        changed = int(re.search(r'\((\d+) shortcuts? changed', out)[1])
+        self.assertLess(changed, 60)  # the keymap's keys and their clashes, not every media key's ['']
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'toggle-menu'), "['<Super>space']")
+        self.assertEqual(self.gsettings('get', 'org.gnome.desktop.wm.keybindings', 'switch-input-source'),
+                         "['<Shift><Super>space', 'XF86Keyboard']")  # layouts move off Super+Space
+        self.assertEqual(self.gsettings('get', 'org.gnome.desktop.wm.keybindings', 'switch-input-source-backward'),
+                         "['<Shift>XF86Keyboard']")
+        self.assertEqual(self.gsettings('get', 'org.gnome.desktop.wm.keybindings', 'switch-applications'), "['<Alt>Tab']")
+        self.assertEqual(self.gsettings('get', 'org.gnome.desktop.wm.keybindings', 'close'),
+                         "['<Super>w', '<Super>q', '<Alt>F4']")
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell.keybindings', 'switch-to-application-1'), '@as []')
+        self.assertEqual(self.gsettings('get', custom_schema, 'binding'), "''")  # yours moves off Super+Return
+        paths = self.gsettings('get', 'org.gnome.settings-daemon.plugins.media-keys', 'custom-keybindings')
+        self.assertIn('jade-terminal', paths)
+        self.jade('keys', 'apply')  # again: the values kept for revert are still the first ones
+
+        self.assertIn('back as they were', self.jade('keys', 'revert'))
+        self.assertEqual(self.keyfile(), before)
+        self.assertIn('keymap is off', self.jade('keys'))
+
+        self.jade('keys', 'apply')  # and jade restore takes it back too
+        self.jade('restore', '--yes')
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'toggle-menu'),
+                         "['<Super><Alt>space']")
+        self.assertEqual(self.gsettings('get', custom_schema, 'binding'), "'<Super>Return'")
 
     def test_setup_fetches_the_tahoe_icons_once(self):
         out = self.jade('setup')  # offline: said, and setup goes on

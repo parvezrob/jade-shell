@@ -45,6 +45,9 @@ async function jade(...args) {
     return result;
 }
 
+// Shortcuts that open the menu at one of its branches, as Omarchy's do.
+const BRANCH_KEYS = [['menu-capture', 'Capture'], ['menu-toggles', 'Toggles'], ['menu-system', 'System']];
+
 function readJson(path) {
     try {
         const [, bytes] = Gio.File.new_for_path(path).load_contents(null);
@@ -64,10 +67,16 @@ export class JadeMenu {
     enable() {
         Main.wm.addKeybinding('toggle-menu', this._settings, Meta.KeyBindingFlags.NONE,
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this.toggle());
+        for (const [key, start] of BRANCH_KEYS) {
+            Main.wm.addKeybinding(key, this._settings, Meta.KeyBindingFlags.NONE,
+                Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this.toggle(start));
+        }
     }
 
     disable() {
         Main.wm.removeKeybinding('toggle-menu');
+        for (const [key] of BRANCH_KEYS)
+            Main.wm.removeKeybinding(key);
         this._dialog?.destroy();
         this._dialog = null;
     }
@@ -279,6 +288,7 @@ export class JadeMenu {
             if (branch?.children)
                 this._stack.push({label: branch.label, entries: branch.children()});
         }
+        this._floor = this._stack.length;  // opened at a branch (Super+Escape…): Escape closes from there
         this._show();
         dialog.open(global.get_current_time());
         GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => this._entry.grab_key_focus());
@@ -461,7 +471,7 @@ export class JadeMenu {
         case Clutter.KEY_Escape:
             if (!empty)
                 this._entry.set_text('');
-            else if (!this._back())
+            else if (this._stack.length <= this._floor || !this._back())
                 this._dialog.close();
             return Clutter.EVENT_STOP;
         default:

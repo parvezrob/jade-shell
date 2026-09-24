@@ -5,8 +5,9 @@
 // banner; GNOME still copies and saves the shot as it always does.
 //
 // And the capture tools GNOME lacks, for the Jade Menu: a color picker
-// (Super+Print, as in Omarchy), copy text from part of the screen, and read a
-// QR code. They reuse GNOME's own area selector and color picker.
+// (Super+Print), copy text from part of the screen (Super+Ctrl+Print), both
+// on Omarchy's keys, and read a QR code. They reuse GNOME's own area
+// selector and color picker.
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -108,10 +109,13 @@ export class Capture {
             this._watch(source);
         Main.wm.addKeybinding('pick-color', this._settings, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this.pickColor());
+        Main.wm.addKeybinding('capture-text', this._settings, Meta.KeyBindingFlags.IGNORE_AUTOREPEAT,
+            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this.grab('tesseract'));
     }
 
     disable() {
         Main.wm.removeKeybinding('pick-color');
+        Main.wm.removeKeybinding('capture-text');
         Main.messageTray.disconnectObject(this);
         for (const source of Main.messageTray.getSources())
             source.disconnectObject(this);

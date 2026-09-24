@@ -19,7 +19,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
-from . import __version__, engine, hooks, icons, migrations, restore_offer, shelltheme, themes
+from . import __version__, engine, hooks, icons, keys, migrations, restore_offer, shelltheme, themes
 from .store import File, Setting, config_home, data_home, write_text
 from .usage import collect
 
@@ -64,7 +64,8 @@ DOCKS = {
 OLD_UNITS = ['osaka-ai-usage.timer']
 # Flatpak apps see the host's gtk.css (the GNOME apps target) only when allowed to.
 FLATPAK_PATHS = ['xdg-config/gtk-4.0:ro', 'xdg-config/gtk-3.0:ro']
-SYSTEM_EXTENSIONS = pathlib.Path('/usr/share/gnome-shell/extensions')
+# (The tests' sandbox points it elsewhere, so a Jade Shell package on the machine running them doesn't count.)
+SYSTEM_EXTENSIONS = pathlib.Path(os.environ.get('JADE_SYSTEM_EXTENSIONS', '/usr/share/gnome-shell/extensions'))
 
 # The dock as Jade Shell ships it: small, at the bottom, out of the way.
 DOCK_LAYOUT = {
@@ -584,7 +585,7 @@ def merged_extensions(ctx, entry):
 def restore(ctx, assume_yes=False):
     manifest = load_manifest()
     history = engine.backups()
-    if not history and not manifest['settings']:
+    if not history and not manifest['settings'] and not keys.applied():
         say('Nothing to restore: Jade Shell has not changed this desktop.')
         return 0
     if not assume_yes:
@@ -595,6 +596,7 @@ def restore(ctx, assume_yes=False):
         if answer.strip().lower() not in ('y', 'yes'):
             return 1
     kept, merged, skipped, stuck = [], [], [], []
+    skipped += keys.revert(ctx) or []  # the Omarchy keymap: your shortcuts back first
     # A broken backup that could not be set aside stays where it is: go on past it.
     while (undone := engine.undo(ctx, ignore=stuck)) is not None:
         kept += undone['kept']

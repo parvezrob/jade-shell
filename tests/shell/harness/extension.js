@@ -263,6 +263,13 @@ async function jadeMenu() {
     await press(Clutter.KEY_Escape);
     await wait(500);
     log(`menu: closed ${!menu._dialog}`);
+    // Opened at a branch (Super+Escape with the Omarchy keymap): one Escape closes it.
+    menu.toggle('System');
+    await wait(500);
+    const title = menu._title.text;
+    await press(Clutter.KEY_Escape);
+    await wait(500);
+    log(`menu: at ${title}, Escape → closed ${!menu._dialog}`);
 }
 
 // Clipboard history: texts and an image kept, a password never.
