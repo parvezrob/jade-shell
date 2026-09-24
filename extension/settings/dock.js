@@ -2,10 +2,11 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
+// "Hide the dock: …"
 const BEHAVIORS = [
-    ['intellihide', 'When a window is near it'],
-    ['autohide', 'Whenever the pointer is away'],
-    ['always', 'Never (windows keep clear of it)'],
+    ['intellihide', 'Near a window'],
+    ['autohide', 'Always'],
+    ['always', 'Never'],
 ];
 
 // A row with a slider, bound to a number key.
@@ -43,7 +44,7 @@ export function dockPage(settings, switchRow) {
     page.add(behavior);
     const hide = new Adw.ComboRow({
         title: 'Hide the dock',
-        subtitle: 'Push the pointer against the bottom edge to bring it back',
+        subtitle: 'Push the pointer against the bottom edge to bring it back. Never: windows keep clear of it.',
         model: Gtk.StringList.new(BEHAVIORS.map(([, label]) => label)),
     });
     const sync = () => {
