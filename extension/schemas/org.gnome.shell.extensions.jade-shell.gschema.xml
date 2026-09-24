@@ -180,7 +180,7 @@
         <choice value="color"/>
         <choice value="tinted"/>
       </choices>
-      <default>'color'</default>
+      <default>'tinted'</default>
       <summary>Dock icons in their own colors, or tinted in the theme's</summary>
     </key>
     <key name="dock-genie" type="b">

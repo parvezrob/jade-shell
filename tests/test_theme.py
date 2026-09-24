@@ -428,6 +428,8 @@ class Sandbox(unittest.TestCase):
         self.env.pop('XDG_SESSION_TYPE', None)
         for name in ('no_proxy', 'NO_PROXY'):
             self.env.pop(name, None)
+        # Offline: no wallpaper, preview or icon downloads (tests that want one say so).
+        self.env.update(https_proxy='http://127.0.0.1:9', HTTPS_PROXY='http://127.0.0.1:9')
         bin_dir = t / 'bin'
         bin_dir.mkdir()
         fakes = {'pkill': 'exit 0', 'vicinae': 'exit 0', 'gnome-shell': 'echo "GNOME Shell 50.4"',
@@ -917,6 +919,14 @@ class Sandbox(unittest.TestCase):
         self.assertIn(blur, self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'))
         # Running setup by hand is asking for Jade Shell's layout again.
         self.assertIn('Turned off Blur my Shell', self.jade('setup'))
+
+    def test_setup_fetches_the_tahoe_icons_once(self):
+        out = self.jade('setup')  # offline: said, and setup goes on
+        self.assertIn('No Tahoe icons', out)
+        manifest = json.loads((self.home / '.local/state/jade-shell/setup.json').read_text())
+        self.assertTrue(manifest['icons-offered'])
+        self.assertNotIn('No Tahoe icons', self.jade('setup'))  # asked once, not at every update
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'dock-icon-style'), "'tinted'")
 
     def test_tahoe_icons_take_the_accent_and_leave_with_restore(self):
         from jade import icons

@@ -446,6 +446,19 @@ def setup(ctx, theme_id=None, after_update=False):
             progress(None)
             say(f'Downloaded {len(missing)} theme previews.')
 
+    # The Tahoe icons are Jade Shell's default look: fetched once (the first
+    # setup, or the first with a version that has them). Off stays off.
+    if not manifest.get('icons-offered'):
+        if 'icons' not in engine.left_alone(ctx.settings):
+            try:
+                icons.install(progress)
+                progress(None)
+            except (icons.IconsUnavailable, OSError) as error:
+                progress(None)
+                say(f'No Tahoe icons ({engine.first_line(error)}); turn them on later in Jade Shell\'s settings, Dock.')
+        manifest['icons-offered'] = True
+        write_text(manifest_path(), json.dumps(manifest, indent=2))
+
     # The theme asked for, else the current one, else Osaka Jade, applied
     # everywhere: this also builds anything a new version of Jade Shell adds.
     state = engine.current()
