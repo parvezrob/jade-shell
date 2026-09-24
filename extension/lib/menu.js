@@ -99,6 +99,7 @@ export class JadeMenu {
 
         const tree = [
             {label: 'Apps', icon: 'view-app-grid-symbolic', children: () => this._apps()},
+            {label: 'Clipboard History', icon: 'edit-paste-symbolic', action: () => this._parts('ClipboardHistory')?.open()},
             {label: 'Capture', icon: 'camera-photo-symbolic', children: () => [
                 {label: 'Screenshot', icon: 'camera-photo-symbolic', action: () => Main.screenshotUI.open(0)},
                 {label: 'Screen Recording', icon: 'camera-web-symbolic', action: () => Main.screenshotUI.open(1)},
@@ -383,19 +384,26 @@ export class JadeMenu {
             return;
         }
         const keepOpen = Boolean(entry.checked);  // toggles stay open, their marks change
-        try {
-            entry.action?.();
-        } catch (e) {
-            notify('Jade Menu', e.message);
+        const act = () => {
+            try {
+                entry.action?.();
+            } catch (e) {
+                notify('Jade Menu', e.message);
+            }
+        };
+        if (!keepOpen) {
+            // Closed first: an action may open a dialog of its own.
+            this._dialog?.close();
+            GLib.idle_add_once(GLib.PRIORITY_DEFAULT, act);
+            return;
         }
+        act();
         if (keepOpen) {
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
                 if (this._dialog && this._rows)
                     this._refreshMarks();
                 return GLib.SOURCE_REMOVE;
             });
-        } else {
-            this._dialog?.close();
         }
     }
 

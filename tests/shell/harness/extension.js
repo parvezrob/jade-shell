@@ -242,8 +242,8 @@ async function jadeMenu() {
     await wait(700);
     log(`menu: open ${Boolean(menu._dialog)}, ${menu._rows?.length} rows: ${menu._rows?.map(r => r.entry.label).join(', ')}`);
     await shoot('menu');
-    await press(Clutter.KEY_Down);
-    await press(Clutter.KEY_Down);
+    for (let i = 0; i < 3; i++)  // Apps, Clipboard History, Capture, then Toggles
+        await press(Clutter.KEY_Down);
     await press(Clutter.KEY_Return);
     await wait(400);
     log(`menu: → ${menu._title.text}: ${menu._rows?.map(r => r.entry.label).join(', ')}`);
@@ -263,6 +263,40 @@ async function jadeMenu() {
     await press(Clutter.KEY_Escape);
     await wait(500);
     log(`menu: closed ${!menu._dialog}`);
+}
+
+// Clipboard history: texts and an image kept, a password never.
+async function clipboard() {
+    const part = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('ClipboardHistory');
+    if (!part) {
+        log('clipboard: none');
+        return;
+    }
+    const {default: Meta} = await import('gi://Meta');
+    const clip = St.Clipboard.get_default();
+    clip.set_text(St.ClipboardType.CLIPBOARD, 'ssh robin@jade.example.org');
+    await wait(400);
+    clip.set_text(St.ClipboardType.CLIPBOARD, 'SELECT *\nFROM themes\nWHERE accent = \'#509475\';');
+    await wait(400);
+    // A password manager's copy: it offers the hint, and it is never kept.
+    const secret = Meta.SelectionSourceMemory.new('x-kde-passwordManagerHint', GLib.Bytes.new(new TextEncoder().encode('secret')));
+    global.display.get_selection().set_owner(Meta.SelectionType.SELECTION_CLIPBOARD, secret);
+    await wait(400);
+    const png = GLib.file_get_contents('/usr/share/icons/hicolor/48x48/apps/firefox.png')[1] ?? null;
+    if (png)
+        clip.set_content(St.ClipboardType.CLIPBOARD, 'image/png', GLib.Bytes.new(png));
+    await wait(600);
+    log(`clipboard: ${part.entries.length} kept: ${part.entries.map(e => e.kind === 'text' ? e.text.split('\n')[0] : 'image').join(' | ')}`);
+    part.open();
+    await wait(800);
+    await shoot('clipboard');
+    part._entry.set_text('ssh');
+    await wait(300);
+    log(`clipboard: "ssh" → ${part._rows.length} row(s)`);
+    part._choose(0);
+    await wait(400);
+    const text = await new Promise(resolve => clip.get_text(St.ClipboardType.CLIPBOARD, (_c, t) => resolve(t)));
+    log(`clipboard: chosen → clipboard holds "${text}", panel open ${Boolean(part._dialog)}`);
 }
 
 // GNOME's pop-ups and dialogs in the theme: volume, a password prompt (as
@@ -1458,6 +1492,7 @@ export default class Harness extends Extension {
         await media();
         await weather();
         await jadeMenu();
+        await clipboard();
         await popups();
         await clockFollowsGnome();
         await highContrast();

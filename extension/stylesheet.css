@@ -183,3 +183,6 @@
 .jade-weather-hour-time, .jade-weather-hour-temp { font-size: 8.5pt; }
 .jade-weather-hour-icon { icon-size: 16px; }
 .jade-weather-open { margin: 2px 12px 4px; padding: 5px 10px; }
+
+/* ---------- clipboard history (uses the Jade Menu's rows) ---------- */
+.jade-clipboard { width: 620px; }

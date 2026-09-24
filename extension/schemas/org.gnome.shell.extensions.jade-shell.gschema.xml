@@ -22,6 +22,15 @@
       <default><![CDATA[['<Super><Alt>space']]]></default>
       <summary>Open the Jade Menu</summary>
     </key>
+    <key name="clipboard-history" type="b">
+      <default>true</default>
+      <summary>Keep a clipboard history</summary>
+      <description>In memory only, never what password managers mark as secret.</description>
+    </key>
+    <key name="toggle-clipboard" type="as">
+      <default><![CDATA[['<Super><Control>v']]]></default>
+      <summary>Open the clipboard history</summary>
+    </key>
     <key name="show-picker" type="b">
       <default>true</default>
       <summary>Show the theme picker in the top bar</summary>

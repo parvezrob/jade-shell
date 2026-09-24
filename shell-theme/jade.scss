@@ -560,7 +560,7 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
 
 // ------------------------------------------------------------------ the Jade Menu (Super+Alt+Space)
 
-.modal-dialog.jade-menu {
+.modal-dialog.jade-menu, .modal-dialog.jade-clipboard {
   .jade-menu-title { @include om-caps; color: $jade-accent; }
   .jade-menu-search {
     @include om-control;
