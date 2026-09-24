@@ -607,10 +607,15 @@ def restore(ctx, assume_yes=False):
         answer = input(f'Undo {len(history)} theme switch(es) and Jade Shell setup? [y/N] ')
         if answer.strip().lower() not in ('y', 'yes'):
             return 1
-    kept, merged, skipped, stuck, unfinished = [], [], [], [], 0
+    kept, merged, skipped, stuck = [], [], [], []
     skipped += keys.revert(ctx) or []  # the Omarchy keymap: your shortcuts back first
     if network.state_file().exists():
         skipped += network.restore()  # DNS and Wi-Fi band as they were
+    # Whatever could not be put back yet (a file that could not be written,
+    # NetworkManager saying no): its records stay, and so do setup's record
+    # and the restore kit, so running restore again (or the offer after a
+    # removal) finishes the job.
+    unfinished = network.state_file().exists()
     # A broken backup that could not be set aside stays where it is: go on past it.
     while (undone := engine.undo(ctx, ignore=stuck)) is not None:
         kept += undone['kept']
@@ -618,9 +623,11 @@ def restore(ctx, assume_yes=False):
         skipped += undone['skipped']
         if undone.get('stuck'):
             stuck.append(undone['stuck'])
-        if undone.get('incomplete'):  # kept for another try; this run goes on past it
-            stuck.append(undone['incomplete'])
-            unfinished += 1
+        if undone.get('incomplete'):
+            # Not past it: an older backup would take what this one could
+            # not put back for an edit of yours, and let go of the original.
+            unfinished = True
+            break
 
     rest = []
     for entry in reversed(manifest['settings']):
@@ -647,10 +654,10 @@ def restore(ctx, assume_yes=False):
     # The Mac-style icons are Jade Shell's own download: gone with the rest.
     kept = [path for path in kept if not pathlib.Path(path).is_relative_to(icons.icons_home())]
     icons.remove()
-    manifest_path().unlink(missing_ok=True)
     # The first-run welcome and its notes: set up again later, they show again.
     (engine.state_dir() / 'welcome.json').unlink(missing_ok=True)
     if not unfinished:
+        manifest_path().unlink(missing_ok=True)
         restore_offer.drop_kit()  # nothing left to offer after a removal
     for path in dict.fromkeys(merged):
         say(f'Took Jade Shell\'s part out of {path}; your edits since stay.')
@@ -668,8 +675,8 @@ def restore(ctx, assume_yes=False):
     for schema in dict.fromkeys(gone):
         say(f'Skipped the settings of {schema}: no longer installed.')
     if unfinished:
-        say('Some files could not be put back (see Skipped above); their saved copies are kept. '
-            'Fix what stopped them and run jade restore again.')
+        say('Not everything could be put back (see Skipped above); what is left is kept. '
+            'Fix what stopped it and run jade restore again.')
         return 1
     say('Restored the desktop you had before Jade Shell. Log out and back in to finish.')
     return 0

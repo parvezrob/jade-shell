@@ -101,7 +101,11 @@ export class Bar {
 
         this._glass = new Glass(this._content, monitorIndex);
         this._hit = new St.Widget({reactive: true, width: 1, height: 1, pivot_point: TOP_LEFT});
+        // Leaving wakes the frames too: with magnification off they stop while
+        // the pointer rests on the dock, and must still see it go (the label
+        // and an autohiding dock would stay).
         this._hit.connect('enter-event', () => this.wake());
+        this._hit.connect('leave-event', () => this.wake());
         this._content.add_child(this._hit);
         this._icons = new St.Widget({reactive: false});
         this._content.add_child(this._icons);
@@ -474,10 +478,7 @@ export class Bar {
         this._layout();
 
         const still = this._target === 0 && Math.abs(this._envelope) < 0.002 && Math.abs(this._velocity) < 0.02;
-        // Not while the pointer is on the dock: only these frames see it leave
-        // (with magnification off nothing else moves, and the label and an
-        // autohiding dock would stay).
-        if (still && !moving && !this._hover && dt > 0) {
+        if (still && !moving && dt > 0) {
             this._envelope = this._velocity = 0;
             this._layout();
             this._stopTimeline();

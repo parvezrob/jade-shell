@@ -234,6 +234,7 @@ class JadeDockAppItem extends Item {
         this.icon = new AppIcon(app, this);
         this.icon.connect('menu-state-changed', (_icon, open) => this._bar.menuChanged(open));
         this.icon.connect('enter-event', () => this._bar.wake());
+        this.icon.connect('leave-event', () => this._bar.wake());
         this.add_child(this.icon);
         this._dot = new St.Widget({style_class: 'jade-dock-dot'});
         this.add_child(this._dot);
@@ -439,6 +440,7 @@ class JadeDockSeparator extends Item {
             this._menu.open(BoxPointer.PopupAnimation.FULL);
         });
         this._hit.connect('enter-event', () => this._bar.wake());
+        this._hit.connect('leave-event', () => this._bar.wake());
         this.add_child(this._hit);
         this.resize(bar.metrics.icon, bar.metrics);
     }
@@ -495,6 +497,7 @@ class JadeDockButtonItem extends Item {
         });
         this.button.pivot_point = PIVOT;
         this.button.connect('enter-event', () => this._bar.wake());
+        this.button.connect('leave-event', () => this._bar.wake());
         this.button.connect('clicked', (_b, button) => this.activate(button));
         this.button.connect('notify::pressed', () => press(this.button.child, this.button.pressed));
         this.add_child(this.button);

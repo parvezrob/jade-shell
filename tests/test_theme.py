@@ -561,6 +561,25 @@ class Sandbox(unittest.TestCase):
         self.assertFalse((kitty_dir / 'jade-theme.conf').exists())
         self.assertEqual(list((self.home / '.local/state/jade-shell/backups').iterdir()), [])
 
+    def test_a_restore_that_cannot_write_stops_and_finishes_next_time(self):
+        # Two switches, then a restore that can't write btop's theme folder:
+        # an older backup must not take the newer theme's file for an edit
+        # of yours and let go of what was there first.
+        themes_dir = self.home / '.config/btop/themes'
+        self.jade('theme', 'set', 'nord', '--only', 'btop')
+        self.jade('theme', 'set', 'tokyo-night', '--only', 'btop')
+        themes_dir.chmod(0o500)
+        self.addCleanup(themes_dir.chmod, 0o755)
+        result = self.run_jade('restore', '--yes')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual(len(list((self.home / '.local/state/jade-shell/backups').iterdir())), 2)
+        themes_dir.chmod(0o755)
+        self.jade('restore', '--yes')
+        self.assertFalse((themes_dir / 'jade.theme').exists())
+        btop = self.home / '.config/btop/btop.conf'
+        self.assertEqual(btop.read_text(), self.originals[btop])
+        self.assertEqual(list((self.home / '.local/state/jade-shell/backups').iterdir()), [])
+
     def test_undo_takes_only_jades_part_out_of_an_edited_config(self):
         skip = self.skip_shell_unless_compiler()
         self.jade('theme', 'set', 'tokyo-night', *skip)
@@ -1144,6 +1163,17 @@ elif 'show' in args and 'connection' in args:
         self.jade('restore', '--yes')
         now = json.loads(conn.read_text())
         self.assertEqual((now['ipv4.dns'], now['ipv4.ignore-auto-dns'], now['802-11-wireless.band']), ('', 'no', ''))
+        self.assertFalse((self.home / '.local/state/jade-shell/network.json').exists())
+
+    def test_a_refused_network_restore_keeps_its_record_and_says_so(self):
+        self.fake_network()
+        self.jade('network', 'dns', 'cloudflare')
+        (self.home.parent / 'nm-refuse').touch()
+        result = self.run_jade('restore', '--yes')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertTrue((self.home / '.local/state/jade-shell/network.json').exists())
+        (self.home.parent / 'nm-refuse').unlink()
+        self.jade('restore', '--yes')
         self.assertFalse((self.home / '.local/state/jade-shell/network.json').exists())
 
     def test_a_refused_network_change_records_nothing(self):

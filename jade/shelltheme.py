@@ -174,7 +174,10 @@ def build(colors, shell_version):
     before with the same sources (switching back to a theme skips sassc)."""
     sources_stamp = [(str(p), p.stat().st_mtime_ns, p.stat().st_size)
                      for p in sorted([ROOT / 'jade.scss', *version_dir(shell_version).rglob('*')]) if p.is_file()]
-    key = hashlib.sha256(json.dumps([palette_scss(colors), colors.get('mode'), shell_version, sources_stamp])
+    # The code that turns a palette into SCSS counts too (this module and
+    # the palette's), whatever an upgrade did to the files' times.
+    generator = hashlib.sha256(pathlib.Path(__file__).read_bytes() + pathlib.Path(pal.__file__).read_bytes()).hexdigest()
+    key = hashlib.sha256(json.dumps([palette_scss(colors), colors.get('mode'), shell_version, sources_stamp, generator])
                          .encode()).hexdigest()[:32]
     folder = cache_dir() / 'shell-css'
     cached = folder / f'{key}.css'
