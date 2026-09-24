@@ -479,3 +479,81 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
   .modal-dialog-button-box { background-color: $jade-background; border-top: 1px solid $om-fg-25; }
   .modal-dialog-button { @include om-control; border-radius: 0; font-family: $jade-panel-font; }
 }
+
+// ------------------------------------------------------------------ pop-ups, dialogs and the lock screen
+
+// Volume, brightness and keyboard layout pop-ups: an Omarchy panel.
+.osd-window {
+  background-color: $jade-background;
+  color: $jade-foreground;
+  border: 2px solid $jade-accent;
+  border-radius: 0;
+  box-shadow: none;
+  font-family: $jade-panel-font;
+  font-weight: bold;
+
+  .level {
+    -barlevel-height: 4px;
+    -barlevel-background-color: $om-fg-25;
+    -barlevel-active-background-color: $jade-accent;
+    -barlevel-overdrive-color: $jade-urgent;
+  }
+}
+.osd-monitor-label, .osd-break-countdown-label {
+  background-color: $jade-background;
+  color: $jade-accent;
+  border: 2px solid $jade-accent;
+  border-radius: 0;
+  font-family: $jade-panel-font;
+}
+
+// Every GNOME dialog: password prompts, log out, Run a Command, Wi-Fi.
+.modal-dialog {
+  background-color: $jade-background;
+  color: $jade-foreground;
+  border: 2px solid $jade-accent;
+  border-radius: 0;
+  box-shadow: none;
+  font-family: $jade-panel-font;
+
+  .message-dialog-title, .run-dialog-label { color: $jade-strong; font-family: $jade-panel-font; }
+  .message-dialog-description { color: $om-dim; }
+  StEntry {
+    @include om-control;
+    font-family: $jade-panel-font;
+    selection-background-color: $jade-accent;
+    selected-color: $jade-background;
+    &:focus { border-color: $jade-accent; background-color: $om-fg-04; }
+    StLabel.hint-text { color: $om-dim; }
+  }
+  .modal-dialog-button-box {
+    background-color: $jade-background;
+    .modal-dialog-button {
+      @include om-control;
+      font-family: $jade-panel-font;
+      // The button Enter presses: "on", Omarchy's way (a tint; the accent stays on the frame).
+      &:default { background-color: $om-fg-18; border-color: transparent; color: $jade-strong; font-weight: bold; }
+      &:default:hover, &:default:focus { background-color: $om-fg-22; }
+      &:insensitive { color: $om-dimmer; }
+    }
+  }
+  .prompt-dialog-error-label { color: $jade-urgent; }
+}
+
+// The lock screen: the Jade clock, and a square prompt framed in the accent.
+.unlock-dialog-clock {
+  font-family: $jade-panel-font;
+  .unlock-dialog-clock-time { font-weight: bold; }
+  .unlock-dialog-clock-hint { border-radius: 0; font-family: $jade-panel-font; }
+}
+.unlock-dialog, .login-dialog {
+  font-family: $jade-panel-font;
+  .login-dialog-prompt-entry {
+    border-radius: 0;
+    border: 1px solid transparentize($jade-accent, .3);
+    font-family: $jade-panel-font;
+    &:focus { border-color: $jade-accent; }
+  }
+  .button, .icon-button, .login-dialog-button { border-radius: 0; }
+  .login-dialog-auth-list-item, .login-dialog-user-list .login-dialog-user-list-item { border-radius: 0; }
+}

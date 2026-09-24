@@ -96,6 +96,59 @@ async function states(role, name) {
     await wait(300);
 }
 
+// GNOME's pop-ups and dialogs in the theme: volume, a password prompt (as
+// polkit draws it), Run a Command; the lock screen last (it stays locked).
+async function popups() {
+    const ModalDialog = await import('resource:///org/gnome/shell/ui/modalDialog.js');
+    const Dialog = await import('resource:///org/gnome/shell/ui/dialog.js');
+    Main.osdWindowManager.showAll(new Gio.ThemedIcon({name: 'audio-volume-medium-symbolic'}), 'Speakers', 0.62, 1);
+    await wait(500);
+    await shoot('popup-volume');
+    await wait(2500);
+
+    const dialog = new ModalDialog.ModalDialog({styleClass: 'prompt-dialog'});
+    const content = new Dialog.MessageDialogContent({
+        title: 'Authentication Required',
+        description: 'Authentication is required to update Jade Shell',
+    });
+    const entry = new St.PasswordEntry({style_class: 'prompt-dialog-password-entry', hint_text: 'Password', can_focus: true});
+    content.add_child(entry);
+    dialog.contentLayout.add_child(content);
+    dialog.setButtons([{label: 'Cancel', action: () => dialog.close(), key: Clutter.KEY_Escape},
+        {label: 'Authenticate', action: () => dialog.close(), default: true}]);
+    dialog.open(global.get_current_time());
+    await wait(900);
+    await shoot('popup-password');
+    dialog.close();
+    await wait(700);
+
+    Main.openRunDialog();
+    await wait(900);
+    await shoot('popup-run');
+    Main.overview.hide();
+    global.stage.get_key_focus()?.get_parent?.();
+    const run = Main.uiGroup.get_children().find(actor => actor.constructor.name.includes('RunDialog'));
+    run?.close?.();
+    await wait(700);
+}
+
+async function lockScreen() {
+    Main.screenShield.lock(false);
+    await wait(2500);
+    await shoot('lock-curtain');
+    const keyboard = Clutter.get_default_backend().get_default_seat().create_virtual_device(
+        Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    keyboard.notify_keyval(now(), Clutter.KEY_space, Clutter.KeyState.PRESSED);
+    keyboard.notify_keyval(now(), Clutter.KEY_space, Clutter.KeyState.RELEASED);
+    await wait(2000);
+    await shoot('lock-prompt');
+    keyboard.notify_keyval(now(), Clutter.KEY_Escape, Clutter.KeyState.PRESSED);
+    keyboard.notify_keyval(now(), Clutter.KEY_Escape, Clutter.KeyState.RELEASED);
+    await wait(1500);
+    await shoot('lock-clock');
+    log(`lock screen: locked ${Main.screenShield.locked}`);
+}
+
 // Modes shown while on: stay awake by its shortcut (GNOME's session manager
 // is not in this shell, so only the attempt shows), Do Not Disturb with the
 // bell off, turned off by a click.
@@ -1233,8 +1286,10 @@ export default class Harness extends Extension {
         await bellShortcuts();
         await cheatSheet();
         await modes();
+        await popups();
         await clockFollowsGnome();
         await highContrast();
+        await lockScreen();  // last: it stays locked
     }
 
     disable() {}
