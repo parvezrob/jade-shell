@@ -10,7 +10,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {familyGicon} from './baricons.js';
-import {VERTICAL, addToPanel, jadeCommand, label, openSettings, run} from './util.js';
+import {VERTICAL, addToPanel, jadeCommand, label, openSettings, prewarm, run} from './util.js';
 
 const COLUMNS = 5;
 // After a failed preview download (offline), wait this long before the next try.
@@ -239,22 +239,14 @@ export class Picker {
         this._refresh();  // offline part-way, the ones that came still show
     }
 
-    // A new grid's styles (and its previews' textures) are worked out the
-    // first time it shows: 60-70 ms on the first open after login. Do that
-    // work when the Shell is idle instead, so the first open is as quick as
-    // the rest.
+    // A new grid's styles are worked out the first time it shows: work them
+    // out while the Shell is idle instead (util.prewarm).
     _prewarm() {
         if (this._prewarmId || this._button.menu.isOpen)
             return;
-        this._prewarmId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+        this._prewarmId = prewarm(() => {
             this._prewarmId = 0;
-            const walk = actor => {
-                actor.ensure_style?.();
-                actor.get_children().forEach(walk);
-            };
-            if (this._alive)
-                walk(this._button.menu.box);
-            return GLib.SOURCE_REMOVE;
+            return this._alive ? [this._button.menu.box] : [];
         });
     }
 

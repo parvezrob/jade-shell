@@ -175,3 +175,20 @@ export function clockTime(dateTime, {hourOnly = false} = {}) {
         return dateTime.format(hourOnly ? '%H:00' : '%H:%M');
     return dateTime.format(hourOnly ? '%l %p' : '%l:%M %p').trim();
 }
+
+// A menu's styles are worked out the first time it opens (15-20 ms of the
+// first open after login or an unlock). Work them out while the Shell is
+// idle instead. Returns the idle source, for removal.
+export function prewarm(actors) {
+    return GLib.idle_add(GLib.PRIORITY_LOW, () => {
+        const walk = actor => {
+            actor.ensure_style?.();
+            actor.get_children().forEach(walk);
+        };
+        for (const actor of actors()) {
+            if (actor && !actor.mapped)
+                walk(actor);
+        }
+        return GLib.SOURCE_REMOVE;
+    });
+}

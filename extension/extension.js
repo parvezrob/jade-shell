@@ -5,6 +5,7 @@
 // user session and is torn down while the screen is locked. The Desktop part
 // (app grid and startup) stays on too: it changes nothing on the lock screen,
 // and rebuilding the app grid on every lock and unlock is wasted work.
+import GLib from 'gi://GLib';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -28,6 +29,7 @@ import {Picker} from './lib/picker.js';
 import {ShellTheme} from './lib/theme.js';
 import {Usage} from './lib/usage.js';
 import {Updates} from './lib/updates.js';
+import {prewarm} from './lib/util.js';
 import {Weather} from './lib/weather.js';
 import {Welcome} from './lib/welcome.js';
 import {Workspaces} from './lib/workspaces.js';
@@ -70,6 +72,9 @@ export default class JadeShell extends Extension {
     }
 
     disable() {
+        if (this._prewarmId)
+            GLib.source_remove(this._prewarmId);
+        this._prewarmId = 0;
         Main.sessionMode.disconnect(this._sessionChanged);
         this._partsChanged.forEach(id => this._settings.disconnect(id));
         for (const part of [...this._parts].reverse())
@@ -92,6 +97,16 @@ export default class JadeShell extends Extension {
     _syncParts() {
         for (const part of this._parts)
             this._syncPart(part);
+        // After login and after each unlock: the menus' styles, worked out
+        // while the Shell is idle rather than at their first open.
+        if (!Main.sessionMode.isLocked && !this._prewarmId) {
+            this._prewarmId = prewarm(() => {
+                this._prewarmId = 0;
+                return Object.entries(Main.panel.statusArea)
+                    .filter(([role]) => role.startsWith('jade-'))
+                    .map(([, button]) => button.menu?.box);
+            });
+        }
     }
 
     _syncPart(part) {
