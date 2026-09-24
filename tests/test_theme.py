@@ -959,6 +959,80 @@ class Sandbox(unittest.TestCase):
                          "['<Super><Alt>space']")
         self.assertEqual(self.gsettings('get', custom_schema, 'binding'), "'<Super>Return'")
 
+    def community_repo(self, name, files):
+        """A git repo standing in for a community theme; returns its file:// URL."""
+        repo = self.home.parent / 'repos' / name
+        repo.mkdir(parents=True)
+        for path, content in files.items():
+            (repo / path).parent.mkdir(parents=True, exist_ok=True)
+            (repo / path).write_bytes(content if isinstance(content, bytes) else content.encode())
+        git = ['git', '-C', str(repo), '-c', 'user.name=t', '-c', 'user.email=t@t']
+        subprocess.run([*git[:3], 'init', '-q'], check=True)
+        subprocess.run([*git, 'add', '-A'], check=True)
+        subprocess.run([*git, 'commit', '-qm', 'theme'], check=True)
+        return repo.as_uri(), repo, git
+
+    def test_a_community_theme_installs_switches_updates_and_goes(self):
+        import gi
+        gi.require_version('GdkPixbuf', '2.0')
+        from gi.repository import GdkPixbuf
+        picture = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, 64, 40)
+        picture.fill(0x5f875fff)
+        png = bytes(picture.save_to_bufferv('png', [], [])[1])
+        palette = ('red = "#b36d43"\ngreen = "#5f875f"\nyellow = "#b8bb26"\n'
+                   'blue = "#78824b"\nmagenta = "#bb7744"\ncyan = "#c9a554"\n')
+        url, repo, git = self.community_repo('omarchy-harbor-theme', {
+            'colors.toml': 'accent = "#78824b"\nbackground = "#222222"\nforeground = "#c2c2b0"\n' + palette,
+            'backgrounds/1-forest.png': png, 'preview.png': png,
+            'install.sh': '#!/bin/sh\ntouch "$HOME/pwned"\n', 'hyprland.conf': 'exec-once = rm -rf ~\n',
+            'backgrounds/notes.txt': 'not a picture',
+        })
+        out = self.jade('theme', 'install', url)
+        self.assertIn('Installed Harbor (1 wallpaper)', out)
+        theme = self.home / '.config/jade-shell/themes/harbor'
+        self.assertEqual(sorted(str(p.relative_to(theme)) for p in theme.rglob('*')),
+                         ['backgrounds', 'backgrounds/1-forest.png', 'colors.toml', 'preview.png', 'source.json'])
+        self.assertFalse((self.home / 'pwned').exists())
+        listed = json.loads(self.jade('theme', 'list', '--json'))
+        harbor = next(row for row in listed if row['id'] == 'harbor')
+        self.assertEqual(harbor['colors']['accent'], '#78824b')
+        self.assertTrue(harbor['thumbnail'])  # the picker shows its wallpaper
+
+        self.jade('theme', 'set', 'harbor', '--only', 'gnome')
+        self.assertIn('harbor/backgrounds/1-forest.png',
+                      self.gsettings('get', 'org.gnome.desktop.background', 'picture-uri'))
+        self.assertNotEqual(self.run_jade('theme', 'remove', 'harbor').returncode, 0)  # the current one stays
+
+        (repo / 'colors.toml').write_text('accent = "#ff0000"\nbackground = "#222222"\nforeground = "#c2c2b0"\n' + palette)
+        subprocess.run([*git, 'commit', '-qam', 'red'], check=True)
+        self.assertIn('Apply its new colors with: jade theme set harbor', self.jade('theme', 'update'))
+        listed = json.loads(self.jade('theme', 'list', '--json'))
+        self.assertEqual(next(row for row in listed if row['id'] == 'harbor')['colors']['accent'], '#ff0000')
+
+        self.jade('theme', 'set', 'osaka-jade', '--only', 'gnome')
+        self.assertIn('Removed harbor', self.jade('theme', 'remove', 'harbor'))
+        self.assertFalse(theme.exists())
+        self.assertNotIn('harbor', [row['id'] for row in json.loads(self.jade('theme', 'list', '--json'))])
+
+    def test_community_themes_are_held_to_their_looks(self):
+        # An older theme: colors from its Alacritty theme.
+        url, _repo, _git = self.community_repo('omarchy-retro-theme', {
+            'alacritty.toml': '[colors.primary]\nbackground = "0x101010"\nforeground = "0xe0e0e0"\n'
+                              '[colors.normal]\nblue = "0x3366ff"\nred = "0xcc3333"\n',
+        })
+        self.jade('theme', 'install', url)
+        retro = next(row for row in json.loads(self.jade('theme', 'list', '--json')) if row['id'] == 'retro')
+        self.assertEqual(retro['colors']['accent'], '#3366ff')
+        # A link out of the repo is never followed, a name Jade has is not taken, a URL must be a git URL.
+        url, repo, git = self.community_repo('omarchy-sneaky-theme', {'x': 'x'})
+        (repo / 'colors.toml').symlink_to(self.home / '.bashrc')
+        subprocess.run([*git, 'add', '-A'], check=True)
+        subprocess.run([*git, 'commit', '-qm', 'link'], check=True)
+        self.assertIn('is a link', self.run_jade('theme', 'install', url).stderr)
+        self.assertIn('already has a theme called nord', self.run_jade('theme', 'install', url, '--name', 'nord').stderr)
+        self.assertIn('not a git URL', self.run_jade('theme', 'install', '--', '--upload-pack=touch /tmp/x').stderr)
+        self.assertIn('not a git URL', self.run_jade('theme', 'install', 'ext::sh -c touch% /tmp/x').stderr)
+
     def test_setup_fetches_the_tahoe_icons_once(self):
         out = self.jade('setup')  # offline: said, and setup goes on
         self.assertIn('No Tahoe icons', out)

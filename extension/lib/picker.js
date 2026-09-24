@@ -55,7 +55,7 @@ export class Picker {
         Main.wm.removeKeybinding('toggle-picker');
         this._settings.disconnect(this._indicatorChanged);
         this._button.destroy();
-        this._button = this._grid = this._status = this._heroTitle = null;
+        this._button = this._grid = this._scroll = this._status = this._heroTitle = null;
         this._tiles.clear();
     }
 
@@ -95,8 +95,13 @@ export class Picker {
         hero.add_child(text);
         this._item(hero);
 
+        // Scrolls once the themes (community ones too) outgrow the screen.
         this._grid = new St.BoxLayout({orientation: VERTICAL, x_expand: true, style_class: 'jade-grid jade-divided'});
-        this._item(this._grid);
+        this._scroll = new St.ScrollView({
+            hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            overlay_scrollbars: true, x_expand: true, child: this._grid,
+        });
+        this._item(this._scroll);
 
         const footer = new St.BoxLayout({x_expand: true, style_class: 'jade-footer jade-divided'});
         this._status = label('', 'jade-status', {x_expand: true});
@@ -111,6 +116,9 @@ export class Picker {
                 menu.sourceActor = this._button;
                 return;
             }
+            // The top bar, the heading and the footer, and a margin, stay on screen.
+            const monitor = Main.layoutManager.primaryMonitor;
+            this._scroll.style = `max-height: ${Math.max(240, monitor.height - Main.panel.height - 260)}px;`;
             this._refresh();
             const current = this._tiles.get(this._current) ?? this._tiles.values().next().value;
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
@@ -154,9 +162,16 @@ export class Picker {
         const themes = JSON.parse(stdout);
         const key = themes.map(t => `${t.id}:${t.thumbnail}`).join('|');
         if (key !== this._themesKey) {
+            // Rebuilding drops the tile with the keyboard focus, and a menu
+            // that loses its focus closes: hand it to the same theme's new tile.
+            const focused = [...this._tiles].find(([, tile]) => tile.has_key_focus())?.[0];
             this._themesKey = key;
             this._themes = themes;
             this._buildGrid();
+            if (this._button.menu.isOpen) {
+                const id = focused ?? themes.find(t => t.current)?.id;
+                (this._tiles.get(id) ?? this._tiles.values().next().value)?.grab_key_focus();
+            }
         }
         if (themes.some(t => !t.thumbnail))
             this._fetchPreviews(jade);
@@ -214,8 +229,20 @@ export class Picker {
             ? this._runJade(['theme', 'wallpaper'], 'New wallpaper set', 'Changing the wallpaper…')
             : this._runJade(['theme', 'set', theme.id], `${theme.name} applied`, `Applying ${theme.name}…`));
         tile.connect('key-press-event', (_a, event) => this._onTileKey(index, event));
+        tile.connect('key-focus-in', () => this._reveal(tile));
         this._tiles.set(theme.id, tile);
         return tile;
+    }
+
+    // Scroll just enough to show a tile that the keyboard moved to.
+    _reveal(tile) {
+        const adjustment = this._scroll.vadjustment;
+        const top = tile.get_transformed_position()[1] - this._grid.get_transformed_position()[1];
+        const bottom = top + tile.height;
+        if (top < adjustment.value)
+            adjustment.value = top;
+        else if (bottom > adjustment.value + adjustment.page_size)
+            adjustment.value = bottom - adjustment.page_size;
     }
 
     // Arrow keys move through the grid; Enter and Space pick (St.Button).

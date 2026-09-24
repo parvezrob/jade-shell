@@ -12,7 +12,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio
 
-from . import __version__, debug, engine, icons, keys, setup, themes, update
+from . import __version__, community, debug, engine, icons, keys, setup, themes, update
 from . import targets as registry
 from .setup import join
 from .store import File, Settings, read_text
@@ -176,12 +176,18 @@ def theme_fetch(args, ctx):
 
 def theme_thumbs(args, ctx):
     wanted = [themes.load(t) for t in themes.ids() if args.refresh or not themes.thumbnail_path(t).exists()]
+    # A community theme with no pictures at all has nothing to preview: the picker shows its colors.
+    wanted = [theme for theme in wanted if theme.backgrounds or theme.preview or not theme.community]
     # Those whose wallpaper is here first; after one download fails (offline),
     # the rest would only wait through the same retries.
-    wanted.sort(key=lambda theme: not theme.wallpaper(0).exists())
+    def here(theme):
+        picture = theme.wallpaper(0) or theme.preview
+        return bool(picture and picture.exists())
+
+    wanted.sort(key=lambda theme: not here(theme))
     failed = None
     for theme in wanted:
-        if failed and not theme.wallpaper(0).exists():
+        if failed and not here(theme):
             continue
         try:
             print(themes.make_thumbnail(theme))
@@ -190,6 +196,59 @@ def theme_thumbs(args, ctx):
     if failed:
         print(f'jade: {failed}', file=sys.stderr)
     return 1 if failed else 0
+
+
+def refresh_thumbnail(theme):
+    try:
+        themes.make_thumbnail(theme)
+    except Exception:  # a broken or missing picture is not worth failing over: the picker shows its colors
+        themes.thumbnail_path(theme.id).unlink(missing_ok=True)
+
+
+def theme_install(args, ctx):
+    try:
+        tid = community.install(args.url, args.name, reserved=themes.builtin_ids())
+    except community.ThemeError as error:
+        print(f'jade: {error}', file=sys.stderr)
+        return 1
+    theme = themes.load(tid)
+    refresh_thumbnail(theme)
+    print(f'Installed {theme.name} ({plural(len(theme.backgrounds), "wallpaper")}): only its colors, wallpapers and '
+          f'preview were kept. Pick it in the theme picker, or: jade theme set {tid}')
+    return 0
+
+
+def theme_update(args, ctx):
+    names = args.names or community.installed()
+    if not names:
+        print('No community themes installed; add one with: jade theme install <git-url>')
+        return 0
+    active, failed = engine.current().get('theme'), 0
+    for name in names:
+        try:
+            community.update(name)
+        except community.ThemeError as error:
+            print(f'jade: {name}: {error}', file=sys.stderr)
+            failed += 1
+            continue
+        theme = themes.load(name)
+        refresh_thumbnail(theme)
+        print(f'Updated {theme.name}.' + (f' Apply its new colors with: jade theme set {name}' if name == active else ''))
+    return 1 if failed else 0
+
+
+def theme_remove(args, ctx):
+    if args.name == engine.current().get('theme'):
+        print(f'jade: {args.name} is the current theme; switch to another one first', file=sys.stderr)
+        return 1
+    try:
+        community.remove(args.name)
+    except community.ThemeError as error:
+        print(f'jade: {error}', file=sys.stderr)
+        return 1
+    themes.thumbnail_path(args.name).unlink(missing_ok=True)
+    print(f'Removed {args.name}.')
+    return 0
 
 
 # ------------------------------------------------------------------ apps
@@ -416,6 +475,13 @@ def parser():
         p.add_argument('--only', type=target_list, metavar='T,...', help=f'only these targets: {", ".join(TARGETS)}')
         p.add_argument('--skip', type=target_list, metavar='T,...', help='skip these targets (same names as --only)')
     theme.add_parser('wallpaper', help='next wallpaper of the current theme')
+    p = theme.add_parser('install', help="add a community theme from its git URL (only its colors, wallpapers "
+                                         "and preview are kept)")
+    p.add_argument('url', help='e.g. https://github.com/OldJobobo/omarchy-miasma-theme')
+    p.add_argument('--name', help='install it under this name (default: from the URL, as Omarchy names it)')
+    theme.add_parser('update', help='fetch community themes again').add_argument(
+        'names', nargs='*', metavar='NAME', help='which ones (default: all)')
+    theme.add_parser('remove', help='remove a community theme').add_argument('name', help='as jade theme list shows it')
     theme.add_parser('undo', help='restore what the last switch changed')
     theme.add_parser('reload', help='ask every app to reload the current theme')
     fetch = theme.add_parser('fetch', help='download wallpapers')
@@ -474,7 +540,8 @@ def parser():
 HANDLERS = {
     ('theme', 'list'): theme_list, ('theme', 'current'): theme_current, ('theme', 'plan'): theme_plan,
     ('theme', 'set'): theme_set, ('theme', 'wallpaper'): theme_wallpaper, ('theme', 'undo'): theme_undo,
-    ('theme', 'reload'): theme_reload, ('theme', 'fetch'): theme_fetch, ('theme', 'thumbs'): theme_thumbs,
+    ('theme', 'reload'): theme_reload, ('theme', 'install'): theme_install, ('theme', 'update'): theme_update,
+    ('theme', 'remove'): theme_remove, ('theme', 'fetch'): theme_fetch, ('theme', 'thumbs'): theme_thumbs,
     ('usage', 'collect'): usage_collect,
     ('keys', None): keys_list, ('keys', 'list'): keys_list, ('keys', 'apply'): keys_apply,
     ('keys', 'revert'): keys_revert,
@@ -489,6 +556,7 @@ HANDLERS = {
 # Downloads (fetch, thumbs) run alongside them: each writes its own partial
 # file and moves it into place.
 EXCLUSIVE = {('theme', 'set'), ('theme', 'wallpaper'), ('theme', 'undo'), ('theme', 'reload'),
+             ('theme', 'install'), ('theme', 'update'), ('theme', 'remove'),
              ('setup', None), ('restore', None),
              ('apps', 'off'), ('apps', 'on'), ('font', 'set'), ('keys', 'apply'), ('keys', 'revert')}
 

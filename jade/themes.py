@@ -10,6 +10,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from . import community
 from . import palette as pal
 from .store import config_home, data_home, state_home
 
@@ -47,6 +48,14 @@ class Theme:
     colors: dict
     backgrounds: list
     wallpaper_folder: pathlib.Path | None = None  # the user's own copies, if any
+    community: bool = False  # installed with jade theme install: its wallpapers are all on disk
+
+    @property
+    def preview(self):
+        """A community theme's own preview picture, if it has one."""
+        if not self.community:
+            return None
+        return next(iter(sorted(community.folder(self.id).glob('preview.*'))), None)
 
     def wallpaper(self, index=0):
         if not self.backgrounds:
@@ -58,6 +67,9 @@ class Theme:
 
     def fetch_wallpaper(self, index=0):
         path = self.wallpaper(index)
+        if path and not path.exists() and self.community:
+            raise WallpaperUnavailable(f'the {self.name} wallpaper {path.name} is missing; get it again with: '
+                                       f'jade theme update {self.id}')
         if path and not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             url = WALLPAPER_URL.format(theme=self.id, file=path.name)
@@ -88,7 +100,9 @@ def make_thumbnail(theme, width=320, height=200):
     import gi
     gi.require_version('GdkPixbuf', '2.0')
     from gi.repository import GdkPixbuf
-    source = theme.fetch_wallpaper(0)
+    source = theme.fetch_wallpaper(0) or theme.preview
+    if source is None:
+        raise WallpaperUnavailable(f'{theme.name} has no wallpaper or preview')
     _format, w, h = GdkPixbuf.Pixbuf.get_file_info(str(source))
     scale = max(width / w, height / h)
     # Scale to at least the preview size on both axes (aspect kept by `scale`), then crop.
@@ -104,8 +118,14 @@ def make_thumbnail(theme, width=320, height=200):
     return out
 
 
-def ids():
+def builtin_ids():
     return sorted(p.name for p in THEMES.iterdir() if (p / 'colors.toml').exists())
+
+
+def ids():
+    """Jade Shell's themes, then the community ones installed (a built-in name wins)."""
+    builtin = builtin_ids()
+    return builtin + [tid for tid in community.installed() if tid not in builtin]
 
 
 def user_overrides(theme_id):
@@ -115,16 +135,27 @@ def user_overrides(theme_id):
 
 def load(theme_id):
     folder = THEMES / theme_id
-    if not (folder / 'colors.toml').exists():
-        raise KeyError(theme_id)
+    installed = not (folder / 'colors.toml').exists()
+    if installed:
+        folder = community.folder(theme_id)
+        if theme_id not in community.installed():
+            raise KeyError(theme_id)
     user = user_overrides(theme_id)
     colors = pal.load(folder / 'colors.toml', user.get('colors'))
     for key, derive in DERIVED.items():
         colors.setdefault(key, derive(colors))
-    backgrounds = (folder / 'backgrounds.txt').read_text().split() if (folder / 'backgrounds.txt').exists() else []
+    if installed:
+        walls = folder / 'backgrounds'
+        # In their numbered order: 2-… before 10-…
+        backgrounds = sorted((p.name for p in walls.iterdir() if p.suffix.lower() in community.IMAGES),
+                             key=community.natural) if walls.is_dir() else []
+    else:
+        backgrounds = (folder / 'backgrounds.txt').read_text().split() if (folder / 'backgrounds.txt').exists() else []
     folder_override = pathlib.Path(user['wallpaper_folder']).expanduser() if user.get('wallpaper_folder') else None
-    name = NAMES.get(theme_id) or theme_id.replace('-', ' ').title()
-    return Theme(theme_id, name, colors, backgrounds, folder_override)
+    if installed and not folder_override:
+        folder_override = folder / 'backgrounds'
+    name = NAMES.get(theme_id) or theme_id.replace('-', ' ').replace('_', ' ').title()
+    return Theme(theme_id, name, colors, backgrounds, folder_override, community=installed)
 
 
 TOKEN = re.compile(r'\{\{\s*(\w+?)(_strip|_rgb)?\s*\}\}')

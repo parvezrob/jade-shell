@@ -357,6 +357,34 @@ async function capture() {
     part._dismiss(false);
 }
 
+// More themes than fit (community ones installed): the picker scrolls, and
+// the keyboard keeps the focused tile in view.
+async function pickerScrolls() {
+    const base = GLib.build_filenamev([GLib.get_user_config_dir(), 'jade-shell', 'themes']);
+    const colors = 'background = "#1d2021"\nforeground = "#d5c4a1"\naccent = "#83a598"\nred = "#fb4934"\n' +
+        'green = "#b8bb26"\nyellow = "#fabd2f"\nblue = "#83a598"\nmagenta = "#d3869b"\ncyan = "#8ec07c"\n';
+    const names = Array.from({length: 12}, (_, i) => `community-${i + 1}`);
+    for (const name of names) {
+        GLib.mkdir_with_parents(`${base}/${name}`, 0o755);
+        GLib.file_set_contents(`${base}/${name}/colors.toml`, colors);
+        GLib.file_set_contents(`${base}/${name}/source.json`, '{"url": "https://example.org/theme.git"}');
+    }
+    const picker = Main.panel.statusArea['jade-picker'];
+    const part = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('Picker');
+    picker.menu.open(false);
+    await wait(2500);  // jade theme list
+    const adjustment = part._scroll.vadjustment;
+    log(`picker: ${part._tiles.size} themes, still open ${picker.menu.isOpen}, scrolls ${adjustment.upper > adjustment.page_size + 1}`);
+    [...part._tiles.values()].pop().grab_key_focus();
+    await wait(500);
+    log(`picker: last tile focused → scrolled to ${Math.round(adjustment.value)} of ${Math.round(adjustment.upper - adjustment.page_size)}`);
+    await shoot('picker-community', picker.menu.box);
+    picker.menu.close(false);
+    for (const name of names)
+        Gio.File.new_for_path(`${base}/${name}`).trash(null);
+    await wait(400);
+}
+
 // GNOME's pop-ups and dialogs in the theme: volume, a password prompt (as
 // polkit draws it), Run a Command; the lock screen last (it stays locked).
 async function popups() {
@@ -1552,6 +1580,7 @@ export default class Harness extends Extension {
         await jadeMenu();
         await clipboard();
         await capture();
+        await pickerScrolls();
         await popups();
         await clockFollowsGnome();
         await highContrast();
