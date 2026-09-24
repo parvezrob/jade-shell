@@ -174,19 +174,22 @@ function rgb(hex) {
     return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
 }
 
-// The least tint from `wanted` up that keeps `fg` readable on `bg` over `backdrop`.
-export function readableTint(fg, bg, backdrop, wanted) {
-    if (!backdrop)
+// The least tint from `wanted` up that keeps `fg` readable on `bg` over
+// each of `backdrops` (a dark and a bright patch: light text fails over the
+// bright one, dark text over the dark one).
+export function readableTint(fg, bg, backdrops, wanted) {
+    if (!backdrops?.length)
         return wanted;
+    const readable = a => backdrops.every(b => contrast(fg, bg.map((c, i) => a * c + (1 - a) * b[i])) >= READABLE);
     for (let a = wanted; a < 0.95; a += 0.01) {
-        if (contrast(fg, bg.map((c, i) => a * c + (1 - a) * backdrop[i])) >= READABLE)
+        if (readable(a))
             return a;
     }
     return Math.max(wanted, 0.95);
 }
 
-// A bright patch of the wallpaper's top 45 %: the color at its 90th
-// percentile of lightness, from a 64 px wide copy.
+// A dark and a bright patch of the wallpaper's top 45 %: the colors at its
+// 10th and 90th percentiles of lightness, from a 64 px wide copy.
 function backdropOf(pixbuf) {
     const [w, h, stride, n] = [pixbuf.get_width(), pixbuf.get_height(), pixbuf.get_rowstride(), pixbuf.get_n_channels()];
     const pixels = pixbuf.get_pixels();
@@ -198,7 +201,8 @@ function backdropOf(pixbuf) {
         }
     }
     colors.sort((a, b) => luminance(a) - luminance(b));
-    return colors[Math.min(colors.length - 1, Math.floor(colors.length * 0.9))];
+    const at = share => colors[Math.min(colors.length - 1, Math.floor(colors.length * share))];
+    return [at(0.1), at(0.9)];
 }
 
 export class Glass {
@@ -218,6 +222,8 @@ export class Glass {
         this._background = new Gio.Settings({schema_id: 'org.gnome.desktop.background'});
         this._background.connectObject('changed::picture-uri', () => this._readBackdrop(),
             'changed::picture-uri-dark', () => this._readBackdrop(), this);
+        // Light or dark style: GNOME shows the matching wallpaper.
+        St.Settings.get().connectObject('notify::color-scheme', () => this._readBackdrop(), this);
         this._readBackdrop();
         St.ThemeContext.get_for_stage(global.stage).connectObject('changed', () => {
             // Only into a new theme: loading it changes the theme context too.
@@ -230,6 +236,7 @@ export class Glass {
     disable() {
         this._background.disconnectObject(this);
         this._background = null;
+        St.Settings.get().disconnectObject(this);
         this._backdropRead?.cancel();
         this._backdropRead = null;
         this._written = null;
