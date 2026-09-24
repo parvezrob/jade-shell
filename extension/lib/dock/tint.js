@@ -25,6 +25,32 @@ vec3 t = l < 0.5 ? mix(deep, mid, l * 2.0) : mix(mid, pale, (l - 0.5) * 2.0);
 cogl_color_out = vec4(t * c.a, c.a) * cogl_color_in.a;
 `;
 
+// The three tones, 0-255: the accent's hue at set lightness (and at least
+// some saturation), so a pale or grey accent (Kanagawa's cream, Vantablack's
+// grey) gives icons the same depth as a vivid one instead of washing them out.
+function hsl([r, g, b]) {
+    [r, g, b] = [r / 255, g / 255, b / 255];
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+    if (!d)
+        return [0, 0, l];
+    const s = d / (1 - Math.abs(2 * l - 1));
+    const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h * 60, s, l];
+}
+
+function rgb(h, s, l) {
+    const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = l - c / 2;
+    const [r, g, b] = [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][Math.floor(h / 60) % 6];
+    return [r, g, b].map(v => Math.round((v + m) * 255));
+}
+
+export function tones(accent) {
+    const [h, s] = hsl(hexToRgb(accent));
+    const grey = s < 0.06;  // no hue to keep: a clean monochrome
+    const sat = grey ? 0 : Math.min(0.75, Math.max(s, 0.38));
+    return [rgb(h, sat * 0.8, 0.17), rgb(h, sat, 0.52), rgb(h, grey ? 0 : Math.min(sat, 0.45), 0.93)];
+}
+
 export const TintEffect = GObject.registerClass(
 class JadeTintEffect extends Shell.GLSLEffect {
     constructor(colors) {
@@ -38,11 +64,10 @@ class JadeTintEffect extends Shell.GLSLEffect {
     }
 
     set colors({accent}) {
-        const [r, g, b] = hexToRgb(accent).map(v => v / 255);
-        const mix = (to, k) => [r + (to - r) * k, g + (to - g) * k, b + (to - b) * k];
-        this.set_uniform_float(this._at.deep, 3, mix(0, 0.72));
-        this.set_uniform_float(this._at.mid, 3, [r, g, b]);
-        this.set_uniform_float(this._at.pale, 3, mix(1, 0.74));
+        const [deep, mid, pale] = tones(accent).map(tone => tone.map(v => v / 255));
+        this.set_uniform_float(this._at.deep, 3, deep);
+        this.set_uniform_float(this._at.mid, 3, mid);
+        this.set_uniform_float(this._at.pale, 3, pale);
         this.queue_repaint();
     }
 });
@@ -56,15 +81,9 @@ const LUMA_POWER = 1.35;
 const cache = new Map();
 let iconTheme = null;
 
-function shades(accent) {
-    const [r, g, b] = hexToRgb(accent);
-    const mix = (to, k) => [r + (to - r) * k, g + (to - g) * k, b + (to - b) * k];
-    return [mix(0, 0.72), [r, g, b], mix(255, 0.74)];
-}
-
 // Lightness 0-255 -> tinted rgb, as the shader computes it.
 function table(accent) {
-    const [deep, mid, pale] = shades(accent);
+    const [deep, mid, pale] = tones(accent);
     const out = new Uint8Array(256 * 3);
     for (let i = 0; i < 256; i++) {
         const l = Math.pow(i / 255, LUMA_POWER);
