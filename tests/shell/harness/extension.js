@@ -436,6 +436,17 @@ async function networkPanel() {
         log('network: none');
         return;
     }
+    // In the bar, in place of GNOME's network icon (and GNOME's back when it's off).
+    const gnome = Main.panel.statusArea.quickSettings._network;
+    const settings = Main.extensionManager.lookup(UUID).stateObj._settings;
+    log(`network: bar icon shown ${part._button.visible} (${part._icon.icon_name}), GNOME's icon shown ${gnome?.visible}`);
+    await shoot('network-bar', Main.panel);
+    settings.set_boolean('show-network', false);
+    await wait(300);
+    log(`network: off → bar icon shown ${part._button.visible}, GNOME's icon shown ${gnome?.visible}`);
+    settings.set_boolean('show-network', true);
+    await wait(300);
+    log(`network: on again → bar icon shown ${part._button.visible}, GNOME's icon shown ${gnome?.visible}`);
     part.toggle();
     await wait(2500);  // jade network status pings the router and 1.1.1.1
     log(`network: open ${part._button.menu.isOpen}, ${part._title.text} · ${part._meta.text} · internet ${part._facts.internet.text}`);

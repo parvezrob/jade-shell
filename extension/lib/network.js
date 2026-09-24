@@ -4,6 +4,9 @@
 //
 // The work is `jade network …` (NetworkManager's nmcli underneath), so the
 // Shell only draws; GNOME's Quick Settings still lists and joins networks.
+// In the top bar (Settings › Top bar › Network) it takes the place of
+// GNOME's network icon and shows the same icon GNOME would: Wi-Fi signal,
+// wired, no internet, VPN.
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
@@ -133,10 +136,18 @@ export class Network {
     enable() {
         this._colors = {track: [1, 1, 1, 0.12], fill: [1, 1, 1, 0.9]};
         this._button = new PanelMenu.Button(0.5, 'Network', false);
-        this._button.add_child(new St.Icon({icon_name: 'network-wired-symbolic', style_class: 'system-status-icon'}));
+        this._button.add_style_class_name('jade-network');
+        const icons = new St.BoxLayout({style_class: 'panel-status-indicators-box'});
+        this._icon = new St.Icon({icon_name: 'network-wired-symbolic', style_class: 'system-status-icon'});
+        this._vpnIcon = new St.Icon({icon_name: 'network-vpn-symbolic', style_class: 'system-status-icon', visible: false});
+        icons.add_child(this._icon);
+        icons.add_child(this._vpnIcon);
+        this._button.add_child(icons);
         this._build();
         addToPanel('jade-network', this._button);
-        this._button.visible = false;  // GNOME's own network icon is in the bar: the shortcut and the Jade Menu open this
+        this._shownChanged = this._settings.connect('changed::show-network', () => this._syncShown());
+        this._syncShown();
+        this._followGnome();
         this._unfollow = this._theme.follow(palette => {
             this._colors.track = [...cairoRgb(palette.foreground), 0.12];
             this._colors.fill = [...cairoRgb(palette.accent), 0.95];
@@ -148,6 +159,13 @@ export class Network {
 
     disable() {
         Main.wm.removeKeybinding('toggle-network');
+        if (this._shownChanged)
+            this._settings.disconnect(this._shownChanged);
+        this._shownChanged = 0;
+        if (this._waitId)
+            GLib.source_remove(this._waitId);
+        this._waitId = 0;
+        this._releaseGnome();
         this._stopTest();
         this._stopRefresh();
         this._cancellable?.cancel();
@@ -156,7 +174,65 @@ export class Network {
         this._button = null;
     }
 
-    // Opened from the shortcut or the Jade Menu, under the right end of the top bar.
+    // ---------------------------------------------------------------- the bar
+
+    _shown() {
+        return this._settings.get_boolean('show-network');
+    }
+
+    _syncShown() {
+        this._button.visible = this._shown();
+        this._hideGnome();
+        if (!this._shown() && this._gnome)
+            this._gnome.visible = this._gnome._client?.nm_running ?? true;  // back as GNOME had it
+    }
+
+    // GNOME's network indicator is built after the Shell starts: wait for it.
+    // Its icon (and VPN icon) become ours; it hides while ours is shown.
+    _followGnome(tries = 40) {
+        const gnome = Main.panel.statusArea.quickSettings?._network;
+        if (gnome === undefined && tries > 0) {
+            this._waitId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+                this._waitId = 0;
+                this._followGnome(tries - 1);
+                return GLib.SOURCE_REMOVE;
+            });
+            return;
+        }
+        if (!gnome)
+            return;  // no NetworkManager: GNOME shows no network icon either
+        this._gnome = gnome;
+        const icon = () => (this._icon.icon_name = gnome._primaryIndicator?.icon_name || 'network-offline-symbolic');
+        const vpn = () => {
+            this._vpnIcon.visible = Boolean(gnome._vpnIndicator?.visible);
+            this._vpnIcon.icon_name = gnome._vpnIndicator?.icon_name || 'network-vpn-symbolic';
+        };
+        gnome._primaryIndicator?.connectObject('notify::icon-name', icon, this);
+        gnome._vpnIndicator?.connectObject('notify::visible', vpn, 'notify::icon-name', vpn, this);
+        gnome.connectObject('notify::visible', () => this._hideGnome(), this);
+        icon();
+        vpn();
+        this._hideGnome();
+    }
+
+    _hideGnome() {
+        if (this._gnome && this._shown() && this._gnome.visible)
+            this._gnome.visible = false;
+    }
+
+    _releaseGnome() {
+        const gnome = this._gnome;
+        this._gnome = null;
+        if (!gnome)
+            return;
+        gnome._primaryIndicator?.disconnectObject(this);
+        gnome._vpnIndicator?.disconnectObject(this);
+        gnome.disconnectObject(this);
+        gnome.visible = gnome._client?.nm_running ?? true;
+    }
+
+    // Opened from the bar, the shortcut or the Jade Menu (under the right end
+    // of the top bar when its icon is hidden).
     toggle(startTest = false) {
         const menu = this._button.menu;
         if (!menu.isOpen && !this._button.mapped) {

@@ -168,6 +168,11 @@
       <summary>Show the weather in the top bar</summary>
       <description>For GNOME Weather's location; nothing shows without one.</description>
     </key>
+    <key name="show-network" type="b">
+      <default>true</default>
+      <summary>Show the network in the top bar</summary>
+      <description>An icon that opens the network panel (connection, speed test, DNS); GNOME's own network icon steps aside while it's on.</description>
+    </key>
     <key name="show-monitor" type="b">
       <default>true</default>
       <summary>Show the system monitor in the top bar</summary>
