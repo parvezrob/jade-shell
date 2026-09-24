@@ -22,7 +22,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from jade import __version__, debug, engine, migrations, palette, restore_offer, setup, shelltheme, store, themes, update
-from jade.setup import REPLACED, UUID
+from jade.setup import DASH_TO_DOCK, REPLACED, UBUNTU_DOCK, UUID
 from jade.targets.apps import VSCode, jsonc, managed_block, restore_theme_names, revert_block, revert_line, set_theme_names
 from jade.targets.gnome import Gnome, nearest_accent
 
@@ -792,6 +792,37 @@ class Sandbox(unittest.TestCase):
         self.assertIn(blur, self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'))
         # Running setup by hand is asking for Jade Shell's layout again.
         self.assertIn('Turned off Blur my Shell', self.jade('setup'))
+
+    @needs_compiler
+    def test_the_jade_dock_replaces_other_docks_until_restore(self):
+        extensions = self.home / '.local/share/gnome-shell/extensions'
+        for uuid in (DASH_TO_DOCK, UBUNTU_DOCK):
+            (extensions / uuid).mkdir(parents=True)
+            (extensions / uuid / 'metadata.json').write_text('{}')
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{DASH_TO_DOCK}']")
+        self.gsettings('set', 'org.gnome.shell', 'disabled-extensions', "['old@me']")
+        out = self.jade('setup')
+        self.assertIn('Turned off Dash to Dock: Jade Shell does the dock.', out)
+        # Ubuntu Dock comes with the session: turned off by the disabled list.
+        self.assertIn('Turned off Ubuntu Dock: Jade Shell does the dock.', out)
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'), f"['{UUID}']")
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'),
+                         f"['old@me', '{DASH_TO_DOCK}', '{UBUNTU_DOCK}']")
+        self.assertIn('No extensions doing the same job', self.jade('doctor'))
+        self.jade('restore', '--yes')
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'), f"['{DASH_TO_DOCK}']")
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), "['old@me']")
+
+    @needs_compiler
+    def test_with_the_jade_dock_off_setup_leaves_other_docks_alone(self):
+        extensions = self.home / '.local/share/gnome-shell/extensions'
+        (extensions / DASH_TO_DOCK).mkdir(parents=True)
+        (extensions / DASH_TO_DOCK / 'metadata.json').write_text('{}')
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{DASH_TO_DOCK}']")
+        self.gsettings('set', 'org.gnome.shell.extensions.jade-shell', 'show-dock', 'false')
+        self.assertNotIn('Turned off Dash to Dock', self.jade('setup'))
+        self.assertIn(DASH_TO_DOCK, self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'))
+        self.assertNotIn(DASH_TO_DOCK, self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'))
 
     @needs_compiler
     def test_setup_then_restore_gives_the_old_desktop_back(self):

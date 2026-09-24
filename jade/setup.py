@@ -55,6 +55,12 @@ REPLACED = {
     'notification-banner-re-reloaded@chrhuang': ('Notification Banner Re-Reloaded', 'where notifications pop up'),
     'osaka-ai-usage@local': ('Jade AI Usage', 'AI usage (Jade AI Usage is now part of Jade Shell)'),
 }
+# Docks Jade's own dock replaces while it is on (the show-dock setting).
+DOCKS = {
+    DASH_TO_DOCK: ('Dash to Dock', 'the dock'),
+    UBUNTU_DOCK: ('Ubuntu Dock', 'the dock'),
+    'dash2dock-lite@icedman.github.com': ('Dash2Dock Animated', 'the dock'),
+}
 OLD_UNITS = ['osaka-ai-usage.timer']
 # Flatpak apps see the host's gtk.css (the GNOME apps target) only when allowed to.
 FLATPAK_PATHS = ['xdg-config/gtk-4.0:ro', 'xdg-config/gtk-3.0:ro']
@@ -289,24 +295,44 @@ def usage_shown(ctx):
     return not ctx.settings.has(JADE_SCHEMA, 'show-usage') or ctx.settings.get(JADE_SCHEMA).get_boolean('show-usage')
 
 
+def dock_shown(ctx):
+    """Jade's dock switch in the preferences (on unless turned off)."""
+    return not ctx.settings.has(JADE_SCHEMA, 'show-dock') or ctx.settings.get(JADE_SCHEMA).get_boolean('show-dock')
+
+
+def replaced(ctx):
+    """Extensions setup turns off, by UUID: REPLACED, and the other docks while Jade's is on."""
+    return {**REPLACED, **(DOCKS if dock_shown(ctx) else {})}
+
+
+def running_extension(ctx, uuid):
+    """Whether GNOME Shell loads `uuid` at login: enabled, or brought by the
+    session (Ubuntu Dock comes with Ubuntu's), and not disabled."""
+    shell = ctx.settings.get(SHELL)
+    wanted = uuid in shell.get_strv('enabled-extensions') or (uuid == UBUNTU_DOCK and extension_installed(uuid))
+    return wanted and uuid not in shell.get_strv('disabled-extensions')
+
+
 # ------------------------------------------------------------------ setup
 
 def planned_settings(ctx, keep=()):
     """What setup sets. Extensions in `keep` stay on even if Jade Shell replaces them."""
     settings = ctx.settings
     shell = settings.get(SHELL)
-    enabled = [uuid for uuid in shell.get_strv('enabled-extensions') if uuid not in REPLACED or uuid in keep]
-    disabled = [uuid for uuid in shell.get_strv('disabled-extensions') if uuid not in (UUID, DASH_TO_DOCK)]
+    out_of_the_way = replaced(ctx)
+    enabled = [uuid for uuid in shell.get_strv('enabled-extensions') if uuid not in out_of_the_way or uuid in keep]
+    disabled = [uuid for uuid in shell.get_strv('disabled-extensions') if uuid != UUID]
     enabled.append(UUID)
-    # Ubuntu Dock is Dash to Dock under another name; never run both.
-    if not extension_installed(UBUNTU_DOCK) and extension_installed(DASH_TO_DOCK):
-        enabled.append(DASH_TO_DOCK)
+    if dock_shown(ctx):
+        # Ubuntu Dock comes with Ubuntu's session, not from the enabled list:
+        # only disabled-extensions keeps it off.
+        disabled += [uuid for uuid in DOCKS if extension_installed(uuid) and uuid not in keep and uuid not in disabled]
     out = [
         Setting(SHELL, 'disable-user-extensions', False),
         Setting(SHELL, 'enabled-extensions', list(dict.fromkeys(enabled))),
         Setting(SHELL, 'disabled-extensions', disabled),
     ]
-    if settings.has(DOCK_SCHEMA):
+    if settings.has(DOCK_SCHEMA) and not dock_shown(ctx):
         out += [Setting(DOCK_SCHEMA, key, value) for key, value in DOCK_LAYOUT.items() if settings.has(DOCK_SCHEMA, key)]
     if settings.has(JADE_SCHEMA, 'show-usage'):
         out.append(Setting(JADE_SCHEMA, 'show-usage', usage_wanted()))
@@ -373,6 +399,8 @@ def setup(ctx, theme_id=None, after_update=False):
     # on again was turned back on by its owner: an update leaves it alone. Only
     # ones a new version learned about are turned off.
     keep = set(manifest.get('replaced', REPLACED)) if after_update else ()
+    out_of_the_way = replaced(ctx)
+    running_before = {uuid for uuid in out_of_the_way if running_extension(ctx, uuid)}
     planned = planned_settings(ctx, keep)
     if 'defaulted' not in manifest:
         # Set up by an older version, which has already applied these once.
@@ -383,10 +411,9 @@ def setup(ctx, theme_id=None, after_update=False):
     record(ctx, manifest, changes)
     manifest['defaulted'] += [[c.schema, c.path, c.key] for c in changes if c.schema in PREFERENCE_SCHEMAS and sticks(c)]
     write_text(manifest_path(), json.dumps(manifest, indent=2))
-    enabled_before = set(ctx.settings.get(SHELL).get_strv('enabled-extensions'))
     ctx.settings.write(changes)
-    for uuid in sorted(enabled_before & set(REPLACED) - set(keep)):
-        name, job = REPLACED[uuid]
+    for uuid in sorted(running_before - set(keep)):
+        name, job = out_of_the_way[uuid]
         say(f'Turned off {name}: Jade Shell does {job}.')
 
     grant_flatpak(manifest)
@@ -455,7 +482,7 @@ def setup(ctx, theme_id=None, after_update=False):
         say(f'Could not keep the restore kit ({error.strerror or error}); remove Jade Shell with: jade restore first')
     # Which version this desktop is set up for: the extension compares it with
     # its own at login, and finishes an update when they differ.
-    manifest.update(version=__version__, replaced=sorted(REPLACED))
+    manifest.update(version=__version__, replaced=sorted(out_of_the_way))
     write_text(manifest_path(), json.dumps(manifest, indent=2))
     if after_update:
         say(f'Jade Shell {__version__} is set up.')
@@ -521,11 +548,14 @@ def merged_extensions(ctx, entry):
     old = default if entry['old'] is None else GLib.Variant.parse(None, entry['old'], None, None).unpack()
     now = shell.get_strv(key)
     if key == 'enabled-extensions':
+        # Older versions turned Dash to Dock on.
         added = {UUID} | ({DASH_TO_DOCK} if DASH_TO_DOCK not in old else set())
         keep = [uuid for uuid in now if uuid not in added]
-        back = [uuid for uuid in old if uuid in REPLACED]  # the ones setup turned off
-    else:  # disabled-extensions: setup took Jade Shell and Dash to Dock out of it
-        keep = now
+        back = [uuid for uuid in old if uuid in REPLACED or uuid in DOCKS]  # the ones setup turned off
+    else:
+        # disabled-extensions: setup took Jade Shell out of it (older versions
+        # Dash to Dock too), and put the docks Jade's dock replaces in.
+        keep = [uuid for uuid in now if uuid not in DOCKS or uuid in old]
         back = [uuid for uuid in old if uuid in (UUID, DASH_TO_DOCK)]
     wanted = set(keep) | set(back)
     # What was there before keeps its old place; anything newer goes at the end.
@@ -636,14 +666,17 @@ def diagnose(ctx):
     if set_for:  # set up by a version that stamps it
         check(set_for == __version__, f'Set up for this version of Jade Shell ({set_for})',
               'Run: jade setup (the extension also does it at your next login)')
-    clashing = [uuid for uuid in enabled if uuid in REPLACED]
+    out_of_the_way = replaced(ctx)
+    clashing = [uuid for uuid in out_of_the_way if running_extension(ctx, uuid)]
     check(not clashing, 'No extensions doing the same job or taking over the top bar',
-          f'Run: jade setup (turns off {", ".join(REPLACED[uuid][0] for uuid in clashing)})')
+          f'Run: jade setup (turns off {", ".join(out_of_the_way[uuid][0] for uuid in clashing)})')
     paths, units = leftovers()
     check(not paths and not units, 'No older or development copies in your home folder',
           '\n'.join(['Remove them with:', *leftover_commands(paths, units)]))
-    if not ctx.settings.has(DOCK_SCHEMA):  # optional: the look is complete without it, just dockless
-        note('No dock installed (optional). For the full look, install Dash to Dock.')
+    if dock_shown(ctx):
+        note("Dock: Jade Shell's own")
+    elif not ctx.settings.has(DOCK_SCHEMA):  # optional: the look is complete without it, just dockless
+        note("No dock: Jade Shell's is turned off in its settings, and no other dock is installed.")
 
     current = engine.current().get('theme')
     check(bool(current), f'Theme: {current or "none applied"}', 'Run: jade setup')
