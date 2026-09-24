@@ -82,20 +82,7 @@ export class Modes {
                     console.error(`Jade Shell: no night light status: ${e.message}`);
                 }
             });
-        this._gnomeNight = Main.panel.statusArea.quickSettings._nightLight;
-        if (this._gnomeNight?._sync) {
-            this._gnomeNightSync = this._gnomeNight._sync;
-            this._gnomeNight._sync = () => {
-                this._gnomeNight._indicator.visible = false;
-            };
-            this._gnomeNight._sync();
-        }
-
-        // Do Not Disturb: the bell shows it, or this does; GNOME's own icon
-        // would be a second one.
-        this._gnomeDnd = Main.panel.statusArea.quickSettings._doNotDisturb?._indicator ?? null;
-        this._gnomeDnd?.connectObject('notify::visible', () => this._gnomeDnd.visible && this._gnomeDnd.hide(), this);
-        this._gnomeDnd?.hide();
+        this._quietGnomeIcons();
 
         this._notifications = new Gio.Settings({schema_id: 'org.gnome.desktop.notifications'});
         this._notifications.connectObject('changed::show-banners', () => this._sync(), this);
@@ -117,6 +104,9 @@ export class Modes {
             this._keys = false;
         }
         this.setAwake(false);
+        if (this._waitId)
+            GLib.source_remove(this._waitId);
+        this._waitId = 0;
         if (this._gnomeNightSync) {
             this._gnomeNight._sync = this._gnomeNightSync;
             this._gnomeNight._sync();
@@ -134,6 +124,34 @@ export class Modes {
         this._quick?.destroy();
         this._button?.destroy();
         this._button = this._box = this._icons = this._quick = this._colorProxy = this._notifications = null;
+    }
+
+    // GNOME's own night light and Do Not Disturb icons, which can't be
+    // clicked, give way to these (the bell shows Do Not Disturb itself).
+    // Quick Settings builds them a moment after startup: wait for them.
+    _quietGnomeIcons(tries = 40) {
+        const quick = Main.panel.statusArea.quickSettings;
+        if (!quick._nightLight || !quick._doNotDisturb) {
+            if (tries > 0) {
+                this._waitId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 250, () => {
+                    this._waitId = 0;
+                    this._quietGnomeIcons(tries - 1);
+                    return GLib.SOURCE_REMOVE;
+                });
+            }
+            return;
+        }
+        this._gnomeNight = quick._nightLight;
+        if (this._gnomeNight._sync) {
+            this._gnomeNightSync = this._gnomeNight._sync;
+            this._gnomeNight._sync = () => {
+                this._gnomeNight._indicator.visible = false;
+            };
+            this._gnomeNight._sync();
+        }
+        this._gnomeDnd = quick._doNotDisturb._indicator ?? null;
+        this._gnomeDnd?.connectObject('notify::visible', () => this._gnomeDnd.visible && this._gnomeDnd.hide(), this);
+        this._gnomeDnd?.hide();
     }
 
     _icon(gicon, accessibleName, turnOff) {
