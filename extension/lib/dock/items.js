@@ -12,6 +12,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import {TintEffect, shadedIcon} from './tint.js';
+import {openSettings} from '../util.js';
 
 // Icons are rendered this many times larger than they sit in the dock, so a
 // magnified icon is as sharp as a resting one.
@@ -417,9 +418,22 @@ export const Separator = GObject.registerClass(
 class JadeDockSeparator extends Item {
     _init(bar) {
         super._init('separator', 1);
+        this._bar = bar;
         this._line = new St.Widget({style_class: 'jade-dock-separator'});
         this.add_child(this._line);
+        // Right-click the divider for the dock's settings, as on a Mac.
+        this._hit = new St.Button({reactive: true, button_mask: St.ButtonMask.THREE, can_focus: false});
+        this._hit.connect('clicked', () => {
+            this._menu ??= dockMenu(this._hit, this._bar, [DOCK_SETTINGS]);
+            this._menu.open(BoxPointer.PopupAnimation.FULL);
+        });
+        this._hit.connect('enter-event', () => this._bar.wake());
+        this.add_child(this._hit);
         this.resize(bar.metrics.icon, bar.metrics);
+    }
+
+    get menuOpen() {
+        return this._menu?.isOpen ?? false;
     }
 
     resize(size, metrics) {
@@ -428,6 +442,7 @@ class JadeDockSeparator extends Item {
         const height = Math.round(size * 0.72);
         this._line.set_size(Math.max(1, Math.round(metrics.scale)), height);
         this._line.set_position(Math.round((metrics.separator - 1) / 2), Math.round((size - height) / 2));
+        this._hit?.set_size(metrics.separator, size);
     }
 
     restyle(bar) {
@@ -439,6 +454,22 @@ class JadeDockSeparator extends Item {
         this.opacity = Math.round(255 * fade);
     }
 });
+
+// A right-click menu for the dock's own parts: `entries` are [label, action].
+// On a Mac, Dock Settings… is a right-click away; here too.
+function dockMenu(source, bar, entries) {
+    const menu = new PopupMenu.PopupMenu(source, 0.5, St.Side.BOTTOM);
+    for (const [text, action] of entries)
+        menu.addAction(text, action);
+    Main.uiGroup.add_child(menu.actor);
+    const manager = new PopupMenu.PopupMenuManager(source);
+    manager.addMenu(menu);
+    menu.connect('open-state-changed', (_m, open) => bar.menuChanged(open));
+    source.connect('destroy', () => menu.destroy());
+    return menu;
+}
+
+const DOCK_SETTINGS = ['Dock Settings…', () => openSettings('dock')];
 
 // A tile the dock draws itself (Show Apps, the trash): a button with an icon.
 const ButtonItem = GObject.registerClass(
@@ -532,8 +563,14 @@ class JadeDockShowApps extends ButtonItem {
         }
     }
 
-    // Opens the app grid; a second click closes it, as Launchpad does.
-    activate() {
+    // Opens the app grid; a second click closes it, as Launchpad does. A
+    // right-click has Dock Settings….
+    activate(button_) {
+        if (button_ === Clutter.BUTTON_SECONDARY) {
+            this._menu ??= dockMenu(this.button, this._bar, [['Show Apps', () => this.activate()], DOCK_SETTINGS]);
+            this._menu.open(BoxPointer.PopupAnimation.FULL);
+            return;
+        }
         const button = Main.overview.dash.showAppsButton;
         if (!Main.overview.visible)
             Main.overview.showApps();
@@ -541,6 +578,10 @@ class JadeDockShowApps extends ButtonItem {
             Main.overview.hide();
         else
             button.checked = true;
+    }
+
+    get menuOpen() {
+        return this._menu?.isOpen ?? false;
     }
 });
 
@@ -623,6 +664,8 @@ class JadeDockTrash extends ButtonItem {
             this._menu = new PopupMenu.PopupMenu(this.button, 0.5, St.Side.BOTTOM);
             this._menu.addAction('Open', () => this.activate(Clutter.BUTTON_PRIMARY));
             this._empty = this._menu.addAction('Empty Trash…', () => emptyTrash());
+            this._menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            this._menu.addAction(...DOCK_SETTINGS);
             Main.uiGroup.add_child(this._menu.actor);
             this._menuManager = new PopupMenu.PopupMenuManager(this.button);
             this._menuManager.addMenu(this._menu);

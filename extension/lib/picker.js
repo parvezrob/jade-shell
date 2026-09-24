@@ -9,7 +9,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {VERTICAL, addToPanel, jadeCommand, label, run} from './util.js';
+import {VERTICAL, addToPanel, jadeCommand, label, openSettings, run} from './util.js';
 
 const COLUMNS = 5;
 // After a failed preview download (offline), wait this long before the next try.
@@ -112,6 +112,13 @@ export class Picker {
         footer.add_child(this._status);
         footer.add_child(this._action('Next wallpaper', 'image-x-generic-symbolic', ['theme', 'wallpaper'], 'New wallpaper set'));
         footer.add_child(this._action('Undo', 'edit-undo-symbolic', ['theme', 'undo'], 'Restored the previous look'));
+        // Everything else about the look (glass, icons, dock) is in the Jade Shell app.
+        const more = this._footerButton('Settings', 'emblem-system-symbolic');
+        more.connect('clicked', () => {
+            this._button.menu.close();
+            openSettings('desktop');
+        });
+        footer.add_child(more);
         this._item(footer);
 
         menu.connect('open-state-changed', (_m, open) => {
@@ -140,12 +147,18 @@ export class Picker {
     }
 
     _action(text, iconName, args, done) {
+        const button = this._footerButton(text, iconName);
+        button.connect('clicked', () => this._runJade(args, done));
+        return button;
+    }
+
+    // A footer button: an icon and a word.
+    _footerButton(text, iconName) {
         const button = new St.Button({can_focus: true, reactive: true, track_hover: true, style_class: 'jade-action', accessible_name: text});
         const box = new St.BoxLayout({style_class: 'jade-action-content'});
         box.add_child(new St.Icon({icon_name: iconName, icon_size: 14}));
         box.add_child(label(text, 'jade-action-label'));
         button.set_child(box);
-        button.connect('clicked', () => this._runJade(args, done));
         return button;
     }
 

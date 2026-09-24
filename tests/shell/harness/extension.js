@@ -449,6 +449,24 @@ async function overviewDrags() {
     await wait(800);
 }
 
+// Ways into the settings where people look: a Jade Shell button in Quick
+// Settings (after GNOME's own Settings button) and Settings in the picker.
+function settingsEntries() {
+    const row = Main.panel.statusArea.quickSettings._system?._systemItem?.child;
+    const names = row?.get_children().map(child => child.accessible_name ?? child.constructor.name) ?? [];
+    const jade = names.indexOf('Jade Shell Settings');
+    log(`settings entries: quick settings row [${names.join(', ')}], Jade button at ${jade}`);
+    const picker = Main.panel.statusArea['jade-picker'];
+    const labels = [];
+    const walk = actor => {
+        if (actor.accessible_name)
+            labels.push(actor.accessible_name);
+        actor.get_children().forEach(walk);
+    };
+    walk(picker.menu.box);
+    log(`settings entries: picker has Settings ${labels.includes('Settings')}`);
+}
+
 // Frosted glass: every surface blurs what is behind it. Each shot twice,
 // solid then frosted, where the difference shows.
 async function glass() {
@@ -1831,6 +1849,7 @@ export default class Harness extends Extension {
         await networkPanel();
         await glass();
         await overviewDrags();
+        settingsEntries();
         await popups();
         await clockFollowsGnome();
         await highContrast();

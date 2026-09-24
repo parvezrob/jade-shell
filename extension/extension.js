@@ -15,6 +15,7 @@ import {Clock} from './lib/clock.js';
 import {Desktop} from './lib/desktop.js';
 import {Glass} from './lib/glass.js';
 import {Dock} from './lib/dock/dock.js';
+import {SettingsEntry} from './lib/entry.js';
 import {SimpleCalendar} from './lib/datemenu.js';
 import {Modes} from './lib/modes.js';
 import {JadeMenu} from './lib/menu.js';
@@ -56,6 +57,7 @@ export default class JadeShell extends Extension {
             {key: 'notification-bell', make: () => new Notifications(this, this._settings)},
             {key: null, make: () => new Modes(this, this._settings)},
             {key: null, make: () => new Updates(this, this._settings)},
+            {key: null, make: () => new SettingsEntry(this)},
             {key: null, make: () => new Welcome(this, this._settings, () => this._openPicker())},
         ];
         this._partsChanged = this._parts.filter(p => p.key).map(
