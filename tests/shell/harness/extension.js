@@ -885,9 +885,23 @@ class DockScene {
         // Minimizing flies into the icon.
         const [ok, rect] = window.get_icon_geometry();
         log(`DOCK minimize target ${ok ? `${rect.x},${rect.y} ${rect.width}x${rect.height}` : 'none'}`);
+        log(`DOCK animations ${St.Settings.get().enable_animations}, wm would animate ${Main.wm._shouldAnimate()}`);
+        this.move(this.monitor.width / 2, 200);
         window.minimize();
-        await wait(150);
-        await shoot('dock-minimizing');
+        for (const ms of [90, 180, 270, 360, 450]) {
+            await wait(90);
+            await shoot(`dock-genie-${ms}`);
+        }
+        await wait(1200);
+        log(`DOCK minimized: ${window.minimized}, actor visible ${window.get_compositor_private()?.visible}`);
+        window.unminimize();
+        for (const ms of [120, 240, 360]) {
+            await wait(120);
+            await shoot(`dock-ungenie-${ms}`);
+        }
+        await wait(600);
+        log(`DOCK unminimized: shown ${window.get_compositor_private()?.visible}, opacity ${window.get_compositor_private()?.opacity}`);
+        window.minimize();
         await wait(1200);
         log(`DOCK minimized: overlap ${bar._overlap}, shown ${bar._shown}`);
         await this.shootDock('dock-after-minimize');

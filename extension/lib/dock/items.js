@@ -108,6 +108,7 @@ class JadeDockAppIcon extends AppDisplay.AppIcon {
         const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
         const icon = smooth(this.app.create_icon_texture(size * OVERSAMPLE));
         icon.set_size(size * scaleFactor, size * scaleFactor);
+        icon.style = this._owner?.iconStyle ?? null;
         return icon;
     }
 
@@ -178,7 +179,10 @@ class JadeDockAppItem extends Item {
     }
 
     restyle(bar) {
+        this.iconStyle = bar._iconStyle;
         this._dot.set_style(bar._dotStyle);
+        if (this.icon.icon.icon)
+            this.icon.icon.icon.style = this.iconStyle;
     }
 
     syncRunning() {
@@ -423,6 +427,7 @@ class JadeDockTrash extends ButtonItem {
         else
             this.button.child = smooth(new St.Icon({gicon, icon_size: this._logical * OVERSAMPLE}));
         this.button.child.set_size(this._size, this._size);
+        this.button.child.style = this._iconStyle ?? null;
     }
 
     _check() {
@@ -434,6 +439,12 @@ class JadeDockTrash extends ButtonItem {
                     this._icon();
                 } catch {}
             });
+    }
+
+    restyle(bar) {
+        this._iconStyle = bar._iconStyle;
+        if (this.button.child)
+            this.button.child.style = this._iconStyle;
     }
 
     activate(button) {

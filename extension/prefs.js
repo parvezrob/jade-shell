@@ -6,6 +6,7 @@ import Gtk from 'gi://Gtk';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import {aboutPage} from './settings/about.js';
+import {dockPage} from './settings/dock.js';
 import {jadeCommand, output, run} from './settings/common.js';
 import {hero} from './settings/hero.js';
 import {ShortcutRow} from './settings/shortcut.js';
@@ -72,6 +73,8 @@ export default class JadePreferences extends ExtensionPreferences {
         });
         page.add(apps);
         this._fillApps(apps);
+
+        window.add(dockPage(settings, switchRow));
 
         // Jade Shell's own icons (the AI usage mark) for the page tabs.
         Gtk.IconTheme.get_for_display(Gdk.Display.get_default()).add_search_path(this.dir.get_child('icons').get_path());

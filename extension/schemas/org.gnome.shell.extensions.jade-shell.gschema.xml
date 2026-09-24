@@ -110,6 +110,11 @@
       <default>true</default>
       <summary>Show the trash in the dock</summary>
     </key>
+    <key name="dock-genie" type="b">
+      <default>true</default>
+      <summary>Windows minimize into the dock with a genie effect</summary>
+      <description>Off, GNOME's own shrink toward the icon.</description>
+    </key>
     <key name="dock-bounce" type="b">
       <default>true</default>
       <summary>Bounce icons as apps start and when they need attention</summary>

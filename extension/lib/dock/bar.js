@@ -105,7 +105,7 @@ export class Bar {
         this._showApps = new ShowAppsItem(this);
         this._settingsChanged = [
             'dock-icon-size', 'dock-magnification', 'dock-behavior', 'dock-show-trash', 'dock-bounce',
-        ].map(key => settings.connect(`changed::${key}`, () => this._readSettings()));
+        ].map(key => settings.connect(`changed::${key}`, () => this._queueReadSettings()));
 
         this._appSystem = Shell.AppSystem.get_default();
         this._appSystem.connectObject(
@@ -156,6 +156,17 @@ export class Bar {
     }
 
     // ---------- geometry ----------
+
+    // A slider in the settings sends a change every step: take the last one.
+    _queueReadSettings() {
+        if (this._timers.settings)
+            GLib.source_remove(this._timers.settings);
+        this._timers.settings = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 40, () => {
+            delete this._timers.settings;
+            this._readSettings();
+            return GLib.SOURCE_REMOVE;
+        });
+    }
 
     _readSettings() {
         const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
@@ -209,11 +220,14 @@ export class Bar {
         const fg = palette.foreground;
         this._dotStyle = `background-color: ${light ? rgba(fg, 0.75) : rgba(fg, 0.9)}; border-radius: ${m.dot}px;`;
         this._separatorStyle = `background-color: ${rgba(fg, light ? 0.22 : 0.26)};`;
+        // Icons cast a soft shadow on the glass, as a Mac's do.
+        this._iconStyle = `icon-shadow: 0 ${Math.round(2 * m.scale)}px ${Math.round(5 * m.scale)}px rgba(0, 0, 0, ${light ? 0.2 : 0.38});`;
         this._label.style = `background-color: ${rgba(palette.background, 0.9)}; color: ${fg};` +
             ` border: 1px solid ${rgba(fg, 0.14)}; border-radius: ${Math.round(8 * m.scale)}px;`;
         this._tileStyle = `background-gradient-direction: vertical;` +
             ` background-gradient-start: ${mix(palette.accent, '#ffffff', 0.2)}; background-gradient-end: ${palette.accent};` +
-            ` color: ${palette.accent_fg ?? palette.background}; border-radius: ${Math.round(m.icon * 0.23)}px;`;
+            ` color: ${palette.accent_fg ?? palette.background}; border-radius: ${Math.round(m.icon * 0.23)}px;` +
+            ` box-shadow: 0 ${Math.round(2 * m.scale)}px ${Math.round(5 * m.scale)}px rgba(0, 0, 0, ${light ? 0.18 : 0.34});`;
         this._restyleItems();
     }
 

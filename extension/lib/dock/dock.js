@@ -3,6 +3,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {ExtensionState} from 'resource:///org/gnome/shell/misc/extensionUtils.js';
 
 import {Bar} from './bar.js';
+import {Genie} from './genie.js';
 
 // Docks that would sit in the same place. Setup turns them off; while one is
 // still running (the user turned it back on), Jade's dock stays out of its way.
@@ -21,6 +22,7 @@ export class Dock {
     }
 
     enable() {
+        this._settings.connectObject('changed::dock-genie', () => this._syncGenie(), this);
         Main.extensionManager.connectObject('extension-state-changed', () => this._queueSync(), this);
         Main.layoutManager.connectObject('monitors-changed', () => this._rebuild(), this);
         if (Main.layoutManager._startingUp)
@@ -33,6 +35,7 @@ export class Dock {
         if (this._syncId)
             GLib.source_remove(this._syncId);
         this._syncId = 0;
+        this._settings.disconnectObject(this);
         Main.extensionManager.disconnectObject(this);
         Main.layoutManager.disconnectObject(this);
         this._destroyBar();
@@ -65,6 +68,19 @@ export class Dock {
             this._bar = new Bar(Main.layoutManager.primaryIndex, this._settings, this._theme);
             Main.overview.dash.hide();
         }
+        this._syncGenie();
+    }
+
+    // The genie needs the dock's icons to aim at.
+    _syncGenie() {
+        const wanted = Boolean(this._bar) && this._settings.get_boolean('dock-genie');
+        if (wanted && !this._genie) {
+            this._genie = new Genie();
+            this._genie.enable();
+        } else if (!wanted && this._genie) {
+            this._genie.disable();
+            this._genie = null;
+        }
     }
 
     _rebuild() {
@@ -77,6 +93,7 @@ export class Dock {
             return;
         this._bar.destroy();
         this._bar = null;
+        this._syncGenie();
         // Another dock may have taken the overview's dash over meanwhile.
         if (!this._otherDock())
             Main.overview.dash.show();
