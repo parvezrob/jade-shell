@@ -578,3 +578,12 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
   .jade-menu-path { color: $om-dimmer; }
   .jade-menu-mark { color: $jade-accent; font-weight: bold; }
 }
+
+// ------------------------------------------------------------------ media
+
+.jade-media-menu {
+  .jade-media-title { color: $jade-strong; }
+  .jade-media-artist { color: $jade-foreground; }
+  .jade-media-app { color: $om-dim; }
+  .jade-media-control { @include om-control; &:insensitive { color: $om-dimmer; } }
+}

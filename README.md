@@ -85,6 +85,7 @@ Every switch first saves the value of each setting and file it will change, in `
 ## In the top bar
 
 - **Workspaces** replace Activities: numbered, the current one filled with the accent. Click the current one for the overview; scroll to move between them.
+- **Media:** what's playing (Spotify, Firefox, any player that speaks MPRIS), shown while it plays or is paused. Click for the cover and controls; scroll over it for the previous or next track.
 - **System monitor:** CPU, memory, GPU and CPU temperature. It reads `/proc` and sysfs every two seconds, and on NVIDIA keeps one `nvidia-smi` running instead of starting one per update. It never polls the GPU on battery. Click it for your system monitor app.
 - **AI usage:** Claude and Codex limits, with Omarchy's usage panel as its menu (limits, tokens by day and by model). It uses Omarchy's own collectors, run every ten minutes by a user timer.
 - **Clock** as "Tuesday 14:05" or "Tuesday 2:05 PM", following the time format in GNOME's Settings (or a format of your own), and GNOME starts on the desktop instead of the overview. Its menu is the calendar.

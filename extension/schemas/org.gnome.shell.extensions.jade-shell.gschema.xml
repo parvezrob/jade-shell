@@ -101,6 +101,10 @@
       <summary>App grid icon size in pixels (0 for GNOME's choice)</summary>
     </key>
 
+    <key name="show-media" type="b">
+      <default>true</default>
+      <summary>Show what's playing in the top bar</summary>
+    </key>
     <key name="show-monitor" type="b">
       <default>true</default>
       <summary>Show the system monitor in the top bar</summary>

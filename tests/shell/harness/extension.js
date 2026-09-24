@@ -96,6 +96,80 @@ async function states(role, name) {
     await wait(300);
 }
 
+// A media player on the bus (a stand-in for Spotify or Firefox): the chip
+// shows while it plays or is paused, scrolling skips, and it goes with it.
+const MPRIS_ROOT = `<node><interface name="org.mpris.MediaPlayer2">
+<method name="Raise"/><property name="Identity" type="s" access="read"/>
+<property name="DesktopEntry" type="s" access="read"/></interface></node>`;
+const MPRIS_PLAYER = `<node><interface name="org.mpris.MediaPlayer2.Player">
+<method name="Next"/><method name="Previous"/><method name="PlayPause"/>
+<property name="PlaybackStatus" type="s" access="read"/><property name="Metadata" type="a{sv}" access="read"/>
+<property name="CanPlay" type="b" access="read"/><property name="CanGoNext" type="b" access="read"/>
+<property name="CanGoPrevious" type="b" access="read"/></interface></node>`;
+
+async function media() {
+    const part = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('Media');
+    if (!part) {
+        log('media: none');
+        return;
+    }
+    const tracks = [['Night Drive', 'Jade Ensemble'], ['Tokyo Rain', 'Neon Quartet'], ['Last Train', 'The Platforms']];
+    const player = {
+        track: 0, status: 'Playing',
+        Identity: 'Harness Player', DesktopEntry: 'org.gnome.Loupe',
+        get PlaybackStatus() {
+            return this.status;
+        },
+        get Metadata() {
+            const [title, artist] = tracks[this.track];
+            return {'xesam:title': new GLib.Variant('s', title), 'xesam:artist': new GLib.Variant('as', [artist]),
+                'mpris:trackid': new GLib.Variant('o', `/track/${this.track}`)};
+        },
+        CanPlay: true, CanGoNext: true, CanGoPrevious: true,
+        Raise() {},
+        Next() {
+            this.track = (this.track + 1) % tracks.length;
+            this.changed();
+        },
+        Previous() {
+            this.track = (this.track + tracks.length - 1) % tracks.length;
+            this.changed();
+        },
+        PlayPause() {
+            this.status = this.status === 'Playing' ? 'Paused' : 'Playing';
+            this.changed();
+        },
+        changed() {
+            playerObject.emit_property_changed('Metadata', new GLib.Variant('a{sv}', this.Metadata));
+            playerObject.emit_property_changed('PlaybackStatus', new GLib.Variant('s', this.status));
+        },
+    };
+    const rootObject = Gio.DBusExportedObject.wrapJSObject(MPRIS_ROOT, player);
+    const playerObject = Gio.DBusExportedObject.wrapJSObject(MPRIS_PLAYER, player);
+    rootObject.export(Gio.DBus.session, '/org/mpris/MediaPlayer2');
+    playerObject.export(Gio.DBus.session, '/org/mpris/MediaPlayer2');
+    const owner = Gio.bus_own_name_on_connection(Gio.DBus.session, 'org.mpris.MediaPlayer2.jadeharness',
+        Gio.BusNameOwnerFlags.NONE, null, null);
+    await wait(1500);
+    log(`media: playing → shown ${part._button.visible}, "${part._chipLabel.text}"`);
+    await shoot('media-chip', Main.panel);
+    part._button.menu.open(false);
+    await wait(700);
+    await shoot('media-menu', part._button.menu.box);
+    part._button.menu.close(false);
+    part._skip(1);
+    await wait(600);
+    log(`media: scrolled down → "${part._chipLabel.text}"`);
+    player.PlayPause();
+    await wait(600);
+    log(`media: paused → shown ${part._button.visible}, icon ${part._state.icon_name}`);
+    Gio.bus_unown_name(owner);
+    rootObject.unexport();
+    playerObject.unexport();
+    await wait(1200);
+    log(`media: player gone → shown ${part._button.visible}`);
+}
+
 // Super+Alt+Space: the Jade Menu, opened, walked into Toggles, searched,
 // and closed with Escape; how long opening takes.
 async function jadeMenu() {
@@ -1352,6 +1426,7 @@ export default class Harness extends Extension {
         await bellShortcuts();
         await cheatSheet();
         await modes();
+        await media();
         await jadeMenu();
         await popups();
         await clockFollowsGnome();

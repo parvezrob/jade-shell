@@ -44,6 +44,7 @@ export default class JadePreferences extends ExtensionPreferences {
         const bar = new Adw.PreferencesGroup({title: 'Top bar'});
         page.add(bar);
         switchRow(settings, bar, 'show-workspaces', 'Workspaces', 'Numbered workspace buttons in place of Activities');
+        switchRow(settings, bar, 'show-media', 'Media', 'What’s playing, while something plays; click for controls, scroll to skip');
         switchRow(settings, bar, 'show-monitor', 'System monitor', 'An icon that opens CPU, memory, GPU and storage');
         switchRow(settings, bar, 'monitor-show-values', 'Monitor numbers in the top bar', 'Instead of the icon; measures every two seconds');
         switchRow(settings, bar, 'monitor-gpu', 'GPU usage', 'Paused while running on battery');
