@@ -449,3 +449,33 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
 
 // Toggle switches in menus: square, foreground tints.
 .toggle-switch { border-radius: 0; }
+
+// ------------------------------------------------------------------ shortcuts cheat sheet (Super+K)
+
+.modal-dialog.jade-cheatsheet {
+  background-color: $jade-background;
+  border: 2px solid $jade-accent;
+  border-radius: 0;
+  box-shadow: none;
+  font-family: $jade-panel-font;
+  color: $jade-foreground;
+
+  .jade-cheatsheet-title { @include om-caps; color: $jade-accent; }
+  .jade-cheatsheet-section { @include om-caps; }
+  .jade-cheatsheet-search {
+    @include om-control;
+    font-family: $jade-panel-font;
+    &:focus { border-color: $jade-accent; }
+    StLabel.hint-text { color: $om-dim; }
+  }
+  .jade-cheatsheet-row:hover { background-color: $om-fg-04; }
+  .jade-cheatsheet-or, .jade-cheatsheet-empty { color: $om-dim; }
+  .jade-key {
+    color: $jade-strong;
+    background-color: $om-fg-04;
+    border: 1px solid $om-fg-25;
+    border-radius: 0;
+  }
+  .modal-dialog-button-box { background-color: $jade-background; border-top: 1px solid $om-fg-25; }
+  .modal-dialog-button { @include om-control; border-radius: 0; font-family: $jade-panel-font; }
+}

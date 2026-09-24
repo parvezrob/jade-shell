@@ -96,6 +96,46 @@ async function states(role, name) {
     await wait(300);
 }
 
+// Super+K: the cheat sheet, searched, then closed with Escape.
+async function cheatSheet() {
+    const sheet = Main.extensionManager.lookup(UUID)?.stateObj?._parts?.find(p => p.instance?.constructor.name === 'CheatSheet')?.instance;
+    const keyboard = Clutter.get_default_backend().get_default_seat().create_virtual_device(
+        Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    const press = async (...keys) => {
+        for (const key of keys)
+            keyboard.notify_keyval(now(), key, Clutter.KeyState.PRESSED);
+        for (const key of keys.reverse())
+            keyboard.notify_keyval(now(), key, Clutter.KeyState.RELEASED);
+        await wait(250);
+    };
+    // A shortcut of one's own, added before opening: it is listed.
+    const media = new Gio.Settings({schema_id: 'org.gnome.settings-daemon.plugins.media-keys'});
+    const path = '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/jadetest/';
+    const custom = new Gio.Settings({schema_id: 'org.gnome.settings-daemon.plugins.media-keys.custom-keybinding', path});
+    custom.set_string('name', 'Open the Harness Terminal');
+    custom.set_string('command', 'kitty');
+    custom.set_string('binding', '<Super>Return');
+    media.set_strv('custom-keybindings', [...media.get_strv('custom-keybindings'), path]);
+    await press(Clutter.KEY_Super_L, Clutter.KEY_k);
+    await wait(900);
+    const list = sheet?._dialog?.contentLayout.get_child_at_index(2)?.child;
+    log(`cheat sheet: open ${Boolean(sheet?._dialog)}, ${list?.get_n_children()} lines`);
+    await shoot('cheatsheet');
+    for (const key of [Clutter.KEY_w, Clutter.KEY_o, Clutter.KEY_r, Clutter.KEY_k])
+        await press(key);
+    await wait(400);
+    log(`cheat sheet: "work" → ${list?.get_n_children()} lines`);
+    const entry = sheet?._dialog?.contentLayout.get_child_at_index(1);
+    entry?.set_text('harness');
+    await wait(300);
+    const found = list?.get_children().map(line => line.get_first_child?.()?.text ?? line.text).filter(Boolean);
+    log(`cheat sheet: "harness" → ${found?.join(' | ')}`);
+    await shoot('cheatsheet-search');
+    await press(Clutter.KEY_Escape);
+    await wait(700);
+    log(`cheat sheet: after Escape open ${Boolean(sheet?._dialog)}`);
+}
+
 // The bell's shortcuts, pressed on a virtual keyboard, and its dot.
 async function bellShortcuts() {
     const bell = Main.extensionManager.lookup(UUID)?.stateObj?._parts?.find(p => p.key === 'notification-bell')?.instance;
@@ -1164,6 +1204,7 @@ export default class Harness extends Extension {
         }
         await bellRoundTrip();
         await bellShortcuts();
+        await cheatSheet();
         await clockFollowsGnome();
         await highContrast();
     }

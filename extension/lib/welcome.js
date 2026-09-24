@@ -2,7 +2,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import {notify} from './notify.js';
-import {stateDir} from './util.js';
+import {shortcutText, stateDir} from './util.js';
 
 // Long enough after login for the desktop to settle, so the first banner
 // isn't lost among apps starting up.
@@ -78,18 +78,6 @@ export class Welcome {
             console.error(`Jade Shell: could not record the welcome: ${e.message}`);
         }
     }
-}
-
-// '<Super><Control><Shift>space' as people write it: 'Super+Ctrl+Shift+Space'.
-function shortcutText(accel) {
-    if (!accel)
-        return null;
-    const names = {super: 'Super', control: 'Ctrl', primary: 'Ctrl', ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift'};
-    const order = ['Super', 'Ctrl', 'Alt', 'Shift'];
-    const mods = [...new Set([...accel.matchAll(/<(\w+)>/g)].map(m => names[m[1].toLowerCase()] ?? m[1]))]
-        .sort((a, b) => order.indexOf(a) - order.indexOf(b));
-    const key = accel.replace(/<\w+>/g, '');
-    return [...mods, key.length === 1 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1)].join('+');
 }
 
 function readJson(file) {

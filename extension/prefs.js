@@ -75,6 +75,7 @@ export default class JadePreferences extends ExtensionPreferences {
         const keyboard = new Adw.PreferencesGroup({title: 'Keyboard'});
         page.add(keyboard);
         keyboard.add(new ShortcutRow(settings, 'toggle-picker', 'Open the theme picker'));
+        keyboard.add(new ShortcutRow(settings, 'show-cheatsheet', 'Show the keyboard shortcuts'));
         for (const [key, title] of [['bell-show', 'Open the notifications'], ['bell-dismiss', 'Dismiss the newest notification'],
             ['bell-dismiss-all', 'Dismiss all notifications'], ['bell-open-newest', 'Open the newest notification'],
             ['bell-toggle-dnd', 'Do Not Disturb on or off']])

@@ -104,3 +104,35 @@ export class Debouncer {
         this._source = null;
     }
 }
+
+// Key names as people write them.
+const KEY_NAMES = {
+    comma: ',', period: '.', slash: '/', backslash: '\\', semicolon: ';', apostrophe: "'", grave: '`', Above_Tab: '`',
+    minus: '-', equal: '=', plus: '+', bracketleft: '[', bracketright: ']', space: 'Space', Return: 'Enter',
+    Escape: 'Esc', Page_Up: 'Page Up', Page_Down: 'Page Down', Print: 'Print Screen', BackSpace: 'Backspace',
+    Delete: 'Delete', Left: '←', Right: '→', Up: '↑', Down: '↓', KP_Add: 'Num +', KP_Subtract: 'Num −',
+    XF86AudioRaiseVolume: 'Volume Up', XF86AudioLowerVolume: 'Volume Down', XF86AudioMute: 'Mute',
+    XF86AudioPlay: 'Play', XF86AudioNext: 'Next Track', XF86AudioPrev: 'Previous Track',
+    XF86MonBrightnessUp: 'Brightness Up', XF86MonBrightnessDown: 'Brightness Down', XF86PowerOff: 'Power',
+};
+
+// '<Super><Control><Shift>space' as its keys: ['Super', 'Ctrl', 'Shift', 'Space'].
+export function shortcutKeys(accel) {
+    if (!accel)
+        return [];
+    const names = {super: 'Super', control: 'Ctrl', primary: 'Ctrl', ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', meta: 'Meta'};
+    const order = ['Super', 'Ctrl', 'Alt', 'Shift', 'Meta'];
+    const mods = [...new Set([...accel.matchAll(/<(\w+)>/g)].map(m => names[m[1].toLowerCase()] ?? m[1]))]
+        .sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    const key = accel.replace(/<\w+>/g, '');
+    if (!key)
+        return mods;
+    const name = KEY_NAMES[key] ?? (key.length === 1 ? key.toUpperCase()
+        : key.replace(/^XF86/, '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()));
+    return [...mods, name];
+}
+
+// '<Super><Control><Shift>space' as people write it: 'Super+Ctrl+Shift+Space'.
+export function shortcutText(accel) {
+    return accel ? shortcutKeys(accel).join('+') : null;
+}

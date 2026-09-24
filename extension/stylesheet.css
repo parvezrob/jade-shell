@@ -129,3 +129,16 @@
     padding: 0; spacing: 0; border-width: 0; background: none; box-shadow: none;
 }
 .jade-dock-label { padding: 5px 11px; font-size: 10pt; font-weight: 500; }
+
+/* ---------- keyboard shortcuts cheat sheet ---------- */
+.jade-cheatsheet { width: 800px; }
+.jade-cheatsheet .modal-dialog-content-box { padding: 20px 22px 8px; spacing: 0; }
+.jade-cheatsheet-title { padding: 0 2px 12px; }
+.jade-cheatsheet-search { margin-bottom: 8px; padding: 8px 10px; }
+.jade-cheatsheet-section { padding: 14px 4px 6px; }
+.jade-cheatsheet-row { padding: 4px 4px; spacing: 16px; }
+.jade-cheatsheet-name { font-size: 9.5pt; }
+.jade-cheatsheet-keys { spacing: 4px; }
+.jade-key { padding: 1px 7px; font-size: 8.5pt; font-weight: 700; }
+.jade-cheatsheet-or { font-size: 8pt; padding: 0 4px; }
+.jade-cheatsheet-empty { padding: 16px 4px; }

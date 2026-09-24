@@ -8,6 +8,7 @@
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {CheatSheet} from './lib/cheatsheet.js';
 import {Clock} from './lib/clock.js';
 import {Desktop} from './lib/desktop.js';
 import {Dock} from './lib/dock/dock.js';
@@ -36,6 +37,7 @@ export default class JadeShell extends Extension {
             {key: 'show-monitor', make: () => new Monitor(this, this._settings, this._shellTheme)},
             {key: 'show-usage', make: () => new Usage(this, this._settings, this._shellTheme)},
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
+            {key: null, make: () => new CheatSheet(this._settings)},
             {key: 'notification-bell', make: () => new Notifications(this, this._settings)},
             {key: null, make: () => new Updates(this, this._settings)},
             {key: null, make: () => new Welcome(this, this._settings, () => this._openPicker())},
