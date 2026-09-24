@@ -333,6 +333,8 @@ export class Monitor {
         addToPanel('jade-monitor', this._button);
 
         this._button.menu.connect('open-state-changed', (_m, open) => {
+            if (this._stopping)  // destroying an open menu closes it: no restart then
+                return;
             if (open)
                 this._refreshDisks();
             this._syncActive();
@@ -350,6 +352,7 @@ export class Monitor {
 
     // Also undoes an enable() that failed partway.
     disable() {
+        this._stopping = true;
         this._stopTimers();
         this._cancelNvidiaRetry();
         this._stopNvidia();
@@ -361,6 +364,7 @@ export class Monitor {
         this._settingsChanged = null;
         this._button?.destroy();
         this._button = this._meters = this._cores = this._barItems = this._diskViews = null;
+        this._stopping = false;
     }
 
     // Our own icons are files in the extension; the rest come from the icon theme.

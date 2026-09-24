@@ -133,7 +133,8 @@ export class Picker {
             this._refresh();
             const current = this._tiles.get(this._current) ?? this._tiles.values().next().value;
             GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-                current?.grab_key_focus();
+                if (this._alive && this._button?.menu.isOpen)
+                    current?.grab_key_focus();
                 return GLib.SOURCE_REMOVE;
             });
         });
@@ -169,7 +170,7 @@ export class Picker {
             return;
         }
         const cancellable = this._cancellable;
-        const {ok, stdout, stderr} = await run([jade, 'theme', 'list', '--json'], cancellable);
+        const {ok, stdout, stderr} = await run([jade, 'theme', 'list', '--json'], cancellable, {kill: true});
         if (!this._alive || cancellable !== this._cancellable)
             return;
         if (!ok) {
@@ -190,8 +191,11 @@ export class Picker {
                 (this._tiles.get(id) ?? this._tiles.values().next().value)?.grab_key_focus();
             }
         }
-        if (themes.some(t => !t.thumbnail))
-            this._fetchPreviews(jade);
+        // Once a download went through, the themes still without a preview
+        // have none to fetch (a community theme without a wallpaper): not again.
+        const missing = themes.filter(t => !t.thumbnail).map(t => t.id).join('|');
+        if (missing && missing !== this._previewsTried)
+            this._fetchPreviews(jade, missing);
         const current = themes.find(t => t.current);
         this._current = current?.id ?? null;
         this._heroTitle.text = current?.name ?? 'No theme applied yet';
@@ -201,7 +205,7 @@ export class Picker {
 
     // Setup offline leaves themes as color swatches: download their previews
     // in the background while the picker is open, then show them.
-    async _fetchPreviews(jade) {
+    async _fetchPreviews(jade, missing) {
         if (this._fetching || GLib.get_monotonic_time() / 1000 < (this._previewsRetryAt ?? 0))
             return;
         this._fetching = true;
@@ -212,7 +216,9 @@ export class Picker {
         if (!this._alive || cancellable !== this._cancellable)
             return;
         this._fetching = false;
-        if (!ok)
+        if (ok)
+            this._previewsTried = missing;
+        else
             this._previewsRetryAt = GLib.get_monotonic_time() / 1000 + PREVIEW_RETRY_MS;
         if (!this._busy)
             this._setStatus(ok ? '' : 'Previews need an internet connection', !ok);

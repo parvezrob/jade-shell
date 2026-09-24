@@ -33,8 +33,10 @@ const frosted = new Set();
 // nothing to blur. While frosted they redirect only while fading, Clutter's
 // default; their own setting comes back when the glass goes.
 const redirected = new Map();
-const watched = {};  // the tracker for the opacity watches
-const watchers = new Set();
+// Frosted surface → the actors whose opacity it watches (itself and its
+// ancestors). The surface owns those handlers: they go when it's destroyed,
+// instead of piling up on long-lived parents (the banner bin) all session.
+const ancestry = new Map();
 
 function unredirect(actor) {
     for (let a = actor; a && a !== Main.uiGroup; a = a.get_parent()) {
@@ -124,6 +126,7 @@ export function frost(actor) {
     actor.connectObject('destroy', () => {
         frosted.delete(actor);
         shown.delete(actor);
+        ancestry.delete(actor);
         syncWholeFrames();
     }, frost);
     if (actor !== Main.panel)
@@ -131,10 +134,12 @@ export function frost(actor) {
     // While it fades in or out it's drawn through a buffer where the blur
     // can't show anyway: skip the work (it's most of the cost in those frames).
     const sync = () => (effect.enabled = actor.get_paint_opacity() === 255);
+    const chain = [];
     for (let a = actor; a && a !== Main.uiGroup; a = a.get_parent()) {
-        a.connectObject('notify::opacity', sync, watched);
-        watchers.add(a);
+        a.connectObject('notify::opacity', sync, actor);
+        chain.push(a);
     }
+    ancestry.set(actor, chain);
     sync();
 }
 
@@ -172,7 +177,12 @@ export class Glass {
         St.ThemeContext.get_for_stage(global.stage).disconnectObject(this);
         this._stop();
         this._unloadTint();
-        this._css.delete(null);
+        try {
+            this._css.delete(null);
+        } catch (e) {
+            if (!e.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.NOT_FOUND))  // never written (solid glass)
+                console.error(`Jade Shell: glass tint: ${e.message}`);
+        }
     }
 
     _writeTint() {
@@ -334,8 +344,8 @@ export class Glass {
             actor.disconnectObject(redirected);
         }
         redirected.clear();
-        for (const actor of watchers)
-            actor.disconnectObject(watched);
-        watchers.clear();
+        for (const [actor, chain] of ancestry)
+            chain.forEach(a => a.disconnectObject(actor));
+        ancestry.clear();
     }
 }

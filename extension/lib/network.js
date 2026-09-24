@@ -403,7 +403,7 @@ export class Network {
             return;
         this._refreshing = true;
         this._cancellable ??= new Gio.Cancellable();
-        const {ok, stdout} = await run([jade, 'network', 'status', '--json'], this._cancellable);
+        const {ok, stdout} = await run([jade, 'network', 'status', '--json'], this._cancellable, {kill: true});
         this._refreshing = false;
         if (!this._button || !ok)
             return;
@@ -559,9 +559,13 @@ export class Network {
         if (!jade)
             return;
         this._shareButton._label.text = 'Reading…';
-        const {ok, stdout, stderr} = await run([jade, 'network', 'qr', '--json'], this._cancellable);
-        if (!this._button)
+        const request = this._qrRequest = {};
+        const {ok, stdout, stderr} = await run([jade, 'network', 'qr', '--json'], this._cancellable, {kill: true});
+        // The code carries the Wi-Fi password: only for the request still
+        // asked for, in the menu still open (closing it cancels the share).
+        if (!this._button || request !== this._qrRequest || !this._button.menu.isOpen)
             return;
+        this._qrRequest = null;
         this._shareButton._label.text = 'Hide QR Code';
         if (!ok) {
             this._shareButton._label.text = 'Share Wi-Fi';
@@ -579,6 +583,7 @@ export class Network {
     }
 
     _hideQr() {
+        this._qrRequest = null;
         if (!this._qr)
             return;
         this._qr.actor.visible = false;

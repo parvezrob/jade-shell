@@ -170,6 +170,7 @@ export class Modes {
 
     // Hold (or let go of) GNOME's inhibitor for idling and suspend.
     setAwake(on) {
+        this._wantAwake = on;  // what the answer to a pending Inhibit should find
         if (on && !this.awake) {
             this._inhibiting = true;
             Gio.DBus.session.call('org.gnome.SessionManager', '/org/gnome/SessionManager', 'org.gnome.SessionManager',
@@ -181,7 +182,8 @@ export class Modes {
                     } catch (e) {
                         console.error(`Jade Shell: could not keep the screen awake: ${e.message}`);
                     }
-                    if (!this._button)  // disabled meanwhile
+                    // Turned off (or disabled) while GNOME was answering.
+                    if (!this._button || !this._wantAwake)
                         this.setAwake(false);
                     this._sync();
                 });

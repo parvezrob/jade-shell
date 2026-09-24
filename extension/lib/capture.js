@@ -50,21 +50,22 @@ function screenshotsDir() {
     ]);
 }
 
-// The file GNOME just saved the shot to (it saves before it notifies).
-function newestShot() {
-    const dir = Gio.File.new_for_path(screenshotsDir());
-    let newest = null, newestTime = 0;
-    try {
-        const files = dir.enumerate_children('standard::name,time::modified', Gio.FileQueryInfoFlags.NONE, null);
-        for (let info; (info = files.next_file(null));) {
-            const time = info.get_attribute_uint64('time::modified');
-            if (info.get_name().endsWith('.png') && time > newestTime)
-                [newest, newestTime] = [dir.get_child(info.get_name()), time];
-        }
-    } catch {
+// The file GNOME just saved the shot to (it saves before it notifies): named
+// from the notification's own time, "Screenshot From 2026-09-25 02-14-07.png",
+// then "…-1.png", "…-2.png" for more in the same second. The last of those
+// that exists is this one.
+function savedShot(time) {
+    if (!time)
         return null;
+    const base = GLib.build_filenamev([screenshotsDir(), _gs('Screenshot From %s').replace('%s', time.format('%Y-%m-%d %H-%M-%S'))]);
+    let found = null;
+    for (let i = 0; i < 100; i++) {
+        const path = `${base}${i ? `-${i}` : ''}.png`;
+        if (!GLib.file_test(path, GLib.FileTest.EXISTS))
+            break;
+        found = Gio.File.new_for_path(path);
     }
-    return newest && GLib.get_real_time() / 1e6 - newestTime < 10 ? newest : null;
+    return found;
 }
 
 function launch(argv) {
@@ -106,6 +107,7 @@ export class Capture {
 
     enable() {
         this._pins = new Set();
+        this._cancellable = new Gio.Cancellable();
         Main.messageTray.connectObject('source-added', (_t, source) => this._watch(source), this);
         for (const source of Main.messageTray.getSources())
             this._watch(source);
@@ -121,10 +123,21 @@ export class Capture {
         Main.messageTray.disconnectObject(this);
         for (const source of Main.messageTray.getSources())
             source.disconnectObject(this);
+        // A color pick or an area selection under way ends (its overlay
+        // and grab go), and a text or QR reading stops.
+        this._selector?._grabHelper?.ungrab();
+        this._selector = null;
+        this._cancellable.cancel();
+        this._cancellable = null;
         this._dismiss(false);
         for (const pin of this._pins)
             pin.destroy();
         this._pins = null;
+    }
+
+    // Still the enable that started `cancellable`'s work?
+    _current(cancellable) {
+        return cancellable === this._cancellable && !cancellable.is_cancelled();
     }
 
     // ---------------------------------------------------------------- the card
@@ -138,7 +151,7 @@ export class Capture {
             if (notification.title !== _gs('Screenshot captured') || !this._settings.get_boolean('capture-card'))
                 return;
             notification.acknowledged = true;  // before the tray asks for a banner
-            this.show(notification.gicon, newestShot());
+            this.show(notification.gicon, savedShot(notification.datetime));
             // GNOME drops it once its banner has shown; without one it would
             // wait in the list (and light the bell's dot).
             GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => notification.destroy());
@@ -308,13 +321,20 @@ export class Capture {
 
     // A color from anywhere on screen, copied as #rrggbb.
     async pickColor() {
+        if (this._selector)
+            return;
+        const cancellable = this._cancellable;
         let color;
         try {
-            color = await new PickPixel(new Shell.Screenshot()).pickAsync();
+            this._selector = new PickPixel(new Shell.Screenshot());
+            color = await this._selector.pickAsync();
         } catch {
             return;  // Escape
+        } finally {
+            if (this._current(cancellable))
+                this._selector = null;
         }
-        if (!color)
+        if (!color || !this._current(cancellable))
             return;
         const hex = `#${[color.red, color.green, color.blue].map(c => c.toString(16).padStart(2, '0')).join('')}`;
         St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, hex);
@@ -327,36 +347,46 @@ export class Capture {
             this._missing(tool);
             return;
         }
+        if (this._selector)
+            return;
+        const cancellable = this._cancellable;
         let area;
         try {
-            area = await new SelectArea().selectAsync();
+            this._selector = new SelectArea();
+            area = await this._selector.selectAsync();
         } catch {
             return;  // Escape
+        } finally {
+            if (this._current(cancellable))
+                this._selector = null;
         }
-        if (!area || area.width < 4 || area.height < 4)
+        if (!area || area.width < 4 || area.height < 4 || !this._current(cancellable))
             return;
         const file = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_runtime_dir(), `jade-capture-${GLib.random_int()}.png`]));
         try {
             const stream = file.replace(null, false, Gio.FileCreateFlags.PRIVATE, null);
             await new Shell.Screenshot().screenshot_area(area.x, area.y, area.width, area.height, stream);
             stream.close(null);
-            await this._readFile(file, tool);
+            await this._readFile(file, tool, cancellable);
         } catch (e) {
             console.error(`Jade Shell: capture: ${e.message}`);
-            this.toast('Could not capture that part of the screen');
+            if (this._current(cancellable))
+                this.toast('Could not capture that part of the screen');
         } finally {
             file.delete_async(GLib.PRIORITY_DEFAULT, null, null);
         }
     }
 
-    async _readFile(file, tool) {
+    async _readFile(file, tool, cancellable = this._cancellable) {
         this._dismiss();
         if (!GLib.find_program_in_path(tool)) {
             this._missing(tool);
             return;
         }
         const argv = tool === 'tesseract' ? ['tesseract', file.get_path(), '-', '--psm', '3'] : ['zbarimg', '--raw', '-q', file.get_path()];
-        const {stdout} = await run(argv);
+        const {stdout} = await run(argv, cancellable, {kill: true});
+        if (!this._current(cancellable))
+            return;  // turned off (the screen locked, say) while it read
         const text = stdout.replace(/\f/g, '').trim();
         if (!text) {
             this.toast(tool === 'tesseract' ? 'No text found there' : 'No QR code found there');

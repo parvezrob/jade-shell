@@ -201,6 +201,9 @@ export class CheatSheet {
         entry.clutter_text.connect('text-changed', () => shown(entry.get_text()));
         dialog.setButtons([{label: 'Close', action: () => dialog.close(), key: Clutter.KEY_Escape}]);
         dialog.open(global.get_current_time());
-        GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => entry.grab_key_focus());
+        GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {
+            if (this._dialog === dialog)
+                entry.grab_key_focus();
+        });
     }
 }

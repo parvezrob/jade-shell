@@ -55,7 +55,9 @@ export function openSettings(page = null) {
 
 // Run a command without blocking the Shell; resolves with whether it succeeded,
 // its exit status (null when killed by a signal) and output.
-export function run(argv, cancellable = null) {
+// {kill: true}: cancelling also ends the process (for commands that only
+// read; one that changes things, a theme switch, is left to finish).
+export function run(argv, cancellable = null, {kill = false} = {}) {
     return new Promise(resolve => {
         let proc;
         try {
@@ -64,7 +66,12 @@ export function run(argv, cancellable = null) {
             resolve({ok: false, stdout: '', stderr: e.message});
             return;
         }
+        // Gio.Cancellable.connect is g_cancellable_connect (not a signal's):
+        // the callback runs at once if it's cancelled already.
+        const killer = kill && cancellable ? cancellable.connect(() => proc.force_exit()) : 0;
         proc.communicate_utf8_async(null, cancellable, (p, result) => {
+            if (killer)
+                cancellable.disconnect(killer);
             try {
                 const [, stdout, stderr] = p.communicate_utf8_finish(result);
                 resolve({ok: p.get_successful(), status: p.get_if_exited() ? p.get_exit_status() : null, stdout, stderr});

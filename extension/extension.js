@@ -83,7 +83,7 @@ export default class JadeShell extends Extension {
     }
 
     _openPicker() {
-        this._parts.find(part => part.instance instanceof Picker)?.instance.toggle();
+        this._parts?.find(part => part.instance instanceof Picker)?.instance?.toggle();
     }
 
     _syncParts() {

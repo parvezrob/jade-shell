@@ -65,6 +65,7 @@ export class JadeMenu {
     }
 
     enable() {
+        this._enabled = {};  // a new token each time: work queued before a disable is dropped
         Main.wm.addKeybinding('toggle-menu', this._settings, Meta.KeyBindingFlags.NONE,
             Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this.toggle());
         for (const [key, start] of BRANCH_KEYS) {
@@ -79,6 +80,7 @@ export class JadeMenu {
             Main.wm.removeKeybinding(key);
         this._dialog?.destroy();
         this._dialog = null;
+        this._enabled = null;
     }
 
     toggle(start = null) {
@@ -184,6 +186,16 @@ export class JadeMenu {
         try {
             this._themeList = JSON.parse(result.stdout).map(({id, name}) => ({id, name}));
         } catch {}
+        this._refreshOpenBranch('Theme');
+    }
+
+    // A submenu entered before its list had loaded fills in now.
+    _refreshOpenBranch(label) {
+        const top = this._stack?.at(-1);
+        if (!this._dialog || top?.label !== label || !top.children)
+            return;
+        top.entries = top.children();
+        this._show();
     }
 
     _fonts() {
@@ -201,6 +213,7 @@ export class JadeMenu {
         try {
             this._fontList = JSON.parse(result.stdout);
         } catch {}
+        this._refreshOpenBranch('Font');
     }
 
     _icons() {
@@ -290,12 +303,15 @@ export class JadeMenu {
         if (start) {
             const branch = this._root.find(entry => entry.label.toLowerCase() === start.toLowerCase());
             if (branch?.children)
-                this._stack.push({label: branch.label, entries: branch.children()});
+                this._stack.push({label: branch.label, entries: branch.children(), children: branch.children});
         }
         this._floor = this._stack.length;  // opened at a branch (Super+Escape…): Escape closes from there
         this._show();
         dialog.open(global.get_current_time());
-        GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => this._entry.grab_key_focus());
+        GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {
+            if (this._dialog === dialog)
+                this._entry.grab_key_focus();
+        });
     }
 
     _entries() {
@@ -395,7 +411,7 @@ export class JadeMenu {
             return;
         const {entry} = row;
         if (entry.children) {
-            this._stack.push({label: entry.label, entries: entry.children()});
+            this._stack.push({label: entry.label, entries: entry.children(), children: entry.children});
             this._entry.set_text('');
             this._show();
             return;
@@ -411,7 +427,11 @@ export class JadeMenu {
         if (!keepOpen) {
             // Closed first: an action may open a dialog of its own.
             this._dialog?.close();
-            GLib.idle_add_once(GLib.PRIORITY_DEFAULT, act);
+            const enabled = this._enabled;
+            GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {
+                if (enabled === this._enabled)  // not after the extension went (the screen locked)
+                    act();
+            });
             return;
         }
         act();

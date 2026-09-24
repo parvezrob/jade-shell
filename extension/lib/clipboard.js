@@ -36,28 +36,43 @@ function sameBytes(a, b) {
     return true;
 }
 
-// A thumbnail actor for an image entry, made once.
-function thumbnail(entry) {
-    if (entry.thumb !== undefined)
-        return entry.thumb;
-    entry.thumb = null;
-    try {
-        const stream = Gio.MemoryInputStream.new_from_bytes(entry.bytes);
-        const full = GdkPixbuf.Pixbuf.new_from_stream(stream, null);
-        entry.size = `${full.get_width()} × ${full.get_height()}`;
-        const scale = THUMB / Math.max(full.get_width(), full.get_height());
-        const [w, h] = [Math.max(1, Math.round(full.get_width() * scale)), Math.max(1, Math.round(full.get_height() * scale))];
-        const pixbuf = full.scale_simple(w, h, GdkPixbuf.InterpType.BILINEAR);
-        const content = St.ImageContent.new_with_preferred_size(w, h);
-        // GNOME 50 takes the Cogl context first (as its screenshot UI does).
-        const context = global.stage.context.get_backend().get_cogl_context();
-        content.set_bytes(context, pixbuf.read_pixel_bytes(),
-            pixbuf.get_has_alpha() ? Cogl.PixelFormat.RGBA_8888 : Cogl.PixelFormat.RGB_888, w, h, pixbuf.get_rowstride());
-        entry.thumb = {content, w, h};
-    } catch (e) {
-        console.error(`Jade Shell: clipboard thumbnail: ${e.message}`);
-    }
-    return entry.thumb;
+// Images copied (every screenshot is one) are kept up to this much in all,
+// newest first; a bigger single image is not kept at all.
+const IMAGE_BUDGET = 64 * 1024 * 1024;
+const IMAGE_MAX = 24 * 1024 * 1024;
+
+// A PNG's size, from its header (no decoding).
+function pngSize(bytes) {
+    const data = bytes.get_data();
+    if (data.length < 24 || data[0] !== 0x89 || data[1] !== 0x50)
+        return null;
+    const read = at => ((data[at] << 24) | (data[at + 1] << 16) | (data[at + 2] << 8) | data[at + 3]) >>> 0;
+    return [read(16), read(20)];
+}
+
+// A small thumbnail for an image entry, decoded off the main thread (a 4K
+// screenshot takes long enough to stall every window); `done` when ready.
+function makeThumbnail(entry, done) {
+    const size = pngSize(entry.bytes);
+    if (size)
+        entry.size = `${size[0]} × ${size[1]}`;
+    const stream = Gio.MemoryInputStream.new_from_bytes(entry.bytes);
+    GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(stream, THUMB, THUMB, true, null, (_s, result) => {
+        try {
+            const pixbuf = GdkPixbuf.Pixbuf.new_from_stream_finish(result);
+            const [w, h] = [pixbuf.get_width(), pixbuf.get_height()];
+            const content = St.ImageContent.new_with_preferred_size(w, h);
+            // GNOME 50 takes the Cogl context first (as its screenshot UI does).
+            const context = global.stage.context.get_backend().get_cogl_context();
+            content.set_bytes(context, pixbuf.read_pixel_bytes(),
+                pixbuf.get_has_alpha() ? Cogl.PixelFormat.RGBA_8888 : Cogl.PixelFormat.RGB_888, w, h, pixbuf.get_rowstride());
+            entry.thumb = {content, w, h};
+        } catch (e) {
+            entry.thumb = null;
+            console.error(`Jade Shell: clipboard thumbnail: ${e.message}`);
+        }
+        done(entry);
+    });
 }
 
 export class ClipboardHistory {
@@ -95,7 +110,7 @@ export class ClipboardHistory {
         if (image) {
             this._clipboard.get_content(St.ClipboardType.CLIPBOARD, image, (_c, bytes) => {
                 // The callback's bytes aren't ours to keep (St frees them after): copy.
-                if (bytes?.get_size())
+                if (bytes?.get_size() && bytes.get_size() <= IMAGE_MAX)
                     this._add({kind: 'image', mime: image, bytes: GLib.Bytes.new(bytes.get_data())});
             });
             return;
@@ -116,6 +131,14 @@ export class ClipboardHistory {
         entry.time ??= GLib.DateTime.new_now_local();
         this.entries.unshift(entry);
         this.entries.length = Math.min(this.entries.length, LIMIT);
+        let images = 0;
+        this.entries = this.entries.filter(e => e.kind !== 'image' || (images += e.bytes.get_size()) <= IMAGE_BUDGET);
+        if (entry.kind === 'image' && entry.thumb === undefined) {
+            makeThumbnail(entry, () => {
+                if (this._dialog && this.entries.includes(entry))
+                    this._show(false);  // the open panel gets its picture
+            });
+        }
     }
 
     _copy(entry) {
@@ -163,10 +186,13 @@ export class ClipboardHistory {
         this._entry.clutter_text.connect('key-press-event', (_t, event) => this._key(event));
         this._show();
         dialog.open(global.get_current_time());
-        GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => this._entry.grab_key_focus());
+        GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {
+            if (this._dialog === dialog)
+                this._entry.grab_key_focus();
+        });
     }
 
-    _show() {
+    _show(fromTop = true) {
         const query = this._entry.get_text().trim().toLowerCase();
         this._rows = this.entries.filter(e => !query || (e.kind === 'text' ? e.text.toLowerCase().includes(query)
             : 'image'.includes(query)));
@@ -177,7 +203,7 @@ export class ClipboardHistory {
             }));
         }
         this._rows.forEach((entry, i) => this._list.add_child(this._row(entry, i)));
-        this._select(0);
+        this._select(fromTop ? 0 : Math.max(0, this._selected ?? 0), fromTop);
         // Nothing to clear: Clear All rests.
         const clear = this._dialog?.buttonLayout.get_first_child();
         if (clear)
@@ -187,9 +213,9 @@ export class ClipboardHistory {
     _row(entry, index) {
         const box = new St.BoxLayout({style_class: 'jade-menu-row-box', x_expand: true});
         if (entry.kind === 'image') {
-            const thumb = thumbnail(entry);
-            if (thumb)
-                box.add_child(new Clutter.Actor({content: thumb.content, width: thumb.w, height: thumb.h}));
+            const thumb = entry.thumb;
+            box.add_child(thumb ? new Clutter.Actor({content: thumb.content, width: thumb.w, height: thumb.h})
+                : new Clutter.Actor({width: THUMB, height: THUMB}));  // still being made
             box.add_child(new St.Label({text: `Image${entry.size ? `  ${entry.size}` : ''}`, style_class: 'jade-menu-label',
                 y_align: Clutter.ActorAlign.CENTER}));
             box.add_child(new St.Widget({x_expand: true}));
