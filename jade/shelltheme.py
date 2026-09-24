@@ -7,6 +7,9 @@ menus, quick settings, calendar, notifications, dialogs and OSDs. Jade's own
 rules (shell-theme/jade.scss) are compiled after it and can use its variables
 and mixins.
 """
+import hashlib
+import json
+import os
 import pathlib
 import re
 import shutil
@@ -159,18 +162,70 @@ def compile_scss(entry):
     return result.stdout
 
 
+def cache_dir():
+    return pathlib.Path(os.environ.get('XDG_CACHE_HOME') or pathlib.Path.home() / '.cache') / 'jade-shell'
+
+
+CACHED_BUILDS = 48
+
+
 def build(colors, shell_version):
+    """The compiled stylesheet, from the cache when this palette was built
+    before with the same sources (switching back to a theme skips sassc)."""
+    sources_stamp = [(str(p), p.stat().st_mtime_ns, p.stat().st_size)
+                     for p in sorted([ROOT / 'jade.scss', *version_dir(shell_version).rglob('*')]) if p.is_file()]
+    key = hashlib.sha256(json.dumps([palette_scss(colors), colors.get('mode'), shell_version, sources_stamp])
+                         .encode()).hexdigest()[:32]
+    folder = cache_dir() / 'shell-css'
+    cached = folder / f'{key}.css'
+    try:
+        css = cached.read_text()
+        os.utime(cached)  # recently used: pruned last
+        return css
+    except OSError:
+        pass
     with tempfile.TemporaryDirectory(prefix='jade-shell-theme.') as tmp:
-        return compile_scss(sources(colors, shell_version, pathlib.Path(tmp)))
+        css = compile_scss(sources(colors, shell_version, pathlib.Path(tmp)))
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        partial = folder / f'.{key}.{os.getpid()}'
+        partial.write_text(css)
+        os.replace(partial, cached)
+        for old in sorted(folder.glob('*.css'), key=lambda f: f.stat().st_mtime, reverse=True)[CACHED_BUILDS:]:
+            old.unlink(missing_ok=True)
+    except OSError:
+        pass  # a cache that can't be written only costs the next switch a compile
+    return css
 
 
 def installed_shell_version():
+    """GNOME Shell's major version, remembered while the gnome-shell binary
+    stays the same (starting it just to ask takes a noticeable moment)."""
+    binary = shutil.which('gnome-shell')
+    if not binary:
+        return None
+    info = os.stat(binary)
+    stamp = [binary, info.st_mtime_ns, info.st_size]
+    memo = cache_dir() / 'shell-version.json'
     try:
-        out = subprocess.run(['gnome-shell', '--version'], capture_output=True, text=True).stdout
-    except FileNotFoundError:
+        saved = json.loads(memo.read_text())
+        if saved.get('stamp') == stamp:
+            return saved['version']
+    except (OSError, ValueError, KeyError, AttributeError):
+        pass
+    try:
+        out = subprocess.run([binary, '--version'], capture_output=True, text=True).stdout
+    except OSError:
         return None
     match = re.search(r'(\d+)\.', out)
-    return int(match.group(1)) if match else None
+    version = int(match.group(1)) if match else None
+    if version:
+        try:
+            memo.parent.mkdir(parents=True, exist_ok=True)
+            memo.write_text(json.dumps({'stamp': stamp, 'version': version}))
+        except OSError:
+            pass
+    return version
 
 
 def available_versions():

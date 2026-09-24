@@ -26,18 +26,28 @@ export class ShellTheme {
         this._dir = stateDir();
         this._css = this._dir.get_child('gnome-shell.css');
         this._colors = this._dir.get_child('colors.json');
-        this._reload = new Debouncer(200, () => {
-            this._loadStylesheet();
-            this._loadPalette();
+        // `jade theme set` writes both files within a few milliseconds, each
+        // atomically: reload once, right after, and only what changed (a
+        // stylesheet load restyles the whole Shell).
+        this._changed = new Set();
+        this._reload = new Debouncer(30, () => {
+            if (this._changed.has('gnome-shell.css'))
+                this._loadStylesheet();
+            if (this._changed.has('colors.json'))
+                this._loadPalette();
+            this._changed.clear();
         });
         try {
             this._dir.make_directory_with_parents(null);
         } catch {}
         this._monitor = this._dir.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, this._cancellable);
         this._monitorChanged = this._monitor.connect('changed', (_m, file, other) => {
-            const names = [file?.get_basename(), other?.get_basename()];
-            if (names.includes('gnome-shell.css') || names.includes('colors.json'))
-                this._reload.schedule();
+            for (const name of [file?.get_basename(), other?.get_basename()]) {
+                if (name === 'gnome-shell.css' || name === 'colors.json') {
+                    this._changed.add(name);
+                    this._reload.schedule();
+                }
+            }
         });
         this._contrastChanged = St.Settings.get().connect('notify::high-contrast', () => this._loadStylesheet());
         this._loadStylesheet();

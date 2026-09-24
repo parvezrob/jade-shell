@@ -190,10 +190,13 @@ def apply(theme, ctx, only=None, skip=None):
         shutil.rmtree(staging, ignore_errors=True)
         raise
 
-    ctx.settings.write([c for _t, c in changes if isinstance(c, Setting)])
+    # Files first: the Shell's stylesheet then loads while GNOME is still
+    # taking in the new accent and style, so the desktop changes at once
+    # instead of in two steps.
     for _target, change in changes:
         if isinstance(change, File):
             write_text(change.path, change.content)
+    ctx.settings.write([c for _t, c in changes if isinstance(c, Setting)])
     before = current()
     wallpaper = before.get('wallpaper') if ctx.wallpaper_error else ctx.wallpaper_index
     # Each theme's wallpaper is remembered, so switching back shows it again.
