@@ -266,7 +266,7 @@
       <summary>Show Claude and Codex usage in the top bar</summary>
     </key>
     <key name="usage-show-percentages" type="b">
-      <default>true</default>
+      <default>false</default>
       <summary>Show provider names and percent used</summary>
       <description>When off, a single AI logo. Full usage remains in the menu.</description>
     </key>

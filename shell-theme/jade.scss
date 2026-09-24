@@ -53,7 +53,8 @@ $jade-strong: if(lightness($jade-light_foreground) > lightness($jade-foreground)
 // 12 px apart whether they're buttons of their own or share one (Quick
 // Settings). GNOME pads a lone icon by 10 px a side and a grouped one not at
 // all, which spaced them anywhere from 12 to 36 px.
-#panel #panelRight .panel-button {
+#panel #panelRight .panel-button,
+#panel .panel-button.jade-weather {
   -natural-hpadding: 6px;
   -minimum-hpadding: 6px;
   .system-status-icon { padding: 0; margin: 0; }

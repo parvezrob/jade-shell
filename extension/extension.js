@@ -8,6 +8,7 @@
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {BarIcons} from './lib/baricons.js';
 import {Capture} from './lib/capture.js';
 import {CheatSheet} from './lib/cheatsheet.js';
 import {ClipboardHistory} from './lib/clipboard.js';
@@ -59,6 +60,8 @@ export default class JadeShell extends Extension {
             {key: null, make: () => new Updates(this, this._settings)},
             {key: null, make: () => new SettingsEntry(this)},
             {key: null, make: () => new Welcome(this, this._settings, () => this._openPicker())},
+            // Last: every other part's icons are in the bar by now.
+            {key: null, keepWhileLocked: true, make: () => new BarIcons(this)},
         ];
         this._partsChanged = this._parts.filter(p => p.key).map(
             part => this._settings.connect(`changed::${part.key}`, () => this._syncPart(part)));

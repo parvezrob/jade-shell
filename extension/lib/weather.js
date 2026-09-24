@@ -13,7 +13,7 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
-import {addToPanel, clockTime, openSettings, VERTICAL} from './util.js';
+import {clockTime, openSettings, VERTICAL} from './util.js';
 
 const HOURS = 5;
 const REFRESH_MINUTES = 30;
@@ -105,7 +105,18 @@ export class Weather {
                 this._update();
         });
 
-        addToPanel('jade-weather', this._button);
+        // Beside the clock, as Omarchy Quattro's bar has it. The clock stays in
+        // the middle of the screen: an empty twin as wide as the weather sits
+        // on its other side.
+        const center = Main.panel._centerBox;
+        const clock = Main.panel.statusArea.dateMenu?.container;
+        this._balance = new St.Widget({reactive: false, opacity: 0});
+        const at = clock && center.get_children().includes(clock) ? center.get_children().indexOf(clock) : 0;
+        center.insert_child_at_index(this._balance, at);
+        Main.panel.addToStatusArea('jade-weather', this._button, at + 2, 'center');
+        this._button.container.connectObject('notify::width', () => this._syncBalance(), this);
+        this._button.connectObject('notify::visible', () => this._syncBalance(), this);
+        this._syncBalance();
         // The hours as the clock shows them: 2 PM, or 14:00.
         this._interface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
         this._interface.connectObject('changed::clock-format', () => this._sync(), this);
@@ -139,8 +150,15 @@ export class Weather {
             this._info.disconnect(this._updated);
         this._updated = 0;
         this._info?.abort();
+        this._button?.container.disconnectObject(this);
+        this._button?.disconnectObject(this);
         this._button?.destroy();
-        this._button = this._client = this._info = this._interface = null;
+        this._balance?.destroy();
+        this._button = this._client = this._info = this._interface = this._balance = null;
+    }
+
+    _syncBalance() {
+        this._balance.width = this._button.visible ? this._button.container.width : 0;
     }
 
     // The place Jade was given, if any.

@@ -114,12 +114,16 @@ async function weather() {
     // The place picked in the Jade Shell app: Jade fetches it itself.
     settings.set_value('weather-location', new GLib.Variant('(sdd)', ['Dhaka', 23.72, 90.41]));
     const own = await shownWithin();
-    log(`weather: Jade's own place Dhaka → shown ${own}, "${part._temp.text}" ${part._icon.icon_name}, ` +
+    const iconName = icon => icon.icon_name ?? icon.gicon?.get_file?.()?.get_basename() ?? icon.gicon?.to_string();
+    log(`weather: Jade's own place Dhaka → shown ${own}, "${part._temp.text}" ${iconName(part._icon)}, ` +
         `${part._hours.get_n_children()} hours, menu says ${part._place.text}`);
-    const before = part._temp.text;
-    settings.set_string('weather-unit', before.startsWith('8') || before.startsWith('9') ? 'celsius' : 'fahrenheit');
-    await wait(300);
-    log(`weather: unit ${settings.get_string('weather-unit')} → "${before}" becomes "${part._temp.text}"`);
+    const temps = [];
+    for (const unit of ['fahrenheit', 'celsius']) {
+        settings.set_string('weather-unit', unit);
+        await wait(300);
+        temps.push(`${unit} "${part._temp.text}"`);
+    }
+    log(`weather: units → ${temps.join(', ')}`);
     settings.reset('weather-unit');
     await wait(300);
     await shoot('weather-chip', Main.panel);
@@ -819,6 +823,11 @@ async function barSpacing() {
         actor.get_children().forEach(walk);
     };
     walk(Main.panel._rightBox);
+    const clock = Main.panel.statusArea.dateMenu._clockDisplay;
+    const [cx] = clock.get_transformed_position();
+    const center = Main.layoutManager.primaryMonitor.width / 2;
+    log(`bar spacing: clock text centred at ${Math.round(cx + clock.width / 2)} (screen middle ${center}); ` +
+        `weather ${Main.panel.statusArea['jade-weather']?.visible ? 'beside it' : 'hidden'} in the ${Main.panel.statusArea['jade-weather']?.container.get_parent()?.name}`);
     const buttons = Main.panel._rightBox.get_children().filter(c => c.visible).map(c => {
         const child = c.get_first_child();
         const node = child?.get_theme_node?.();

@@ -91,11 +91,13 @@ Every switch first saves the value of each setting and file it will change, in `
 
 ## In the top bar
 
+Modelled on Omarchy Quattro's bar: every icon on the right sits on the same rhythm, and every icon in the bar, GNOME's status icons included (volume, battery, power, Bluetooth, Wi-Fi…), comes from one family of Jade Shell's own line icons.
+
 - **Workspaces** replace Activities: numbered, the current one filled with the accent. Click the current one for the overview; scroll to move between them.
 - **Media:** what's playing (Spotify, Firefox, any player that speaks MPRIS), shown while it plays or is paused. Click for the cover and controls; scroll over it for the previous or next track.
-- **Weather:** for the city you pick in the Jade Shell app (Welcome or Desktop page; or GNOME Weather's place until you do): its icon and temperature, and the next hours in the menu. Jade fetches it itself (MET Norway and others, as GNOME does), so it works without the GNOME Weather app, which Ubuntu doesn't ship. Units follow your language unless you choose °C or °F. Nothing shows without a place.
+- **Weather**, beside the clock: for the city you pick in the Jade Shell app (Welcome or Desktop page; or GNOME Weather's place until you do): its icon and temperature, and the next hours in the menu. Jade fetches it itself (MET Norway and others, as GNOME does), so it works without the GNOME Weather app, which Ubuntu doesn't ship. Units follow your language unless you choose °C or °F. Nothing shows without a place.
 - **System monitor:** CPU, memory, GPU and CPU temperature. It reads `/proc` and sysfs every two seconds, and on NVIDIA keeps one `nvidia-smi` running instead of starting one per update. It never polls the GPU on battery. Click it for your system monitor app.
-- **AI usage:** Claude and Codex limits, with Omarchy's usage panel as its menu (limits, tokens by day and by model). It uses Omarchy's own collectors, run every ten minutes by a user timer.
+- **AI usage:** one icon (it turns the alarm color when a limit runs close; Settings › AI Usage › **Show percentages** puts "Claude 7d 36% · Codex 7d 10%" in the bar instead), with Omarchy's usage panel as its menu (limits, tokens by day and by model). It uses Omarchy's own collectors, run every ten minutes by a user timer.
 - **Clock** as "Tuesday 14:05" or "Tuesday 2:05 PM", following the time format in GNOME's Settings (or a format of your own), and GNOME starts on the desktop instead of the overview. Its menu is the calendar.
 - **Notifications** behind a bell, in a panel of their own, as in Omarchy's notification center: a dot while any wait there (or, in the settings, only for missed pop-ups, as GNOME counts them), Do Not Disturb and Clear at the top. **Super+V** opens it, and pop-ups appear at the top right under it. Omarchy's keys work too: **Super+,** dismisses the newest notification, **Super+Shift+,** all of them, **Super+Alt+,** opens the newest, **Super+Ctrl+,** turns Do Not Disturb on or off and **Super+Shift+Alt+,** opens the panel (all changeable under **Keyboard** in the settings). Turn the bell off in the settings to have GNOME's layout back.
 
