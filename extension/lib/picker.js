@@ -1,5 +1,7 @@
 // The theme picker: every theme as a wallpaper preview, applied with `jade`.
 import Clutter from 'gi://Clutter';
+import Cogl from 'gi://Cogl';
+import GdkPixbuf from 'gi://GdkPixbuf';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
@@ -26,13 +28,37 @@ function swatch(colors) {
     return box;
 }
 
-// A theme's preview, decoded in a thread and kept in St's cache: as a CSS
-// background image it was decoded on the Shell's thread at the first paint
-// (46 ms for the grid on the first open after login).
+// A theme's preview, decoded in a thread: as a CSS background image it was
+// decoded on the Shell's thread at the first paint (46 ms for the grid on the
+// first open after login). Our own decode, so a preview made again at the
+// same path (a theme update) shows the new one.
 function preview(path) {
     const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
-    const image = St.TextureCache.get_default().load_file_async(Gio.File.new_for_path(path), 116, 72, scaleFactor, 1);
-    return new St.Bin({style_class: 'jade-tile-thumb', child: image});
+    const [w, h] = [116, 72];
+    const image = new Clutter.Actor({width: w, height: h});
+    const bin = new St.Bin({style_class: 'jade-tile-thumb', child: image});
+    Gio.File.new_for_path(path).read_async(GLib.PRIORITY_LOW, null, (file, result) => {
+        let stream;
+        try {
+            stream = file.read_finish(result);
+        } catch {
+            return;
+        }
+        GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(stream, w * scaleFactor, h * scaleFactor, false, null, (_s, res) => {
+            try {
+                const pixbuf = GdkPixbuf.Pixbuf.new_from_stream_finish(res);
+                const content = St.ImageContent.new_with_preferred_size(w, h);
+                const context = global.stage.context.get_backend().get_cogl_context();
+                content.set_bytes(context, pixbuf.read_pixel_bytes(),
+                    pixbuf.get_has_alpha() ? Cogl.PixelFormat.RGBA_8888 : Cogl.PixelFormat.RGB_888,
+                    pixbuf.get_width(), pixbuf.get_height(), pixbuf.get_rowstride());
+                image.content = content;
+            } catch (e) {
+                console.error(`Jade Shell: theme preview ${path}: ${e.message}`);
+            }
+        });
+    });
+    return bin;
 }
 
 export class Picker {
@@ -191,7 +217,7 @@ export class Picker {
             return;
         }
         const themes = JSON.parse(stdout);
-        const key = themes.map(t => `${t.id}:${t.thumbnail}`).join('|');
+        const key = themes.map(t => `${t.id}:${t.thumbnail}:${t.thumbnail_revision}`).join('|');
         if (key !== this._themesKey) {
             // Rebuilding drops the tile with the keyboard focus, and a menu
             // that loses its focus closes: hand it to the same theme's new tile.

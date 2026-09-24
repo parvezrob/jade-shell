@@ -66,6 +66,8 @@ def theme_list(args, ctx):
             'colors': {k: theme.colors[k] for k in SWATCH},
             'wallpapers': len(theme.backgrounds),
             'thumbnail': str(thumbnail) if thumbnail.exists() else None,
+            # Changes when the preview is made again at the same path (a theme update).
+            'thumbnail_revision': thumbnail.stat().st_mtime_ns if thumbnail.exists() else None,
         })
     if args.json:
         print(json.dumps(rows))
