@@ -148,7 +148,7 @@ export class Bar {
         // tinted copies go, and the icons are drawn again once GNOME has.
         St.TextureCache.get_default().connectObject('icon-theme-changed', () => {
             forgetTinted();
-            GLib.idle_add_once(GLib.PRIORITY_DEFAULT_IDLE, () => this._items && this._restyleItems());
+            GLib.idle_add_once(GLib.PRIORITY_DEFAULT_IDLE, () => !this._tornDown && this._restyleItems());
         }, this);
         for (const actor of global.get_window_actors())
             this._trackWindow(actor.meta_window);
@@ -205,8 +205,36 @@ export class Bar {
     }
 
     _readSettings() {
+        this._wantedSize = this._settings.get_int('dock-icon-size');
+        this._maxScale = Math.max(1, this._settings.get_double('dock-magnification'));
+        this._behavior = this._settings.get_string('dock-behavior');
+        this._showTrash = this._settings.get_boolean('dock-show-trash');
+        this.bounces = this._settings.get_boolean('dock-bounce');
+        this._tinted = this._settings.get_string('dock-icon-style') === 'tinted';
+        this._setMetrics(this._fittedSize());
+        this._style(this._theme.palette);
+        this._syncBehavior();
+        this._redisplay();
+    }
+
+    // The icon size that fits the dock on its screen: the one chosen, or
+    // smaller when there are too many apps for it (as a Mac's dock does).
+    _fittedSize() {
+        const s = St.ThemeContext.get_for_stage(global.stage).scaleFactor;
+        const shown = this._items.filter(item => item.target > 0 || item === this._placeholder);
+        const separators = shown.filter(item => item.kind === 'separator').length;
+        const icons = (shown.length || 4) - separators;  // before the first redisplay: about the tail
+        // In units of the logical icon size: an icon and its gap, a separator
+        // and its gap, the padding at both ends (see _setMetrics), and what
+        // the magnification adds under the pointer (at most half its reach).
+        const growth = (this._maxScale - 1) * REACH * 54 / 48 / 2;
+        const perSize = s * (icons * 54 / 48 + separators * 19 / 48 + 14 / 48 + growth);
+        const room = this._monitor.width - 2 * Math.round(16 * s);
+        return Math.max(16, Math.min(this._wantedSize, Math.floor(room / perSize)));
+    }
+
+    _setMetrics(logical) {
         const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
-        const logical = this._settings.get_int('dock-icon-size');
         const k = logical / 48;
         const s = scaleFactor;
         this.metrics = {
@@ -225,11 +253,6 @@ export class Bar {
             labelGap: Math.round(8 * s),
             shadow: Math.round(34 * s),
         };
-        this._maxScale = Math.max(1, this._settings.get_double('dock-magnification'));
-        this._behavior = this._settings.get_string('dock-behavior');
-        this._showTrash = this._settings.get_boolean('dock-show-trash');
-        this.bounces = this._settings.get_boolean('dock-bounce');
-        this._tinted = this._settings.get_string('dock-icon-style') === 'tinted';
 
         const m = this.metrics;
         const height = this._monitor.height;
@@ -244,9 +267,6 @@ export class Bar {
         this._strut.set_size(this._monitor.width, height - this._slabTop + m.float);
         for (const item of this._items)
             item.resize(m.icon, m);
-        this._style(this._theme.palette);
-        this._syncBehavior();
-        this._redisplay();
     }
 
     _style(palette) {
@@ -331,22 +351,23 @@ export class Bar {
             }
             order.push(item);
         }
-        // Items leaving keep their place while they shrink away.
-        const leaving = this._items.filter(item => item.kind === 'app' && item.target === 0);
-        for (const item of leaving) {
-            const before = this._items.indexOf(item);
-            const anchor = this._items.slice(0, before).reverse().find(i => order.includes(i));
-            order.splice(anchor ? order.indexOf(anchor) + 1 : 0, 0, item);
-        }
-
         const tail = [this._separator, this._showApps];
         if (this._showTrash) {
             this._trash ??= new TrashItem(this);
             tail.push(this._trash);
         } else if (this._trash) {
             this._trash.leave();
-            order.push(this._trash);
             this._trash = null;
+        }
+        // Items on their way out (apps, the Trash) keep their place while they
+        // shrink away, and so does a drag's gap: the frame loop drops them
+        // once gone. Left out here, they would stay on the dock unseen.
+        const all = [...order, ...tail];
+        const kept = this._items.filter(item => !all.includes(item) && (item.target === 0 || item === this._placeholder));
+        for (const item of kept) {
+            const before = this._items.indexOf(item);
+            const anchor = this._items.slice(0, before).reverse().find(i => all.includes(i));
+            all.splice(anchor ? all.indexOf(anchor) + 1 : 0, 0, item);
         }
         for (const item of tail) {
             if (!item.get_parent()) {
@@ -355,8 +376,15 @@ export class Bar {
                     item.presence = 1;
             }
         }
-        this._items = [...order, ...tail];
+        this._items = all;
         this._built = true;
+        // More apps than fit at the chosen size: every icon a little smaller.
+        const size = this._fittedSize();
+        if (size !== this.metrics.logical) {
+            this._setMetrics(size);
+            this._style(this._palette);
+            this._syncBehavior();
+        }
         this._syncBadges();
         this._restyleItems();
         this._layoutChanged();
@@ -446,7 +474,10 @@ export class Bar {
         this._layout();
 
         const still = this._target === 0 && Math.abs(this._envelope) < 0.002 && Math.abs(this._velocity) < 0.02;
-        if (still && !moving && dt > 0) {
+        // Not while the pointer is on the dock: only these frames see it leave
+        // (with magnification off nothing else moves, and the label and an
+        // autohiding dock would stay).
+        if (still && !moving && !this._hover && dt > 0) {
             this._envelope = this._velocity = 0;
             this._layout();
             this._stopTimeline();

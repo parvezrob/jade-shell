@@ -6,7 +6,7 @@ import {ExtensionState} from 'resource:///org/gnome/shell/misc/extensionUtils.js
 
 import {Bar} from './bar.js';
 import {Genie} from './genie.js';
-import {retint, smooth} from './items.js';
+import {retint, smooth, unsmoothAll} from './items.js';
 
 // Docks that would sit in the same place. Setup turns them off; while one is
 // still running (the user turned it back on), Jade's dock stays out of its way.
@@ -118,6 +118,7 @@ export class Dock {
         AppDisplay.AppIcon.prototype._createIcon = this._createIcon;
         AppDisplay.FolderView.prototype.createFolderIcon = this._createFolderIcon;
         this._createIcon = this._createFolderIcon = null;
+        unsmoothAll();
     }
 
     _retintGrid() {

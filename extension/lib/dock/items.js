@@ -35,6 +35,9 @@ const URGENT_GIVE_UP_S = 20;
 
 // An icon drawn from a texture several times its size needs mipmaps, or its
 // edges shimmer; St.Icon puts the texture in a child actor when it loads.
+// GNOME's app grid icons are watched too: unsmoothAll() lets them go.
+const smoothed = new Set();
+
 export function smooth(icon) {
     const prepare = child => {
         child.set_content_scaling_filters(Clutter.ScalingFilter.TRILINEAR, Clutter.ScalingFilter.LINEAR);
@@ -42,8 +45,16 @@ export function smooth(icon) {
             tintTexture(child);
     };
     icon.get_children().forEach(prepare);
-    icon.connect('child-added', (_icon, child) => prepare(child));
+    icon.connectObject('child-added', (_icon, child) => prepare(child),
+        'destroy', () => smoothed.delete(icon), smoothed);
+    smoothed.add(icon);
     return icon;
+}
+
+export function unsmoothAll() {
+    for (const icon of smoothed)
+        icon.disconnectObject(smoothed);
+    smoothed.clear();
 }
 
 // The palette while the dock's icons are tinted (Settings › Dock), else null.
