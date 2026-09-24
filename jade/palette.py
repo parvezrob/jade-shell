@@ -4,6 +4,7 @@ Ported from Omarchy's `omarchy-theme-color` (MIT) so each key resolves to the
 same value Omarchy would give it: legacy short names, ANSI fallbacks, and
 derived shades for anything a theme leaves out.
 """
+import re
 import tomllib
 
 ANSI = {
@@ -37,8 +38,36 @@ def mix(start, end, amount):
     return to_hex(int(s * (1 - amount) + e * amount + 0.5) for s, e in zip(rgb(start), rgb(end), strict=True))
 
 
+HEX = re.compile(r'#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})')
+MODES = ('dark', 'light')
+
+
+def clean(raw):
+    """Only what a palette may hold: colors as #rrggbb, and dark or light.
+
+    Every value ends up inside other programs' configs (Lua for Neovim, tmux,
+    CSS, TOML), so anything else, from a community theme or an override, is
+    dropped here rather than escaped for each of them."""
+    out = {}
+    for key, value in raw.items():
+        if not isinstance(value, str) or not re.fullmatch(r'\w+', key):
+            continue
+        if key in ('mode', 'theme_type'):
+            if value in MODES:
+                out[key] = value
+            continue
+        match = HEX.fullmatch(value.strip())
+        if match:
+            digits = match.group(1).lower()
+            out[key] = '#' + (''.join(d * 2 for d in digits) if len(digits) == 3 else digits)
+    return out
+
+
 def resolve(raw):
-    c = {k: v for k, v in raw.items() if isinstance(v, str)}
+    c = clean(raw)
+    if not (c.get('background') or c.get('bg') or c.get('color0')) or \
+            not (c.get('foreground') or c.get('fg') or c.get('color7')):
+        raise ValueError('a palette needs a background and a foreground color')
 
     def alias(key, fallback):
         if not c.get(key) and c.get(fallback):
@@ -57,6 +86,10 @@ def resolve(raw):
         alias(semantic, ansi)
     alias('magenta', 'purple')
     alias('bright_magenta', 'bright_purple')
+    # A theme that leaves a base color out (or had it dropped as invalid)
+    # still resolves; the text color stands in.
+    for name in ['red', 'green', 'yellow', 'blue', 'magenta', 'cyan']:
+        c.setdefault(name, c['foreground'])
 
     c.setdefault('light_foreground', c.get('color7') or c['foreground'])
     c.setdefault('bright_foreground', c.get('color15') or c['foreground'])
@@ -89,5 +122,5 @@ def resolve(raw):
 
 def load(path, overrides=None):
     palette = resolve(tomllib.loads(path.read_text()))
-    palette.update(overrides or {})
+    palette.update(clean(overrides or {}))
     return palette

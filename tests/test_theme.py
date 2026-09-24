@@ -54,6 +54,21 @@ class Palette(unittest.TestCase):
     def test_mix(self):
         self.assertEqual(palette.mix('#000000', '#ffffff', '50%'), '#808080')
 
+    def test_only_colors_and_modes_reach_other_programs_configs(self):
+        # A community theme's values end up in Lua, tmux and CSS: nothing but
+        # colors and dark/light may get there.
+        c = palette.resolve({'background': '#111111', 'foreground': '#eeeeee', 'accent': '#abc',
+                             'mode': 'dark"; os.execute("touch /tmp/pwned") --', 'red': 'red; run-shell x'})
+        self.assertEqual(c['mode'], 'dark')
+        self.assertEqual(c['accent'], '#aabbcc')
+        self.assertEqual(c['red'], '#eeeeee')  # dropped, so the text color stands in
+        lua = themes.render(themes.template('neovim.lua.tpl'), {**c, 'name': 'X'})
+        self.assertNotIn('pwned', lua)
+        self.assertEqual(palette.load(ROOT / 'themes/nord/colors.toml', {'accent': '"; evil'})['accent'],
+                         palette.load(ROOT / 'themes/nord/colors.toml')['accent'])
+        with self.assertRaises(ValueError):
+            palette.resolve({'background': 'nope', 'foreground': '#ffffff'})
+
     def test_every_theme_loads_and_renders_every_template(self):
         for theme_id in themes.ids():
             theme = themes.load(theme_id)
