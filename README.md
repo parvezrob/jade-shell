@@ -2,7 +2,7 @@
 
 **Omarchy's look for the GNOME you already have.**
 
-One install gives Fedora or Ubuntu Omarchy's 22 themes, dark and light, a theme picker that re-colors the whole desktop at once, workspace buttons, a light system monitor and your Claude and Codex usage in the top bar. No new OS, no tiling window manager to learn.
+One install gives Fedora or Ubuntu Omarchy's 22 themes, dark and light, a theme picker that re-colors the whole desktop at once, a Mac-style dock, workspace buttons, a light system monitor and your Claude and Codex usage in the top bar. No new OS, no tiling window manager to learn.
 
 **Status: early (0.9), GNOME 50 only.** Tested on Fedora 44 and Ubuntu 26.04. Fedora Atomic desktops (Silverblue, Kinoite) are not supported yet: the installer stops on them.
 
@@ -17,12 +17,12 @@ curl -fsSL https://raw.githubusercontent.com/parvezrob/jade-shell/main/install.s
 Run it as your desktop user. It downloads the latest `.rpm` or `.deb` release, checks it against the release checksums, installs it with `dnf` or `apt` (asking for your password), then runs `jade setup`, which:
 
 - turns off extensions that do the same jobs or would take over the top bar (Dash to Panel, OpenBar, User Themes, Blur my Shell, system monitors such as Vitals and a few more; `setup` names each one it turns off, and `jade restore` turns them back on),
-- sets up the dock (Dash to Dock on Fedora, Ubuntu Dock on Ubuntu),
+- hands the dock to Jade Shell's own (turning off Dash to Dock or Ubuntu Dock; `jade restore` turns them back on),
 - starts the usage collector if you have Claude Code or Codex,
 - downloads the first wallpaper of each theme for the picker's previews (one full-size image per theme; other wallpapers are downloaded when you pick them),
 - applies Osaka Jade.
 
-Running `jade setup` again keeps the dock layout and AI usage choice you made since; with AI usage turned off, the collector stays stopped.
+Running `jade setup` again keeps the settings and AI usage choice you made since; with AI usage turned off, the collector stays stopped.
 
 **Updates** come through `dnf`, `apt`, GNOME Software or the installer. Jade Shell notices a new version is installed and offers to log out; at the next login it finishes the update in the background (the settings and one-time changes the new version needs, the theme rebuilt), leaves on any extension you turned back on yourself, and says when it's done. `update.log` in `~/.local/state/jade-shell` has the details.
 
@@ -35,6 +35,7 @@ Log out and back in once to start the extension. A few notes at that first login
 ## Use
 
 - **Picker:** click the palette icon in the top bar, or press **Super+Ctrl+Shift+Space**. Arrow keys move, Enter applies. The menu stays open while you try themes. Each theme keeps the wallpaper you last gave it; pick the current theme again for its next wallpaper.
+- **Dock:** icons grow under the pointer, a label names each one, running apps have a dot, and an app's icon bounces until its window is up (or when it asks for attention). Windows pour into their icon when minimized (the genie), and the trash and the app grid sit past the separator. It hides when a window comes near it; push the pointer against the bottom edge to bring it back. Right-click an icon for its windows, New Window, Pin or Unpin and Quit; drag apps from the app grid onto it, or along it, to pin and order them. It is drawn on frosted glass in the theme's colors, and moves by transforms on the GPU, so it keeps up with high refresh rate screens. Size, magnification, when it hides and its effects are under **Dock** in the settings.
 - **Command line:**
 
   ```bash
@@ -48,7 +49,7 @@ Log out and back in once to start the extension. A few notes at that first login
   `--only` and `--skip` limit a switch to some targets, e.g. `jade theme set nord --skip vscode,kitty`. The target names are in the table below.
 - **Leave an app alone:** turn it off under **Apps** in the settings, or run `jade apps off kitty`. Its own config comes back as it was before Jade Shell (keeping any edits you made since), and no switch, setup or picker touches it again until `jade apps on kitty`. `jade apps` lists them all.
 - **Reporting a problem:** `jade debug` collects what a bug report needs (versions, GPU, extensions, `jade doctor`, the end of the install log, GNOME Shell's messages about Jade Shell) with your user name, host name and home folder replaced, and offers to save it and open a pre-filled GitHub issue. The settings' About page has the same as **Report a Problem…**.
-- **Settings:** open Jade Shell's settings (Extensions app, or Settings in the AI usage menu). **Desktop** turns parts of the top bar on or off, sets the clock format, the app grid size and the picker's shortcut, and chooses which apps get themed. **AI Usage** sets how often usage is collected. **About** has the version and credits, the update check, **Run Checks** (what `jade doctor` checks, with what to do about each problem) and **Restore My Previous Desktop**: everything `jade doctor` and `jade restore` do, without a terminal.
+- **Settings:** open Jade Shell's settings (Extensions app, or Settings in the AI usage menu). **Desktop** turns parts of the top bar on or off, sets the clock format, the app grid size and the picker's shortcut, and chooses which apps get themed. **Dock** sets the dock's size, magnification and when it hides. **AI Usage** sets how often usage is collected. **About** has the version and credits, the update check, **Run Checks** (what `jade doctor` checks, with what to do about each problem) and **Restore My Previous Desktop**: everything `jade doctor` and `jade restore` do, without a terminal.
 
 ## What a theme switch changes
 
@@ -56,7 +57,7 @@ Log out and back in once to start the extension. A few notes at that first login
 |---|---|
 | GNOME Shell (`shell`) | a Shell theme compiled from GNOME's own theme sources (the light ones for light themes) with the Omarchy palette and the theme's exact accent: top bar, menus, quick settings, calendar, notifications, dialogs, lock screen |
 | GNOME (`gnome`) | light or dark style to match the theme, the nearest named accent for apps, wallpaper (desktop and lock screen) |
-| Dock (`dock`) | Dash to Dock or Ubuntu Dock colors |
+| Dock (`dock`) | Dash to Dock or Ubuntu Dock colors, if you use one instead of Jade Shell's dock (which follows the theme by itself) |
 | Ptyxis (`ptyxis`) | an Omarchy palette file, selected in every profile |
 | GNOME apps (`gtk`) | the theme's colors in a marked block of `~/.config/gtk-4.0/gtk.css` and `gtk-3.0/gtk.css` (libadwaita's named colors and CSS variables), so Files, Settings, Text Editor and other GNOME apps follow the theme when they next start; GTK 3 apps follow with the adw-gtk3 theme. Setup lets Flatpak apps read those files; restore takes that back |
 | Kitty (`kitty`) | `jade-theme.conf`, included at the end of `kitty.conf` (your own colors stay, overridden); kitty reloads |

@@ -56,8 +56,6 @@ overrides:
       - gdk-pixbuf2
       - sassc
       - jetbrains-mono-fonts
-    recommends:
-      - gnome-shell-extension-dash-to-dock
   deb:
     depends:
       - gnome-shell (>= 50)

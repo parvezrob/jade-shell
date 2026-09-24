@@ -908,6 +908,23 @@ class DockScene {
         window.delete(global.get_current_time());
         await wait(1500);
         log(`DOCK closed: items ${bar._items.filter(item => item.kind === 'app').length} apps`);
+
+        // Animations off (no GPU, or Settings › Accessibility): a click still
+        // launches, without a bounce.
+        const iface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        iface.set_boolean('enable-animations', false);
+        await wait(300);
+        const editor = apps.find(item => item.id === 'org.gnome.TextEditor.desktop');
+        await this.click(this.centerOf(bar._items.indexOf(editor)), this.iconY);
+        let editorWindow = null;
+        for (let i = 0; i < 60 && !editorWindow; i++) {
+            await wait(250);
+            editorWindow = editor.app.get_windows()[0] ?? null;
+        }
+        log(`DOCK animations off: launched ${Boolean(editorWindow)}, bounced ${editor.isBouncing}`);
+        editorWindow?.delete(global.get_current_time());
+        iface.set_boolean('enable-animations', true);
+        await wait(800);
     }
 }
 

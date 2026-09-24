@@ -117,8 +117,14 @@ class JadeDockAppIcon extends AppDisplay.AppIcon {
         this._owner?.syncRunning();
     }
 
+    // Called before GNOME launches the app: whatever happens here must not
+    // stop the launch.
     animateLaunch() {
-        this._owner?.bounce('launch');
+        try {
+            this._owner?.bounce('launch');
+        } catch (e) {
+            console.error(`Jade Shell: dock bounce: ${e.message}`);
+        }
     }
 
     // No folders in the dock: let the drag reach the dock itself.
@@ -214,7 +220,8 @@ class JadeDockAppItem extends Item {
     bounce(kind) {
         if (this._bouncing && (this._bouncing.kind === kind || kind === 'attention'))
             return;
-        if (!this._bar.bounces)
+        // With animations off (Settings › Accessibility, or no GPU), no bounce.
+        if (!this._bar.bounces || !St.Settings.get().enable_animations)
             return;
         this._stopBouncing();
         const started = GLib.get_monotonic_time();
@@ -242,7 +249,9 @@ class JadeDockAppItem extends Item {
                     translation_y: 0,
                     duration: BOUNCE_MS,
                     mode: Clutter.AnimationMode.EASE_IN_QUAD,
-                    onComplete: hop,
+                    // From the main loop: an ease that ends at once (animations
+                    // turned off meanwhile) must not make this recurse.
+                    onComplete: () => GLib.idle_add_once(GLib.PRIORITY_DEFAULT, hop),
                 }),
             });
         };
