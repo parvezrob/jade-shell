@@ -90,7 +90,7 @@ export function scaleRow(settings, group, key, title, subtitle, {lower, upper, s
 
 // The dock's page: on or off, its size, how much icons grow, when it hides.
 export function dockPage(settings, switchRow) {
-    const page = new Adw.PreferencesPage({title: 'Dock', icon_name: 'user-bookmarks-symbolic'});
+    const page = new Adw.PreferencesPage({name: 'dock', title: 'Dock', icon_name: 'user-bookmarks-symbolic'});
 
     const main = new Adw.PreferencesGroup();
     page.add(main);

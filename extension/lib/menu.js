@@ -17,7 +17,7 @@ import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
 
 import {notify} from './notify.js';
-import {jadeCommand, run, SPAWN} from './util.js';
+import {jadeCommand, openSettings, run, SPAWN} from './util.js';
 
 const README = 'https://github.com/parvezrob/jade-shell#readme';
 const MAX_RESULTS = 60;
@@ -139,7 +139,7 @@ export class JadeMenu {
                 {label: 'Icons', icon: 'image-x-generic-symbolic', children: () => this._icons()},
             ]},
             {label: 'Setup', icon: 'preferences-system-symbolic', children: () => [
-                {label: 'Jade Shell Settings', icon: 'preferences-system-symbolic', action: () => this._extension.openPreferences()},
+                {label: 'Jade Shell Settings', icon: 'preferences-system-symbolic', action: () => openSettings()},
                 {label: 'GNOME Settings', icon: 'org.gnome.Settings-symbolic', action: () => launch('gnome-control-center')},
                 {label: 'Network', icon: 'network-wired-symbolic', action: () => this._parts('Network')?.toggle()},
                 {label: 'Speed Test', icon: 'network-transmit-receive-symbolic', action: () => this._parts('Network')?.toggle(true)},

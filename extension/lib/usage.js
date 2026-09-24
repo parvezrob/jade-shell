@@ -10,7 +10,7 @@ import St from 'gi://St';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {SPAWN, VERTICAL, addToPanel, cairoRgb, jadeCommand, label as baseLabel} from './util.js';
+import {SPAWN, VERTICAL, addToPanel, cairoRgb, jadeCommand, label as baseLabel, openSettings} from './util.js';
 
 // Providers in display order. A record for any of them in the records
 // directory earns it a tab; the collectors decide what goes in a record.
@@ -522,7 +522,7 @@ export class Usage {
         this._refreshAction = action('Refresh', 'view-refresh-symbolic', () => this._runCollector('--force'));
         action('Settings', 'emblem-system-symbolic', () => {
             menu.close();
-            this._extension.openPreferences();
+            openSettings('usage');
         });
     }
 

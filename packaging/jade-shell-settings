@@ -1,0 +1,93 @@
+#!/usr/bin/env -S gjs -m
+// The Jade Shell app: Jade Shell's settings in a window of its own, found by
+// searching "Jade", "theme" or "dock", with its own name and icon in the dock
+// and Alt+Tab. The pages are the extension's own (settings/pages.js), the
+// same ones GNOME's Extensions app shows.
+//
+//   jade-shell-settings [--page welcome|desktop|dock|usage|about]
+//
+// A second launch brings the open window forward and turns to the page.
+import Adw from 'gi://Adw?version=1';
+import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
+import Gtk from 'gi://Gtk?version=4.0';
+import {programArgs} from 'system';
+
+const APP_ID = 'io.github.parvezrob.JadeShell';
+const UUID = 'jade-shell@parvezrob.github.io';
+
+// The extension this app belongs to: the one for this user (a development
+// copy) wins over the installed one, as GNOME Shell loads it.
+// JADE_EXTENSION_DIR points at another (a checkout's extension/, for testing).
+function extensionDir() {
+    const override = GLib.getenv('JADE_EXTENSION_DIR');
+    if (override)
+        return Gio.File.new_for_path(override);
+    const dirs = [GLib.build_filenamev([GLib.get_user_data_dir(), 'gnome-shell', 'extensions', UUID]),
+        ...GLib.get_system_data_dirs().map(dir => GLib.build_filenamev([dir, 'gnome-shell', 'extensions', UUID]))];
+    const found = dirs.find(dir => GLib.file_test(GLib.build_filenamev([dir, 'metadata.json']), GLib.FileTest.EXISTS));
+    return found ? Gio.File.new_for_path(found) : null;
+}
+
+function pageFrom(argv) {
+    const i = argv.indexOf('--page');
+    return i >= 0 ? argv[i + 1] ?? null : argv.find(arg => arg.startsWith('--page='))?.slice(7) ?? null;
+}
+
+const JadeShellApp = GObject.registerClass(class JadeShellApp extends Adw.Application {
+    constructor() {
+        super({application_id: APP_ID, flags: Gio.ApplicationFlags.HANDLES_COMMAND_LINE});
+    }
+
+    vfunc_command_line(commandLine) {
+        this._show(pageFrom(commandLine.get_arguments()));
+        return 0;
+    }
+
+    async _show(page) {
+        if (!this._window) {
+            this.hold();
+            try {
+                this._window = await this._build();
+            } catch (e) {
+                printerr(`Jade Shell: could not open its settings: ${e.message}`);
+                logError(e);
+            } finally {
+                this.release();
+            }
+        }
+        if (!this._window)
+            return;
+        if (page && this._window.get_visible_page_name?.() !== undefined)
+            this._window.set_visible_page_name(page);
+        this._window.present();
+    }
+
+    async _build() {
+        const dir = extensionDir();
+        if (!dir) {
+            printerr('Jade Shell is not installed (no jade-shell extension found).');
+            return null;
+        }
+        const source = Gio.SettingsSchemaSource.new_from_directory(dir.get_child('schemas').get_path(),
+            Gio.SettingsSchemaSource.get_default(), false);
+        const schema = source.lookup('org.gnome.shell.extensions.jade-shell', false);
+        if (!schema)
+            throw new Error(`no settings schema in ${dir.get_path()}/schemas`);
+        const settings = new Gio.Settings({settings_schema: schema});
+        const [, bytes] = dir.get_child('metadata.json').load_contents(null);
+        const metadata = JSON.parse(new TextDecoder().decode(bytes));
+        const {Pages} = await import(dir.get_child('settings').get_child('pages.js').get_uri());
+        const window = new Adw.PreferencesWindow({application: this, title: 'Jade Shell'});
+        new Pages({settings, metadata, dir}).fill(window);
+        window.connect('close-request', () => {
+            this._window = null;
+            return false;
+        });
+        return window;
+    }
+});
+
+Gtk.init();
+new JadeShellApp().run([imports.system.programInvocationName, ...programArgs]);

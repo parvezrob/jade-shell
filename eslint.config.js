@@ -4,12 +4,12 @@ import js from '@eslint/js';
 export default [
     js.configs.recommended,
     {
-        files: ['extension/**/*.js', 'tests/shell/**/*.js'],
+        files: ['extension/**/*.js', 'tests/shell/**/*.js', 'packaging/jade-shell-settings'],
         languageOptions: {
             ecmaVersion: 2024,
             sourceType: 'module',
             globals: {
-                global: 'readonly', log: 'readonly', logError: 'readonly', print: 'readonly', printerr: 'readonly',
+                global: 'readonly', imports: 'readonly', log: 'readonly', logError: 'readonly', print: 'readonly', printerr: 'readonly',
                 console: 'readonly', TextDecoder: 'readonly', TextEncoder: 'readonly',
                 setTimeout: 'readonly', clearTimeout: 'readonly', setInterval: 'readonly', clearInterval: 'readonly',
             },

@@ -28,6 +28,14 @@ contents:
     dst: /usr/bin/jade
     file_info:
       mode: 0755
+  - src: packaging/jade-shell-settings
+    dst: /usr/bin/jade-shell-settings
+    file_info:
+      mode: 0755
+  - src: packaging/app/io.github.parvezrob.JadeShell.desktop
+    dst: /usr/share/applications/io.github.parvezrob.JadeShell.desktop
+  - src: packaging/app/io.github.parvezrob.JadeShell.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/io.github.parvezrob.JadeShell.svg
   - src: packaging/install-update
     dst: /usr/libexec/jade-shell/install-update
     file_info:
@@ -56,6 +64,10 @@ overrides:
       - gdk-pixbuf2
       - sassc
       - jetbrains-mono-fonts
+      # The Jade Shell app (jade-shell-settings) and its weather.
+      - gjs
+      - libadwaita
+      - libgweather
     # Copy Text and Read QR Code in the Jade Menu and the screenshot card.
     recommends:
       - tesseract
@@ -69,6 +81,9 @@ overrides:
       - gir1.2-gdkpixbuf-2.0
       - sassc
       - fonts-jetbrains-mono
+      - gjs
+      - gir1.2-adw-1
+      - gir1.2-gweather-4.0
     recommends:
       - tesseract-ocr
       - zbar-tools

@@ -529,6 +529,24 @@ def run_setup(args, ctx):
     return setup.setup(ctx, theme_id=args.theme, after_update=args.after_update)
 
 
+SETTINGS_PAGES = ['welcome', 'desktop', 'dock', 'usage', 'about']
+
+
+def run_settings(args, ctx):
+    """Open the Jade Shell app (its settings), on a page if one is given."""
+    import shutil
+    app = shutil.which('jade-shell-settings')
+    argv = [app] + (['--page', args.page] if args.page else []) if app else \
+        ['gnome-extensions', 'prefs', setup.UUID]
+    try:
+        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError as error:
+        print(f'Could not open Jade Shell\'s settings: {error}', file=sys.stderr)
+        return 1
+    return 0
+
+
 def run_doctor(args, ctx):
     return setup.doctor(ctx, as_json=args.json)
 
@@ -629,6 +647,8 @@ def parser():
                                           'top bar choices)')
     p.add_argument('--theme', choices=themes.ids(), help='theme to apply (default: keep the current one, or Osaka Jade)')
     p.add_argument('--after-update', action='store_true', help=argparse.SUPPRESS)  # run by the extension at login
+    p = commands.add_parser('settings', help='open the Jade Shell app, its settings')
+    p.add_argument('page', nargs='?', choices=SETTINGS_PAGES, help='the page to open')
     commands.add_parser('doctor', help='check that everything Jade Shell needs is in place').add_argument(
         '--json', action='store_true', help='print the checks as JSON (for the settings window)')
     p = commands.add_parser('debug', help='the details a bug report needs, without your name or home folder')
@@ -657,6 +677,7 @@ HANDLERS = {
     ('font', None): font_list, ('font', 'list'): font_list, ('font', 'set'): font_set,
     ('apps', None): apps_list, ('apps', 'list'): apps_list, ('apps', 'off'): apps_off, ('apps', 'on'): apps_on,
     ('setup', None): run_setup, ('doctor', None): run_doctor, ('update', None): run_update, ('restore', None): run_restore,
+    ('settings', None): run_settings,
     ('debug', None): run_debug,
 }
 

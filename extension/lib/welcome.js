@@ -2,7 +2,7 @@ import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 
 import {notify} from './notify.js';
-import {shortcutText, stateDir} from './util.js';
+import {openSettings, shortcutText, stateDir} from './util.js';
 
 // Long enough after login for the desktop to settle, so the first banner
 // isn't lost among apps starting up.
@@ -43,7 +43,7 @@ export class Welcome {
             title: 'Welcome to Jade Shell',
             body: shortcut ? `Pick a theme with ${shortcut}, or the palette icon in the top bar.`
                 : 'Pick a theme from the palette icon in the top bar.',
-            actions: [['Pick a Theme', () => this._openPicker()], ['Settings', () => this._extension.openPreferences()]],
+            actions: [['Pick a Theme', () => this._openPicker()], ['Settings', () => openSettings('welcome')]],
         }];
         if (this._settings.get_boolean('notification-bell')) {
             hints.push({

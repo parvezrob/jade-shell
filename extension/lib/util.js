@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
+import GioUnix from 'gi://GioUnix';
 import GLib from 'gi://GLib';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -30,6 +31,27 @@ export function jadeCommand() {
 // close-on-exec, so nothing extra is inherited, but children do inherit the
 // Shell's ignored SIGPIPE (posix_spawn does not reset it).
 export const SPAWN = Gio.SubprocessFlags.INHERIT_FDS;
+
+// The Jade Shell app (its settings), on a page when given one: welcome,
+// desktop, dock, usage or about. Launched as GNOME launches apps, so it comes
+// to the front and the dock knows it. Without the app (a development copy),
+// the Extensions app's window instead.
+export const APP_ID = 'io.github.parvezrob.JadeShell.desktop';
+const UUID = 'jade-shell@parvezrob.github.io';
+export function openSettings(page = null) {
+    const app = GioUnix.DesktopAppInfo.new(APP_ID);
+    try {
+        if (app && page && app.list_actions().includes(page))
+            app.launch_action(page, global.create_app_launch_context(0, -1));
+        else if (app)
+            app.launch([], global.create_app_launch_context(0, -1));
+        else
+            Main.extensionManager.openExtensionPrefs(UUID, '', {});
+    } catch (e) {
+        console.error(`Jade Shell: could not open its settings: ${e.message}`);
+        Main.extensionManager.openExtensionPrefs(UUID, '', {});
+    }
+}
 
 // Run a command without blocking the Shell; resolves with whether it succeeded,
 // its exit status (null when killed by a signal) and output.

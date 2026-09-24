@@ -10,7 +10,7 @@ const REPO = 'https://github.com/parvezrob/jade-shell';
 // Shell (`jade restore`), all without a terminal.
 export function aboutPage(settings, metadata, switchRow) {
     const version = metadata['version-name'] ?? null;
-    const page = new Adw.PreferencesPage({title: 'About', icon_name: 'help-about-symbolic'});
+    const page = new Adw.PreferencesPage({name: 'about', title: 'About', icon_name: 'help-about-symbolic'});
 
     const about = new Adw.PreferencesGroup();
     page.add(about);

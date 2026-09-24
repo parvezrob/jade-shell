@@ -1,0 +1,34 @@
+[Desktop Entry]
+Type=Application
+Name=Jade Shell
+GenericName=Desktop Look
+Comment=Themes, dock, glass, top bar and keys for your GNOME desktop
+Exec=jade-shell-settings
+Icon=io.github.parvezrob.JadeShell
+Terminal=false
+Categories=Settings;DesktopSettings;GNOME;GTK;
+Keywords=jade;omarchy;theme;themes;dock;glass;blur;wallpaper;top bar;panel;weather;keyboard;shortcuts;keymap;icons;appearance;
+StartupNotify=true
+StartupWMClass=io.github.parvezrob.JadeShell
+DBusActivatable=false
+Actions=welcome;desktop;dock;usage;about;
+
+[Desktop Action welcome]
+Name=Welcome
+Exec=jade-shell-settings --page welcome
+
+[Desktop Action desktop]
+Name=Desktop Settings
+Exec=jade-shell-settings --page desktop
+
+[Desktop Action dock]
+Name=Dock Settings
+Exec=jade-shell-settings --page dock
+
+[Desktop Action usage]
+Name=AI Usage Settings
+Exec=jade-shell-settings --page usage
+
+[Desktop Action about]
+Name=About and Checks
+Exec=jade-shell-settings --page about

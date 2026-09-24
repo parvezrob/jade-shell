@@ -5,6 +5,7 @@ session bus, and stand-ins for gnome-shell, pkill, systemctl and vicinae on
 PATH, so nothing reaches the real desktop.
 """
 import configparser
+import contextlib
 import hashlib
 import io
 import json
@@ -26,7 +27,7 @@ import sandbox  # noqa: F401  (first: a throwaway home for the whole process)
 
 sys.path.insert(0, str(ROOT))
 
-from jade import __version__, debug, engine, migrations, palette, restore_offer, setup, shelltheme, store, themes, update
+from jade import __version__, cli, debug, engine, migrations, palette, restore_offer, setup, shelltheme, store, themes, update
 from jade.setup import DASH_TO_DOCK, REPLACED, UBUNTU_DOCK, UUID
 from jade.targets.apps import VSCode, jsonc, managed_block, restore_theme_names, revert_block, revert_line, set_theme_names
 from jade.targets.gnome import Gnome, nearest_accent
@@ -1227,3 +1228,27 @@ elif 'show' in args and 'connection' in args:
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SettingsCommand(unittest.TestCase):
+    """`jade settings [page]` opens the Jade Shell app, or the Extensions app without it."""
+
+    def launch(self, which, *argv):
+        started = []
+        with mock.patch('shutil.which', lambda name: which), \
+                mock.patch('subprocess.Popen', lambda cmd, **kw: started.append(cmd)):
+            args = cli.parser().parse_args(['settings', *argv])
+            self.assertEqual(cli.run_settings(args, None), 0)
+        return started[0]
+
+    def test_opens_the_app_on_a_page(self):
+        self.assertEqual(self.launch('/usr/bin/jade-shell-settings', 'dock'),
+                         ['/usr/bin/jade-shell-settings', '--page', 'dock'])
+        self.assertEqual(self.launch('/usr/bin/jade-shell-settings'), ['/usr/bin/jade-shell-settings'])
+
+    def test_falls_back_to_the_extensions_app(self):
+        self.assertEqual(self.launch(None, 'dock'), ['gnome-extensions', 'prefs', 'jade-shell@parvezrob.github.io'])
+
+    def test_rejects_unknown_pages(self):
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+            cli.parser().parse_args(['settings', 'nowhere'])
