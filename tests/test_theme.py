@@ -1216,7 +1216,10 @@ elif 'show' in args and 'connection' in args:
         self.assertIn('disable --now jade-usage.timer', self.systemctl_log.read_text())
         self.assertNotIn('--user enable --now jade-usage.timer', self.systemctl_log.read_text().splitlines())
 
+        welcome = self.home / '.local/state/jade-shell/welcome.json'  # the first-run welcome, as the app records it
+        welcome.write_text('{"shown": ["window", "bell"]}')
         self.jade('restore', '--yes')
+        self.assertFalse(welcome.exists())  # set up again later, the welcome shows again
         before['org/gnome/shell']['enabled-extensions'] = f"['{replaced}', 'keep@me', 'later@me']"
         before['org/gnome/shell/extensions/jade-shell'] = {'show-usage': 'false'}  # setup never changed it
         self.assertEqual(self.keyfile(), before)

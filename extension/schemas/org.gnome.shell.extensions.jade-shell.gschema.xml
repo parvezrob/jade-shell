@@ -166,7 +166,21 @@
     <key name="show-weather" type="b">
       <default>true</default>
       <summary>Show the weather in the top bar</summary>
-      <description>For GNOME Weather's location; nothing shows without one.</description>
+      <description>For the place chosen in the Jade Shell app (or GNOME's); nothing shows without one.</description>
+    </key>
+    <key name="weather-location" type="(sdd)">
+      <default>('', 0.0, 0.0)</default>
+      <summary>The weather's place: its name, latitude and longitude (degrees)</summary>
+      <description>Chosen in the Jade Shell app. Empty: GNOME's weather place, if there is one.</description>
+    </key>
+    <key name="weather-unit" type="s">
+      <choices>
+        <choice value="default"/>
+        <choice value="celsius"/>
+        <choice value="fahrenheit"/>
+      </choices>
+      <default>'default'</default>
+      <summary>Temperature unit of the weather: default follows the language's</summary>
     </key>
     <key name="show-network" type="b">
       <default>true</default>

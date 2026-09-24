@@ -22,11 +22,11 @@ const LOOKS = [
 // The icons row: Tahoe is Jade's Mac-style icon theme (`jade apps on icons`
 // downloads and applies it, `off` puts the old icons back); the tint is the
 // dock's own.
-function iconsRow(settings, group) {
+export function iconsRow(settings, group) {
     const iface = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
     const row = new Adw.ComboRow({
         title: 'Icons',
-        subtitle: 'Tahoe: Mac-style icons, their folders in the theme’s accent (a 10 MB download). Tinted: in the theme’s own shades.',
+        subtitle: 'Tahoe: Mac-style icons, their folders in the theme’s accent (a 10 MB download, about 180 MB once built). Tinted: in the theme’s own shades.',
         model: Gtk.StringList.new(LOOKS.map(([, , label]) => label)),
     });
     const current = () => {

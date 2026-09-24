@@ -378,6 +378,14 @@ def sticks(change):
     return not (change.key == 'show-usage' and change.value is False)
 
 
+def welcomed():
+    """Whether the Jade Shell app's Welcome page has been on screen here."""
+    try:
+        return 'window' in json.loads((engine.state_dir() / 'welcome.json').read_text()).get('shown', [])
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def setup(ctx, theme_id=None, after_update=False):
     """Set up this desktop, or finish an update (`after_update`: run by the
     extension at the first login with a new version, without a terminal)."""
@@ -512,7 +520,8 @@ def setup(ctx, theme_id=None, after_update=False):
     shortcut = picker_shortcut(ctx)
     say(f'Change theme with {shortcut or "the palette icon in the top bar"}. Undo everything with: jade restore')
     if needs_login(UUID):
-        say('Done. Log out and back in once to start this version of Jade Shell.')
+        say('Done. Log out and back in once to start this version of Jade Shell.'
+            + (' It then opens its Welcome: pick your look there.' if not welcomed() else ''))
         offer_logout()
     else:
         say('Done.')
@@ -636,6 +645,8 @@ def restore(ctx, assume_yes=False):
     kept = [path for path in kept if not pathlib.Path(path).is_relative_to(icons.icons_home())]
     icons.remove()
     manifest_path().unlink(missing_ok=True)
+    # The first-run welcome and its notes: set up again later, they show again.
+    (engine.state_dir() / 'welcome.json').unlink(missing_ok=True)
     restore_offer.drop_kit()  # nothing left to offer after a removal
     for path in dict.fromkeys(merged):
         say(f'Took Jade Shell\'s part out of {path}; your edits since stay.')

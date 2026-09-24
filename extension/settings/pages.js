@@ -5,11 +5,13 @@ import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {aboutPage} from './about.js';
-import {dockPage, scaleRow} from './dock.js';
+import {dockPage, iconsRow, scaleRow} from './dock.js';
 import {capture, jadeCommand, output, run} from './common.js';
 import {hero} from './hero.js';
 import {ShortcutRow} from './shortcut.js';
 import {applyStyle, capsTitles} from './style.js';
+import {weatherGroup} from './weather.js';
+import {welcomePage} from './welcome.js';
 
 // Jade Shell's settings, as pages of an Adw.PreferencesWindow. Plain GJS with
 // no host of its own: GNOME's Extensions app shows them through prefs.js,
@@ -76,6 +78,7 @@ export class Pages {
         const settings = this._settings;
         window._settings = settings;
 
+        window.add(welcomePage(settings, {window, iconsRow, keymapRow}));
         const page = new Adw.PreferencesPage({name: 'desktop', title: 'Desktop', icon_name: 'preferences-desktop-appearance-symbolic'});
         window.add(page);
         const top = hero(this.metadata['version-name'] ?? null);
@@ -85,7 +88,7 @@ export class Pages {
         page.add(bar);
         switchRow(settings, bar, 'show-workspaces', 'Workspaces', 'Numbered workspace buttons in place of Activities');
         switchRow(settings, bar, 'show-media', 'Media', 'What’s playing, while something plays; click for controls, scroll to skip');
-        switchRow(settings, bar, 'show-weather', 'Weather', 'For the place set in GNOME Weather; nothing shows without one');
+        switchRow(settings, bar, 'show-weather', 'Weather', 'For the city picked below; nothing shows without one');
         switchRow(settings, bar, 'show-network', 'Network', 'An icon that opens connection, speed test and DNS, in place of GNOME’s');
         switchRow(settings, bar, 'show-monitor', 'System monitor', 'An icon that opens CPU, memory, GPU and storage');
         switchRow(settings, bar, 'monitor-show-values', 'Monitor numbers in the top bar', 'Instead of the icon; measures every two seconds');
@@ -96,6 +99,8 @@ export class Pages {
         settings.bind('clock-format', clock, 'text', Gio.SettingsBindFlags.DEFAULT);
         settings.bind('show-clock-format', clock, 'sensitive', Gio.SettingsBindFlags.GET);
         bar.add(clock);
+
+        page.add(weatherGroup(settings, {title: 'Weather', description: 'Jade fetches the weather for this city.'}));
 
         const desktop = new Adw.PreferencesGroup({title: 'Desktop', description: 'Set a size to 0 to let GNOME choose.'});
         page.add(desktop);
@@ -191,7 +196,9 @@ export class Pages {
         window.connect('close-request', () => settings.disconnect(usageChanged));
 
         window.add(aboutPage(settings, this.metadata, switchRow));
-        window.set_default_size(720, 860);
+        window.set_default_size(860, 860);
+        // Welcome is for the first run (and whoever opens it); settings open on Desktop.
+        window.set_visible_page_name('desktop');
         capsTitles(window);
         applyStyle(window, top.update);
     }

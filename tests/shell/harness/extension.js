@@ -104,25 +104,44 @@ async function weather() {
         log('weather: none');
         return;
     }
-    log(`weather: no location → shown ${part._button.visible}`);
-    const {default: GWeather} = await import('gi://GWeather');
-    // A city, as GNOME Weather's search gives it.
-    const station = GWeather.Location.get_world().find_by_station_code('VGHS');
-    const place = station.get_parent()?.get_level() === GWeather.LocationLevel.CITY ? station.get_parent() : station;
-    log(`weather: the place is ${place.get_name()} (${place.get_level()})`);
-    const shellWeather = new Gio.Settings({schema_id: 'org.gnome.shell.weather'});
-    shellWeather.set_boolean('automatic-location', false);
-    shellWeather.set_value('locations', new GLib.Variant('av', [place.serialize()]));
-    for (let i = 0; i < 40 && !part._button.visible; i++)
-        await wait(500);
-    log(`weather: Dhaka → shown ${part._button.visible}, "${part._temp.text}" ${part._icon.icon_name}, ` +
-        `${part._hours.get_n_children()} hours`);
+    const settings = Extension.lookupByUUID(UUID).getSettings();
+    log(`weather: no place → shown ${part._button.visible}`);
+    const shownWithin = async () => {
+        for (let i = 0; i < 40 && !part._button.visible; i++)
+            await wait(500);
+        return part._button.visible;
+    };
+    // The place picked in the Jade Shell app: Jade fetches it itself.
+    settings.set_value('weather-location', new GLib.Variant('(sdd)', ['Dhaka', 23.72, 90.41]));
+    const own = await shownWithin();
+    log(`weather: Jade's own place Dhaka → shown ${own}, "${part._temp.text}" ${part._icon.icon_name}, ` +
+        `${part._hours.get_n_children()} hours, menu says ${part._place.text}`);
+    const before = part._temp.text;
+    settings.set_string('weather-unit', before.startsWith('8') || before.startsWith('9') ? 'celsius' : 'fahrenheit');
+    await wait(300);
+    log(`weather: unit ${settings.get_string('weather-unit')} → "${before}" becomes "${part._temp.text}"`);
+    settings.reset('weather-unit');
+    await wait(300);
     await shoot('weather-chip', Main.panel);
     part._button.menu.open(false);
     await wait(700);
     await shoot('weather-menu', part._button.menu.box);
     part._button.menu.close(false);
     await wait(300);
+    // Forgotten: hidden again, with no GNOME place either.
+    settings.reset('weather-location');
+    await wait(1500);
+    log(`weather: place forgotten → shown ${part._button.visible}`);
+    // GNOME's place (set in GNOME Weather) is used while Jade has none.
+    const {default: GWeather} = await import('gi://GWeather');
+    const station = GWeather.Location.get_world().find_by_station_code('VGHS');
+    const place = station.get_parent()?.get_level() === GWeather.LocationLevel.CITY ? station.get_parent() : station;
+    const shellWeather = new Gio.Settings({schema_id: 'org.gnome.shell.weather'});
+    shellWeather.set_boolean('automatic-location', false);
+    shellWeather.set_value('locations', new GLib.Variant('av', [place.serialize()]));
+    const gnome = await shownWithin();
+    log(`weather: GNOME's place ${place.get_name()} → shown ${gnome}, menu says ${part._place.text}`);
+    shellWeather.reset('locations');
 }
 
 // A media player on the bus (a stand-in for Spotify or Firefox): the chip

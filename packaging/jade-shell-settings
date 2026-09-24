@@ -30,6 +30,29 @@ function extensionDir() {
     return found ? Gio.File.new_for_path(found) : null;
 }
 
+// Once the welcome has been on screen, the extension doesn't open it at the
+// next login (state/jade-shell/welcome.json, next to its show-once notes).
+function recordWelcome() {
+    const file = Gio.File.new_for_path(GLib.build_filenamev([GLib.get_user_state_dir(), 'jade-shell', 'welcome.json']));
+    let state = {};
+    try {
+        state = JSON.parse(new TextDecoder().decode(file.load_contents(null)[1]));
+    } catch {}
+    const shown = new Set(state.shown ?? []);
+    if (shown.has('window'))
+        return;
+    shown.add('window');
+    try {
+        file.get_parent().make_directory_with_parents(null);
+    } catch {}
+    try {
+        file.replace_contents(new TextEncoder().encode(JSON.stringify({...state, shown: [...shown]})), null, false,
+            Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+    } catch (e) {
+        printerr(`Jade Shell: could not record the welcome: ${e.message}`);
+    }
+}
+
 function pageFrom(argv) {
     const i = argv.indexOf('--page');
     return i >= 0 ? argv[i + 1] ?? null : argv.find(arg => arg.startsWith('--page='))?.slice(7) ?? null;
@@ -62,6 +85,8 @@ const JadeShellApp = GObject.registerClass(class JadeShellApp extends Adw.Applic
         if (page && this._window.get_visible_page_name?.() !== undefined)
             this._window.set_visible_page_name(page);
         this._window.present();
+        if (page === 'welcome')
+            recordWelcome();
     }
 
     async _build() {

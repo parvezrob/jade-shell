@@ -1,8 +1,10 @@
 // The weather in the top bar: its icon and temperature, and in its menu the
-// place, the conditions and the next hours. It follows GNOME Weather's
-// location (or the automatic one) through GNOME's own weather client, the
-// one behind the clock menu's weather (which Jade's simple calendar hides),
-// and stays out of sight while there's no location or no forecast.
+// place, the conditions and the next hours. Jade fetches it itself, through
+// GWeather (MET Norway, METAR, OpenWeatherMap: what GNOME uses), for the
+// place chosen in the Jade Shell app. GNOME's own weather needs the GNOME
+// Weather app, which Ubuntu doesn't ship. Until a place is chosen it uses
+// GNOME's place when there is one, and stays out of sight while there's no
+// place or no forecast.
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
 import GWeather from 'gi://GWeather';
@@ -10,12 +12,18 @@ import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 
-import {addToPanel, VERTICAL} from './util.js';
+import {addToPanel, openSettings, VERTICAL} from './util.js';
 
 const HOURS = 5;
+const REFRESH_MINUTES = 30;
+const PROVIDERS = GWeather.Provider.METAR | GWeather.Provider.MET_NO | GWeather.Provider.OWM;
+
+const UNITS = {default: GWeather.TemperatureUnit.DEFAULT, celsius: GWeather.TemperatureUnit.CENTIGRADE,
+    fahrenheit: GWeather.TemperatureUnit.FAHRENHEIT};
+let unit = GWeather.TemperatureUnit.DEFAULT;
 
 function temperature(info) {
-    const [ok, value] = info.get_value_temp(GWeather.TemperatureUnit.DEFAULT);
+    const [ok, value] = info.get_value_temp(unit);
     return ok ? `${Math.round(value)}°` : '';
 }
 
@@ -56,9 +64,17 @@ export class Weather {
     }
 
     enable() {
-        this._client = Main.panel.statusArea.dateMenu._weatherItem?._weatherClient ?? null;
-        if (!this._client)
-            throw new Error("GNOME's weather client is not where Jade Shell expects it");
+        this._info = new GWeather.Info({
+            application_id: 'io.github.parvezrob.JadeShell',
+            contact_info: 'https://github.com/parvezrob/jade-shell',
+            enabled_providers: PROVIDERS,
+        });
+        this._updated = this._info.connect_after('updated', () => {
+            this._loading = false;
+            this._fetched = GLib.get_monotonic_time();
+            this._sync();
+        });
+
         this._button = new PanelMenu.Button(0.5, 'Weather');
         this._button.add_style_class_name('jade-weather');
         const chip = new St.BoxLayout({style_class: 'jade-weather-chip', y_align: Clutter.ActorAlign.CENTER});
@@ -67,6 +83,7 @@ export class Weather {
         chip.add_child(this._icon);
         chip.add_child(this._temp);
         this._button.add_child(chip);
+        this._button.visible = false;
 
         const menu = this._button.menu;
         menu.box.add_style_class_name('jade-frame');
@@ -74,39 +91,87 @@ export class Weather {
         this._place = new St.Label({style_class: 'jade-weather-place'});
         this._now = new St.Label({style_class: 'jade-weather-now'});
         this._hours = new St.BoxLayout({style_class: 'jade-weather-hours'});
-        const open = new St.Button({style_class: 'jade-weather-open', label: 'Open Weather', can_focus: true});
-        open.connect('clicked', () => {
+        const change = new St.Button({style_class: 'jade-weather-open', label: 'Change Place…', can_focus: true});
+        change.connect('clicked', () => {
             menu.close();
-            this._client.activateApp();
+            openSettings('desktop');
         });
-        for (const actor of [this._place, this._now, this._hours, open])
+        for (const actor of [this._place, this._now, this._hours, change])
             menu.box.add_child(actor);
         menu.connect('open-state-changed', (_m, isOpen) => {
-            if (isOpen)
-                this._client.update();
+            // Fresh enough for a glance; older than ten minutes, fetch again.
+            if (isOpen && GLib.get_monotonic_time() - (this._fetched ?? 0) > 10 * 60 * GLib.USEC_PER_SEC)
+                this._update();
         });
 
         addToPanel('jade-weather', this._button);
-        this._changed = this._client.connect('changed', () => this._sync());
-        this._client.update();
-        this._sync();
+        this._settings.connectObject('changed::weather-location', () => this._locate(),
+            'changed::weather-unit', () => {
+                unit = UNITS[this._settings.get_string('weather-unit')] ?? GWeather.TemperatureUnit.DEFAULT;
+                this._sync();
+            }, this);
+        unit = UNITS[this._settings.get_string('weather-unit')] ?? GWeather.TemperatureUnit.DEFAULT;
+        // GNOME's place, for as long as Jade has none of its own.
+        this._client = Main.panel.statusArea.dateMenu._weatherItem?._weatherClient ?? null;
+        this._client?.connectObject('changed', () => {
+            if (!this._own())
+                this._locate();
+        }, this);
+        this._timer = GLib.timeout_add_seconds(GLib.PRIORITY_LOW, REFRESH_MINUTES * 60, () => {
+            this._update();
+            return GLib.SOURCE_CONTINUE;
+        });
+        this._locate();
     }
 
     disable() {
-        if (this._changed)
-            this._client.disconnect(this._changed);
-        this._changed = 0;
+        if (this._timer)
+            GLib.source_remove(this._timer);
+        this._timer = 0;
+        this._settings.disconnectObject(this);
+        this._client?.disconnectObject(this);
+        if (this._updated)
+            this._info.disconnect(this._updated);
+        this._updated = 0;
+        this._info?.abort();
         this._button?.destroy();
-        this._button = this._client = null;
+        this._button = this._client = this._info = null;
+    }
+
+    // The place Jade was given, if any.
+    _own() {
+        const [name, latitude, longitude] = this._settings.get_value('weather-location').deepUnpack();
+        return name ? GWeather.Location.new_detached(name, null, latitude, longitude) : null;
+    }
+
+    _locate() {
+        const location = this._own() ?? (this._client?.hasLocation ? this._client.info?.location : null) ?? null;
+        const key = location ? `${location.get_name()}:${location.get_coords?.().join(',')}` : null;
+        if (key === this._key)
+            return;
+        this._key = key;
+        this._shown = false;
+        if (!location) {
+            this._button.visible = false;
+            return;
+        }
+        this._info.set_location(location);
+        this._update();
+    }
+
+    _update() {
+        if (!this._key)
+            return;
+        this._loading = true;
+        this._info.update();
     }
 
     _sync() {
-        const client = this._client;
-        const info = client.info;
-        const ready = client.available && client.hasLocation && !client.loading && info?.is_valid();
+        const info = this._info;
+        const ready = this._key && !this._loading && info.is_valid();
         // While loading, keep what was shown; hide only when there is nothing to show.
         if (!ready) {
-            if (!client.loading || !this._shown)
+            if (!this._loading || !this._shown)
                 this._button.visible = false;
             return;
         }
