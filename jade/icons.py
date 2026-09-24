@@ -280,6 +280,7 @@ def install(progress=lambda _text: None):
     src = download()
     progress('Building the Mac-style icons…')
     build(src)
+    shutil.rmtree(src, ignore_errors=True)  # everything later switches need is kept with the icons
     return True
 
 

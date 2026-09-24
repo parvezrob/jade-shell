@@ -34,7 +34,10 @@ function iconsRow(settings, group) {
         return Math.max(0, LOOKS.findIndex(([i, style]) => i === icons && style === settings.get_string('dock-icon-style')));
     };
     let syncing = false;
+    let busy = false;  // while icons are switched, the row shows the choice being made
     const sync = () => {
+        if (busy)
+            return;
         syncing = true;
         row.selected = current();
         syncing = false;
@@ -57,11 +60,13 @@ function iconsRow(settings, group) {
         if (!jade)
             return;
         row.sensitive = false;
+        busy = true;
         const subtitle = row.subtitle;
         row.subtitle = icons === 'tahoe' ? 'Downloading and applying the Tahoe icons…' : 'Putting your icons back…';
         const result = await capture([jade, 'apps', icons === 'tahoe' ? 'on' : 'off', 'icons']);
         row.subtitle = result.ok ? subtitle : `Did not work: ${(result.stderr || result.stdout).trim().split('\n').pop()}`;
         row.sensitive = true;
+        busy = false;
         sync();
     });
     group.add(row);
