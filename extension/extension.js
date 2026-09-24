@@ -8,6 +8,7 @@
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
+import {Capture} from './lib/capture.js';
 import {CheatSheet} from './lib/cheatsheet.js';
 import {ClipboardHistory} from './lib/clipboard.js';
 import {Clock} from './lib/clock.js';
@@ -45,6 +46,7 @@ export default class JadeShell extends Extension {
             {key: 'show-usage', make: () => new Usage(this, this._settings, this._shellTheme)},
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
             {key: null, make: () => new CheatSheet(this._settings)},
+            {key: null, make: () => new Capture(this._settings, name => this._part(name))},
             {key: 'clipboard-history', make: () => new ClipboardHistory(this._settings)},
             {key: null, make: () => new JadeMenu(this, this._settings, name => this._part(name))},
             {key: 'notification-bell', make: () => new Notifications(this, this._settings)},

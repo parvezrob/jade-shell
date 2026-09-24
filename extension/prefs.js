@@ -60,6 +60,8 @@ export default class JadePreferences extends ExtensionPreferences {
         page.add(desktop);
         switchRow(settings, desktop, 'clipboard-history', 'Clipboard history',
             'Super+Ctrl+V: what you copied, in memory only, never passwords');
+        switchRow(settings, desktop, 'capture-card', 'Screenshot card',
+            'After a screenshot: edit it, copy its text, pin it on screen');
         switchRow(settings, desktop, 'start-on-desktop', 'Start on the desktop', 'Skip the overview after logging in');
         switchRow(settings, desktop, 'notification-bell', 'Notification bell', 'Notifications in their own panel, pop-ups at the top right');
         const dotChoices = [['waiting', 'While notifications wait'], ['unread', 'Only for missed pop-ups']];
@@ -82,6 +84,7 @@ export default class JadePreferences extends ExtensionPreferences {
         keyboard.add(new ShortcutRow(settings, 'toggle-picker', 'Open the theme picker'));
         keyboard.add(new ShortcutRow(settings, 'toggle-menu', 'Open the Jade Menu'));
         keyboard.add(new ShortcutRow(settings, 'toggle-clipboard', 'Clipboard history'));
+        keyboard.add(new ShortcutRow(settings, 'pick-color', 'Pick a color'));
         keyboard.add(new ShortcutRow(settings, 'show-cheatsheet', 'Show the keyboard shortcuts'));
         for (const [key, title] of [['bell-show', 'Open the notifications'], ['bell-dismiss', 'Dismiss the newest notification'],
             ['bell-dismiss-all', 'Dismiss all notifications'], ['bell-open-newest', 'Open the newest notification'],

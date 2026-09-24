@@ -299,6 +299,57 @@ async function clipboard() {
     log(`clipboard: chosen → clipboard holds "${text}", panel open ${Boolean(part._dialog)}`);
 }
 
+// A real screenshot (Shift+Print, GNOME's own shortcut): Jade's card in the
+// corner instead of GNOME's banner; a pin; the color picker; and the hint
+// when a tool is missing.
+async function capture() {
+    const part = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('Capture');
+    if (!part) {
+        log('capture: none');
+        return;
+    }
+    const seat = Clutter.get_default_backend().get_default_seat();
+    const keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+    const pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+    keyboard.notify_keyval(now(), Clutter.KEY_Shift_L, Clutter.KeyState.PRESSED);
+    keyboard.notify_keyval(now(), Clutter.KEY_Print, Clutter.KeyState.PRESSED);
+    keyboard.notify_keyval(now(), Clutter.KEY_Print, Clutter.KeyState.RELEASED);
+    keyboard.notify_keyval(now(), Clutter.KEY_Shift_L, Clutter.KeyState.RELEASED);
+    await wait(1500);
+    const banner = Main.messageTray._banner;
+    const left = Main.messageTray.getSources().flatMap(source => source.notifications)
+        .filter(n => n.title === 'Screenshot captured').length;
+    log(`capture: card ${Boolean(part._card)}, GNOME banner ${Boolean(banner?.visible)}, left in the list ${left}`);
+    await shoot('capture-card');
+
+    // Pin it, then the color under the pointer.
+    const buttons = part._card?.get_last_child()?.get_children() ?? [];
+    buttons.find(b => b.accessible_name === 'Pin')?.emit('clicked', 1);
+    await wait(700);
+    log(`capture: pins ${part._pins.size}, card ${Boolean(part._card)}`);
+    await shoot('capture-pin');
+    for (const pin of [...part._pins])
+        pin.destroy();
+
+    const picked = part.pickColor();
+    await wait(400);
+    const monitor = Main.layoutManager.primaryMonitor;
+    pointer.notify_absolute_motion(now(), monitor.x + 40, monitor.y + monitor.height / 2);
+    await wait(300);
+    pointer.notify_button(now(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+    pointer.notify_button(now(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+    await picked;
+    await wait(500);
+    const text = await new Promise(resolve => St.Clipboard.get_default().get_text(St.ClipboardType.CLIPBOARD, (_c, t) => resolve(t)));
+    log(`capture: picked ${text}`);
+    await shoot('capture-color');
+
+    part._missing('tesseract');
+    await wait(500);
+    await shoot('capture-missing');
+    part._dismiss(false);
+}
+
 // GNOME's pop-ups and dialogs in the theme: volume, a password prompt (as
 // polkit draws it), Run a Command; the lock screen last (it stays locked).
 async function popups() {
@@ -1493,6 +1544,7 @@ export default class Harness extends Extension {
         await weather();
         await jadeMenu();
         await clipboard();
+        await capture();
         await popups();
         await clockFollowsGnome();
         await highContrast();

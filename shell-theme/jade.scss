@@ -596,3 +596,28 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
   .jade-weather-hour-time { color: $om-dim; }
   .jade-weather-open { @include om-control; }
 }
+
+// ------------------------------------------------------------------ capture (screenshot card, toasts, pins)
+
+.jade-capture-card {
+  background-color: $jade-background;
+  color: $jade-foreground;
+  border: 2px solid $jade-accent;
+  .jade-capture-shot { border: 1px solid $om-fg-25; &:hover, &:focus { border-color: $jade-accent; } }
+  .jade-capture-button {
+    color: $om-dim;
+    border: 1px solid transparent;
+    &:hover, &:focus { background-color: $om-fg-12; border-color: $om-fg-25; color: $jade-strong; }
+    &:active { background-color: $om-fg-18; }
+  }
+  .jade-capture-toast-title { color: $jade-strong; }
+  .jade-capture-toast-detail { color: $om-dim; }
+  .jade-capture-toast-action { @include om-control; }
+  .jade-capture-swatch { border: 1px solid $om-fg-25; }
+}
+.jade-capture-pin {
+  background-color: $jade-background;
+  border: 1px solid $jade-accent;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  .jade-capture-pin-close { background-color: $jade-background; color: $jade-strong; border: 1px solid $om-fg-25; }
+}

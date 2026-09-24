@@ -56,6 +56,10 @@ overrides:
       - gdk-pixbuf2
       - sassc
       - jetbrains-mono-fonts
+    # Copy Text and Read QR Code in the Jade Menu and the screenshot card.
+    recommends:
+      - tesseract
+      - zbar
   deb:
     depends:
       - gnome-shell (>= 50)
@@ -64,3 +68,6 @@ overrides:
       - gir1.2-gdkpixbuf-2.0
       - sassc
       - fonts-jetbrains-mono
+    recommends:
+      - tesseract-ocr
+      - zbar-tools

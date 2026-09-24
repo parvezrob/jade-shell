@@ -19,6 +19,7 @@ const MEDIA_KEYS = 'org.gnome.settings-daemon.plugins.media-keys';
 const JADE_KEYS = [
     ['toggle-menu', 'Open the Jade Menu'],
     ['toggle-clipboard', 'Clipboard history'],
+    ['pick-color', 'Pick a color from the screen'],
     ['show-cheatsheet', 'Show this cheat sheet'],
     ['toggle-picker', 'Pick a theme'],
     ['bell-show', 'Open the notifications'],

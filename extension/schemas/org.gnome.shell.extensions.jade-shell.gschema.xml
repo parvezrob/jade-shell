@@ -31,6 +31,15 @@
       <default><![CDATA[['<Super><Control>v']]]></default>
       <summary>Open the clipboard history</summary>
     </key>
+    <key name="capture-card" type="b">
+      <default>true</default>
+      <summary>After a screenshot, a card with what to do next</summary>
+      <description>Edit, copy its text, pin it on screen or show it in Files, in place of GNOME's banner.</description>
+    </key>
+    <key name="pick-color" type="as">
+      <default><![CDATA[['<Super>Print']]]></default>
+      <summary>Pick a color from the screen</summary>
+    </key>
     <key name="show-picker" type="b">
       <default>true</default>
       <summary>Show the theme picker in the top bar</summary>

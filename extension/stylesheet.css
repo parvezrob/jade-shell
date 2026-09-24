@@ -186,3 +186,18 @@
 
 /* ---------- clipboard history (uses the Jade Menu's rows) ---------- */
 .jade-clipboard { width: 620px; }
+
+/* The screenshot card and capture toasts (lib/capture.js) */
+.jade-capture-card { padding: 10px; spacing: 10px; font-family: "JetBrains Mono", monospace; font-size: 9pt; }
+.jade-capture-shot { padding: 0; }
+.jade-capture-actions { spacing: 4px; }
+.jade-capture-button { padding: 6px 8px; min-width: 44px; }
+.jade-capture-button-box { spacing: 4px; }
+.jade-capture-button-icon { icon-size: 16px; }
+.jade-capture-button-label { font-size: 8pt; }
+.jade-capture-toast { spacing: 12px; padding: 12px 14px; min-width: 240px; }
+.jade-capture-swatch { width: 28px; height: 28px; }
+.jade-capture-toast-detail { font-size: 8pt; }
+.jade-capture-toast-action { padding: 4px 12px; }
+.jade-capture-pin { padding: 2px; }
+.jade-capture-pin-close { padding: 4px; margin: 6px; }

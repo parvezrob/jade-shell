@@ -103,6 +103,9 @@ export class JadeMenu {
             {label: 'Capture', icon: 'camera-photo-symbolic', children: () => [
                 {label: 'Screenshot', icon: 'camera-photo-symbolic', action: () => Main.screenshotUI.open(0)},
                 {label: 'Screen Recording', icon: 'camera-web-symbolic', action: () => Main.screenshotUI.open(1)},
+                {label: 'Color Picker', icon: 'color-select-symbolic', action: () => this._parts('Capture')?.pickColor()},
+                {label: 'Copy Text from Screen', icon: 'format-text-plaintext-symbolic', action: () => this._parts('Capture')?.grab('tesseract')},
+                {label: 'Read QR Code', gicon: own('qr'), action: () => this._parts('Capture')?.grab('zbarimg')},
             ]},
             {label: 'Toggles', icon: 'emblem-system-symbolic', children: () => [
                 ...modes ? [{...toggle('Stay Awake', null, () => modes.awake, on => modes.setAwake(on)), gicon: own('awake')}] : [],

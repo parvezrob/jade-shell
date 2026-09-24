@@ -555,6 +555,12 @@ export class Bar {
         });
     }
 
+    // Where the dock's slab starts when shown, in stage coordinates (what
+    // corner cards stay above).
+    get top() {
+        return this._monitor.y + this._slabTop;
+    }
+
     // Each app's windows minimize into its icon where it rests, even while the
     // dock is hidden.
     _updateRest() {
