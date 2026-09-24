@@ -64,7 +64,7 @@ if [[ -n ${JADE_SCALE:-} ]]; then
 fi
 
 monitor=1400x900
-timeout=600  # half seconds
+timeout=${JADE_TIMEOUT:-600}  # half seconds (JADE_TIMEOUT for long runs)
 [[ $mode == dock || $mode == looks ]] && monitor=1400x900@${JADE_HZ:-180}
 if [[ $mode == timing ]]; then
     # The live display runs at 180 Hz; frame counts only mean something at its rate.

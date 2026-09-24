@@ -8,6 +8,7 @@
 // rules make its background translucent. Omarchy's frames are square, so
 // the blur fits them exactly; it only runs while a surface is on screen.
 import Clutter from 'gi://Clutter';
+import GdkPixbuf from 'gi://GdkPixbuf';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
@@ -149,6 +150,57 @@ export function frost(actor) {
 const SURFACES = ['.popup-menu-content', '.popup-menu-content.jade-frame', '.candidate-popup-content',
     '.notification-banner', '.notification-banner:hover', '.osd-window', '.modal-dialog', '.jade-capture-card'];
 
+// Frosted glass over a bright wallpaper: the tint must stay dark (or, for a
+// light theme, light) enough for the text on it. What sits behind the top
+// bar and menus is estimated from the wallpaper's top part, its brighter
+// patches (the blur spreads them); the tint rises from the chosen one only
+// as far as readable text needs, as macOS keeps its materials readable.
+const READABLE = 5;  // contrast of the theme's text on the glass (WCAG: 4.5 for body text)
+
+function luminance([r, g, b]) {
+    const linear = c => {
+        c /= 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+
+function contrast(a, b) {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+}
+
+function rgb(hex) {
+    return [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+}
+
+// The least tint from `wanted` up that keeps `fg` readable on `bg` over `backdrop`.
+export function readableTint(fg, bg, backdrop, wanted) {
+    if (!backdrop)
+        return wanted;
+    for (let a = wanted; a < 0.95; a += 0.01) {
+        if (contrast(fg, bg.map((c, i) => a * c + (1 - a) * backdrop[i])) >= READABLE)
+            return a;
+    }
+    return Math.max(wanted, 0.95);
+}
+
+// A bright patch of the wallpaper's top 45 %: the color at its 90th
+// percentile of lightness, from a 64 px wide copy.
+function backdropOf(pixbuf) {
+    const [w, h, stride, n] = [pixbuf.get_width(), pixbuf.get_height(), pixbuf.get_rowstride(), pixbuf.get_n_channels()];
+    const pixels = pixbuf.get_pixels();
+    const colors = [];
+    for (let y = 0; y < Math.max(1, Math.round(h * 0.45)); y++) {
+        for (let x = 0; x < w; x++) {
+            const i = y * stride + x * n;
+            colors.push([pixels[i], pixels[i + 1], pixels[i + 2]]);
+        }
+    }
+    colors.sort((a, b) => luminance(a) - luminance(b));
+    return colors[Math.min(colors.length - 1, Math.floor(colors.length * 0.9))];
+}
+
 export class Glass {
     constructor(settings, theme) {
         this._settings = settings;
@@ -163,6 +215,10 @@ export class Glass {
             this._sync();
         });
         // A theme switch loads a new Shell theme, without this stylesheet.
+        this._background = new Gio.Settings({schema_id: 'org.gnome.desktop.background'});
+        this._background.connectObject('changed::picture-uri', () => this._readBackdrop(),
+            'changed::picture-uri-dark', () => this._readBackdrop(), this);
+        this._readBackdrop();
         St.ThemeContext.get_for_stage(global.stage).connectObject('changed', () => {
             // Only into a new theme: loading it changes the theme context too.
             if (active && St.ThemeContext.get_for_stage(global.stage).get_theme() !== this._tintedTheme)
@@ -172,6 +228,11 @@ export class Glass {
     }
 
     disable() {
+        this._background.disconnectObject(this);
+        this._background = null;
+        this._backdropRead?.cancel();
+        this._backdropRead = null;
+        this._written = null;
         this._changed.forEach(id => this._settings.disconnect(id));
         this._unfollow?.();
         St.ThemeContext.get_for_stage(global.stage).disconnectObject(this);
@@ -185,16 +246,59 @@ export class Glass {
         }
     }
 
+    // The wallpaper's bright patch, read off the main thread; the tint follows.
+    _readBackdrop() {
+        this._backdropRead?.cancel();
+        const cancellable = this._backdropRead = new Gio.Cancellable();
+        const dark = St.Settings.get().color_scheme === St.SystemColorScheme.PREFER_DARK;
+        const uri = this._background.get_string(dark ? 'picture-uri-dark' : 'picture-uri') ||
+            this._background.get_string('picture-uri');
+        const done = backdrop => {
+            if (cancellable.is_cancelled())
+                return;
+            this._backdrop = backdrop;
+            if (active && this._writeTint())  // a stylesheet load restyles the Shell: only for a new tint
+                this._loadTint();
+        };
+        if (!uri) {
+            done(null);
+            return;
+        }
+        Gio.File.new_for_uri(uri).read_async(GLib.PRIORITY_LOW, cancellable, (file, result) => {
+            let stream;
+            try {
+                stream = file.read_finish(result);
+            } catch {
+                done(null);
+                return;
+            }
+            GdkPixbuf.Pixbuf.new_from_stream_at_scale_async(stream, 64, -1, true, cancellable, (_s, res) => {
+                try {
+                    done(backdropOf(GdkPixbuf.Pixbuf.new_from_stream_finish(res)));
+                } catch {
+                    done(null);
+                }
+            });
+        });
+    }
+
     _writeTint() {
         const hex = this._palette?.background ?? '#1a1b26';
-        const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
-        const alpha = this._settings.get_double('glass-tint');
+        const [r, g, b] = rgb(hex);
+        const fg = rgb(this._palette?.foreground ?? '#c0caf5');
+        const wanted = this._settings.get_double('glass-tint');
+        const alpha = readableTint(fg, [r, g, b], this._backdrop, wanted);
+        const bar = readableTint(fg, [r, g, b], this._backdrop, Math.max(0.1, wanted - 0.05));
         const rgba = a => `rgba(${r}, ${g}, ${b}, ${a.toFixed(2)})`;
-        const css = `.jade-frosted #panel { background-color: ${rgba(Math.max(0.1, alpha - 0.05))}; }\n` +
+        const css = `.jade-frosted #panel { background-color: ${rgba(bar)}; }\n` +
             '.jade-frosted #overviewGroup { background-color: transparent; }\n' +
             '.jade-frosted #panel:overview { background-color: transparent; }\n' +
             `${SURFACES.map(s => `.jade-frosted ${s}`).join(',\n')} { background-color: ${rgba(alpha)}; }\n`;
+        if (css === this._written)
+            return false;
         this._css.replace_contents(css, null, false, Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+        this._written = css;
+        return true;
     }
 
     // Unloading and loading each change the theme, which calls back in here
