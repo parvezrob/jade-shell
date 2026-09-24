@@ -119,6 +119,11 @@ run() {
 # sudo asks here, on its own line, before a step prints its name.
 need_sudo() {
     sudo -n true 2>/dev/null && return
+    if ! (exec </dev/tty) 2>/dev/null; then
+        say "$1 needs administrator rights, and sudo can only ask for your password in a terminal."
+        say 'Run this in a terminal window. Nothing was changed.'
+        exit 1
+    fi
     say "$1 needs administrator rights, so sudo asks for your password."
     sudo -v || { say 'No password given; nothing was changed.'; exit 1; }
 }
