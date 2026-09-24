@@ -26,6 +26,15 @@ function swatch(colors) {
     return box;
 }
 
+// A theme's preview, decoded in a thread and kept in St's cache: as a CSS
+// background image it was decoded on the Shell's thread at the first paint
+// (46 ms for the grid on the first open after login).
+function preview(path) {
+    const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
+    const image = St.TextureCache.get_default().load_file_async(Gio.File.new_for_path(path), 116, 72, scaleFactor, 1);
+    return new St.Bin({style_class: 'jade-tile-thumb', child: image});
+}
+
 export class Picker {
     constructor(settings, theme) {
         this._settings = settings;
@@ -50,6 +59,9 @@ export class Picker {
 
     disable() {
         this._alive = false;
+        if (this._prewarmId)
+            GLib.source_remove(this._prewarmId);
+        this._prewarmId = 0;
         this._cancellable.cancel();
         this._cancellable = null;
         this._unfollow();
@@ -187,6 +199,7 @@ export class Picker {
             this._themesKey = key;
             this._themes = themes;
             this._buildGrid();
+            this._prewarm();
             if (this._button.menu.isOpen) {
                 const id = focused ?? themes.find(t => t.current)?.id;
                 (this._tiles.get(id) ?? this._tiles.values().next().value)?.grab_key_focus();
@@ -226,6 +239,25 @@ export class Picker {
         this._refresh();  // offline part-way, the ones that came still show
     }
 
+    // A new grid's styles (and its previews' textures) are worked out the
+    // first time it shows: 60-70 ms on the first open after login. Do that
+    // work when the Shell is idle instead, so the first open is as quick as
+    // the rest.
+    _prewarm() {
+        if (this._prewarmId || this._button.menu.isOpen)
+            return;
+        this._prewarmId = GLib.idle_add(GLib.PRIORITY_LOW, () => {
+            this._prewarmId = 0;
+            const walk = actor => {
+                actor.ensure_style?.();
+                actor.get_children().forEach(walk);
+            };
+            if (this._alive)
+                walk(this._button.menu.box);
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
     _buildGrid() {
         this._grid.destroy_all_children();
         this._tiles.clear();
@@ -242,9 +274,7 @@ export class Picker {
     _tile(theme, index) {
         const tile = new St.Button({can_focus: true, reactive: true, track_hover: true, style_class: 'jade-tile', accessible_name: `Switch to ${theme.name}`});
         const box = new St.BoxLayout({orientation: VERTICAL});
-        box.add_child(theme.thumbnail ? new St.Widget({
-            style_class: 'jade-tile-thumb', style: `background-image: url("${theme.thumbnail}");`,
-        }) : swatch(theme.colors));
+        box.add_child(theme.thumbnail ? preview(theme.thumbnail) : swatch(theme.colors));
         box.add_child(label(theme.name, 'jade-tile-name'));
         tile.set_child(box);
         // The current theme's tile moves on to its next wallpaper; any other

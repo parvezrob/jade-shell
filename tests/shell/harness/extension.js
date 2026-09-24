@@ -1787,6 +1787,12 @@ class Timing {
             await this.themeSwitches();
             return;
         }
+        if (GLib.getenv('JADE_TIMING') === 'cold') {  // only the first open of each menu
+            for (const role of [...JADE_ROLES, ...BASE_ROLES])
+                await this.open(role, 'cold', 1);
+            this.summarise();
+            return;
+        }
         if (GLib.getenv('JADE_TIMING') === 'enable') {
             await this.enableCycles();
             return;
