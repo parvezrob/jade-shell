@@ -621,3 +621,17 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
   box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
   .jade-capture-pin-close { background-color: $jade-background; color: $jade-strong; border: 1px solid $om-fg-25; }
 }
+
+// ------------------------------------------------------------------ network panel
+
+.jade-network-panel {
+  .jn-fact-value, .jn-dial-value { color: $jade-strong; }
+  .jn-dial-unit, .jn-dial-caption { color: mix($jade-foreground, $jade-background, 70%); }
+  .jn-dial:active .jn-dial-caption { color: $jade-accent; }
+  .jn-choice {
+    color: $jade-foreground;
+    border: 1px solid $om-fg-12;
+    &:hover { background-color: $om-fg-12; border-color: $om-fg-25; }
+    &:checked { color: $jade-strong; border-color: $jade-accent; background-color: transparentize($jade-accent, .82); }
+  }
+}

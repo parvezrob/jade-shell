@@ -7,7 +7,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 export const VERTICAL = Clutter.Orientation.VERTICAL;
 
 // Left to right in the top bar's right box.
-const PANEL_ORDER = ['jade-media', 'jade-weather', 'jade-monitor', 'jade-usage', 'jade-picker', 'jade-modes', 'jade-bell'];
+const PANEL_ORDER = ['jade-media', 'jade-weather', 'jade-monitor', 'jade-usage', 'jade-network', 'jade-picker', 'jade-modes', 'jade-bell'];
 
 export function label(text, style, props = {}) {
     return new St.Label({text, style_class: style, y_align: Clutter.ActorAlign.CENTER, ...props});

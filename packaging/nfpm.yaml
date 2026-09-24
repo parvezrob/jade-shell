@@ -60,6 +60,7 @@ overrides:
     recommends:
       - tesseract
       - zbar
+      - python3-qrcode  # the network panel's Share Wi-Fi
   deb:
     depends:
       - gnome-shell (>= 50)
@@ -71,3 +72,4 @@ overrides:
     recommends:
       - tesseract-ocr
       - zbar-tools
+      - python3-qrcode

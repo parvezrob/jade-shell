@@ -1036,6 +1036,86 @@ class Sandbox(unittest.TestCase):
         self.assertIn('not a git URL', self.run_jade('theme', 'install', '--', '--upload-pack=touch /tmp/x').stderr)
         self.assertIn('not a git URL', self.run_jade('theme', 'install', 'ext::sh -c touch% /tmp/x').stderr)
 
+    def fake_network(self, kind='wifi'):
+        """nmcli, ip and ping stand-ins: one connection on wlan0 (or eth0),
+        its settings in a JSON file that `connection modify` changes."""
+        bin_dir = pathlib.Path(self.env['PATH'].split(':')[0])
+        conn = self.home.parent / 'nm-connection.json'
+        conn.write_text(json.dumps({'ipv4.dns': '', 'ipv4.ignore-auto-dns': 'no', 'ipv6.dns': '',
+                                    'ipv6.ignore-auto-dns': 'no', '802-11-wireless.band': '',
+                                    '802-11-wireless.ssid': 'Cafe:Bar', '802-11-wireless-security.key-mgmt': 'wpa-psk',
+                                    '802-11-wireless-security.psk': 'p;ss', '802-11-wireless-security.wep-key0': '',
+                                    '802-11-wireless.hidden': 'no', '802-11-wireless-security.wep-key-type': ''}))
+        device = 'wlan0' if kind == 'wifi' else 'eth0'
+        (bin_dir / 'nmcli').write_text(f'''#!/usr/bin/env python3
+import json, sys
+args = sys.argv[1:]
+open({str(self.home.parent / 'nmcli.log')!r}, 'a').write(' '.join(args) + '\\n')
+conn = json.load(open({str(conn)!r}))
+if 'device' in args and 'show' in args:
+    print('GENERAL.TYPE:{kind}\\nGENERAL.CONNECTION:Home\\nGENERAL.CON-UUID:u-1\\nIP4.ADDRESS[1]:10.0.0.5/24\\n'
+          'IP4.GATEWAY:10.0.0.1\\nIP4.DNS[1]:10.0.0.1')
+elif 'wifi' in args and 'list' in args:
+    print('*:Cafe\\\\:Bar:5180 MHz:36:540 Mbit/s:81:WPA2')
+elif 'modify' in args and __import__('os').path.exists({str(self.home.parent / 'nm-refuse')!r}):
+    print('Error: Failed to modify connection: Insufficient privileges', file=sys.stderr)
+    sys.exit(1)
+elif 'modify' in args:
+    rest = args[args.index('u-1') + 1:]
+    conn.update(dict(zip(rest[::2], rest[1::2])))
+    json.dump(conn, open({str(conn)!r}, 'w'))
+elif 'show' in args and 'connection' in args:
+    keys = args[args.index('-g') + 1].split(',')
+    print('\\n'.join(conn[k] for k in keys))
+''')
+        (bin_dir / 'ip').write_text(f'#!/bin/sh\necho \'[{{"dst":"1.1.1.1","gateway":"10.0.0.1","dev":"{device}"}}]\'\n')
+        (bin_dir / 'ping').write_text('#!/bin/sh\necho "rtt min/avg/max/mdev = 1.0/2.5/3.0/0.1 ms"\n')
+        for tool in ('nmcli', 'ip', 'ping'):
+            (bin_dir / tool).chmod(0o755)
+        return conn
+
+    def test_the_network_status_reads_nmcli(self):
+        self.fake_network()
+        status = json.loads(self.jade('network', 'status', '--json'))
+        self.assertEqual((status['ssid'], status['band'], status['signal'], status['channel']), ('Cafe:Bar', '5', 81, '36'))
+        self.assertEqual((status['address'], status['gateway'], status['dns']), ('10.0.0.5', '10.0.0.1', 'auto'))
+        self.assertEqual((status['ping_router'], status['ping_internet']), (2.5, 2.5))
+
+    def test_dns_and_band_changes_go_back_with_restore(self):
+        conn = self.fake_network()
+        self.jade('network', 'dns', 'cloudflare')
+        self.jade('network', 'band', '5')
+        now = json.loads(conn.read_text())
+        self.assertEqual((now['ipv4.dns'], now['ipv4.ignore-auto-dns'], now['802-11-wireless.band']),
+                         ('1.1.1.1 1.0.0.1', 'yes', 'a'))
+        self.assertEqual(json.loads(self.jade('network', 'status', '--json'))['dns'], 'cloudflare')
+        self.jade('network', 'dns', 'google')  # a second change keeps the first "before"
+        self.jade('restore', '--yes')
+        now = json.loads(conn.read_text())
+        self.assertEqual((now['ipv4.dns'], now['ipv4.ignore-auto-dns'], now['802-11-wireless.band']), ('', 'no', ''))
+        self.assertFalse((self.home / '.local/state/jade-shell/network.json').exists())
+
+    def test_a_refused_network_change_records_nothing(self):
+        self.fake_network()
+        (self.home.parent / 'nm-refuse').touch()
+        self.assertIn('Insufficient privileges', self.run_jade('network', 'dns', 'cloudflare').stderr)
+        self.assertFalse((self.home / '.local/state/jade-shell/network.json').exists())
+
+    def test_the_wifi_qr_payload_escapes_what_phones_parse(self):
+        from jade import network
+        self.assertEqual(network.wifi_payload('Cafe:Bar', 'wpa-psk', 'p;ss', 'no'), 'WIFI:T:WPA;S:Cafe\\:Bar;P:p\\;ss;;')
+        self.assertEqual(network.wifi_payload('Guest', '', '', 'yes'), 'WIFI:T:nopass;S:Guest;H:true;;')
+        self.assertEqual(network.wifi_payload('New', 'sae', 'x', 'no'), 'WIFI:T:SAE;S:New;P:x;;')
+        # Secured, but the password isn't shared: no code that would say the network is open.
+        conn = self.fake_network()
+        settings = json.loads(conn.read_text())
+        settings['802-11-wireless-security.psk'] = ''
+        settings['802-11-wireless-security.wep-key-type'] = ''
+        conn.write_text(json.dumps(settings))
+        self.assertIn("can't read the Cafe:Bar password", self.run_jade('network', 'qr').stderr)
+        self.fake_network(kind='ethernet')
+        self.assertIn('the band is for Wi-Fi', self.run_jade('network', 'band', '5').stderr)
+
     def test_setup_fetches_the_tahoe_icons_once(self):
         out = self.jade('setup')  # offline: said, and setup goes on
         self.assertIn('No Tahoe icons', out)

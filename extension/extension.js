@@ -19,6 +19,7 @@ import {Modes} from './lib/modes.js';
 import {JadeMenu} from './lib/menu.js';
 import {Media} from './lib/media.js';
 import {Monitor} from './lib/monitor.js';
+import {Network} from './lib/network.js';
 import {Notifications} from './lib/notifications.js';
 import {Picker} from './lib/picker.js';
 import {ShellTheme} from './lib/theme.js';
@@ -47,6 +48,7 @@ export default class JadeShell extends Extension {
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
             {key: null, make: () => new CheatSheet(this._settings)},
             {key: null, make: () => new Capture(this._settings, name => this._part(name))},
+            {key: null, make: () => new Network(this, this._settings, this._shellTheme)},
             {key: 'clipboard-history', make: () => new ClipboardHistory(this._settings)},
             {key: null, make: () => new JadeMenu(this, this._settings, name => this._part(name))},
             {key: 'notification-bell', make: () => new Notifications(this, this._settings)},

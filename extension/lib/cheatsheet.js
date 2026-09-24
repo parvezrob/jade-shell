@@ -21,6 +21,7 @@ const JADE_KEYS = [
     ['toggle-clipboard', 'Clipboard history'],
     ['pick-color', 'Pick a color from the screen'],
     ['capture-text', 'Copy text from the screen'],
+    ['toggle-network', 'Network and speed test'],
     ['menu-capture', 'Capture menu'],
     ['menu-toggles', 'Toggles menu'],
     ['menu-system', 'System menu'],

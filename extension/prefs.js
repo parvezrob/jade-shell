@@ -116,6 +116,7 @@ export default class JadePreferences extends ExtensionPreferences {
         keyboard.add(new ShortcutRow(settings, 'toggle-clipboard', 'Clipboard history'));
         keyboard.add(new ShortcutRow(settings, 'pick-color', 'Pick a color'));
         keyboard.add(new ShortcutRow(settings, 'capture-text', 'Copy text from the screen'));
+        keyboard.add(new ShortcutRow(settings, 'toggle-network', 'Network and speed test'));
         keyboard.add(new ShortcutRow(settings, 'menu-capture', 'Capture menu'));
         keyboard.add(new ShortcutRow(settings, 'menu-toggles', 'Toggles menu'));
         keyboard.add(new ShortcutRow(settings, 'menu-system', 'System menu'));

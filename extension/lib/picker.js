@@ -76,6 +76,10 @@ export class Picker {
             Main.layoutManager.setDummyCursorGeometry(monitor.x + monitor.width - 1, panelY, 0, Main.panel.height);
             menu.sourceActor = Main.layoutManager.dummyCursor;
         }
+        // Focus left on another menu's button would make GNOME's menu manager
+        // switch to that menu the moment this one takes the focus.
+        if (!menu.isOpen)
+            global.stage.set_key_focus(null);
         menu.toggle();
     }
 

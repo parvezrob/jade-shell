@@ -357,6 +357,49 @@ async function capture() {
     part._dismiss(false);
 }
 
+// The network panel: the real connection first; then, fed like jade network
+// would, Wi-Fi, a speed test on its way and done, and the Wi-Fi as a QR code.
+async function networkPanel() {
+    const part = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('Network');
+    if (!part) {
+        log('network: none');
+        return;
+    }
+    part.toggle();
+    await wait(2500);  // jade network status pings the router and 1.1.1.1
+    log(`network: open ${part._button.menu.isOpen}, ${part._title.text} · ${part._meta.text} · internet ${part._facts.internet.text}`);
+    await shoot('network-real', part._button.menu.box);
+    part._stopRefresh();
+    part._show({
+        connected: true, type: 'wifi', device: 'wlan0', ssid: 'Jade Home', band: '5', channel: '36', rate: '866 Mbit/s',
+        signal: 78, security: 'WPA2', address: '192.168.1.42', gateway: '192.168.1.1', ping_router: 1.8, ping_internet: 9.6,
+        dns_servers: ['1.1.1.1', '1.0.0.1'], dns: 'cloudflare', band_pin: 'auto', last_speedtest: null,
+    });
+    part._test = {force_exit() {}};
+    part._testButton._label.text = 'Stop';
+    part._onTestEvent({phase: 'ping', ms: 7.4, jitter: 0.4, server: 'DAC'});
+    for (const mbps of [12, 48, 81, 92.4])
+        part._onTestEvent({phase: 'down', mbps, progress: 0.5});
+    part._onTestEvent({phase: 'up', mbps: 37.5, progress: 0.3});
+    await wait(500);
+    await shoot('network-testing', part._button.menu.box);
+    part._onTestEvent({phase: 'done', down: 93.6, up: 94.1, ping: 7.4, jitter: 0.4, server: 'DAC', when: Date.now() / 1000});
+    part._endTest();
+    const dir = GLib.path_get_dirname(GLib.filename_from_uri(import.meta.url)[0]);
+    const qr = JSON.parse(new TextDecoder().decode(GLib.file_get_contents(`${dir}/qr-sample.json`)[1]));
+    part._qr.show(qr.matrix);
+    part._qr.actor.visible = true;
+    part._qrCaption.text = `Scan with a phone camera to join ${qr.ssid}`;
+    part._qrCaption.visible = true;
+    part._shareButton._label.text = 'Hide QR Code';
+    part._speedSection.get_parent().visible = false;
+    await wait(500);
+    await shoot('network-wifi', part._button.menu.box);
+    part.toggle();
+    await wait(400);
+    log(`network: closed ${!part._button.menu.isOpen}`);
+}
+
 // More themes than fit (community ones installed): the picker scrolls, and
 // the keyboard keeps the focused tile in view.
 async function pickerScrolls() {
@@ -1601,6 +1644,7 @@ export default class Harness extends Extension {
         await clipboard();
         await capture();
         await pickerScrolls();
+        await networkPanel();
         await popups();
         await clockFollowsGnome();
         await highContrast();

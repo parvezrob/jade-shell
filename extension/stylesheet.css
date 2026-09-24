@@ -201,3 +201,19 @@
 .jade-capture-toast-action { padding: 4px 12px; }
 .jade-capture-pin { padding: 2px; }
 .jade-capture-pin-close { padding: 4px; margin: 6px; }
+
+/* ---------- network panel (lib/network.js; also styled as .jade-monitor-panel) ---------- */
+.jade-network-panel .jn-holder { padding: 0; }
+.jade-network-panel .jn-fact { spacing: 12px; }
+.jade-network-panel .jn-fact-value { font-size: 9pt; font-weight: bold; }
+.jade-network-panel .jn-dials { spacing: 12px; }
+.jade-network-panel .jn-dial { height: 150px; }
+.jade-network-panel .jn-dial-value { font-size: 20pt; font-weight: bold; padding-top: 10px; }
+.jade-network-panel .jn-dial-unit { font-size: 8pt; }
+.jade-network-panel .jn-dial-caption { font-size: 7.5pt; font-weight: bold; letter-spacing: 1.2px; padding-top: 6px; }
+.jade-network-panel .jn-speed-caption { font-size: 8pt; padding: 4px 0 8px; }
+.jade-network-panel .jn-qr { width: 200px; height: 200px; margin: 4px 0 6px; }
+.jade-network-panel .jn-choice-row { spacing: 6px; padding-top: 10px; }
+.jade-network-panel .jn-choices { spacing: 4px; }
+.jade-network-panel .jn-choice { padding: 6px 4px; border-radius: 0; font-size: 8.5pt; }
+.jade-network-panel .jn-footer { spacing: 8px; }

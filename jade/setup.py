@@ -19,7 +19,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
-from . import __version__, engine, hooks, icons, keys, migrations, restore_offer, shelltheme, themes
+from . import __version__, engine, hooks, icons, keys, migrations, network, restore_offer, shelltheme, themes
 from .store import File, Setting, config_home, data_home, write_text
 from .usage import collect
 
@@ -588,7 +588,7 @@ def merged_extensions(ctx, entry):
 def restore(ctx, assume_yes=False):
     manifest = load_manifest()
     history = engine.backups()
-    if not history and not manifest['settings'] and not keys.applied():
+    if not history and not manifest['settings'] and not keys.applied() and not network.state_file().exists():
         say('Nothing to restore: Jade Shell has not changed this desktop.')
         return 0
     if not assume_yes:
@@ -600,6 +600,8 @@ def restore(ctx, assume_yes=False):
             return 1
     kept, merged, skipped, stuck = [], [], [], []
     skipped += keys.revert(ctx) or []  # the Omarchy keymap: your shortcuts back first
+    if network.state_file().exists():
+        skipped += network.restore()  # DNS and Wi-Fi band as they were
     # A broken backup that could not be set aside stays where it is: go on past it.
     while (undone := engine.undo(ctx, ignore=stuck)) is not None:
         kept += undone['kept']

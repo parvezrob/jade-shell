@@ -139,6 +139,8 @@ export class JadeMenu {
             {label: 'Setup', icon: 'preferences-system-symbolic', children: () => [
                 {label: 'Jade Shell Settings', icon: 'preferences-system-symbolic', action: () => this._extension.openPreferences()},
                 {label: 'GNOME Settings', icon: 'org.gnome.Settings-symbolic', action: () => launch('gnome-control-center')},
+                {label: 'Network', icon: 'network-wired-symbolic', action: () => this._parts('Network')?.toggle()},
+                {label: 'Speed Test', icon: 'network-transmit-receive-symbolic', action: () => this._parts('Network')?.toggle(true)},
                 {label: 'Keyboard Shortcuts', icon: 'input-keyboard-symbolic', action: () => this._parts('CheatSheet')?.open()},
                 {label: 'Check for Updates', icon: 'software-update-available-symbolic', action: () => this._checkUpdates()},
                 {label: 'Undo the Last Theme Switch', icon: 'edit-undo-symbolic', action: () => jade('theme', 'undo')},

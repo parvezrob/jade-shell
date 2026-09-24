@@ -12,7 +12,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio
 
-from . import __version__, community, debug, engine, icons, keys, setup, themes, update
+from . import __version__, community, debug, engine, icons, keys, network, setup, themes, update
 from . import targets as registry
 from .setup import join
 from .store import File, Settings, read_text
@@ -361,6 +361,101 @@ def keys_revert(args, ctx):
     return 0
 
 
+# ------------------------------------------------------------------ network
+
+def network_status(args, ctx):
+    try:
+        info = network.status()
+    except network.NetworkError as error:
+        print(f'jade: {error}', file=sys.stderr)
+        return 1
+    info['last_speedtest'] = network.last_speedtest()
+    if args.json:
+        print(json.dumps(info))
+        return 0
+    if not info['connected']:
+        print('Not connected.')
+        return 0
+    name = info.get('ssid') or info.get('connection') or info['device']
+    band = f", {info['band']} GHz, signal {info['signal']}%" if info.get('band') else ''
+    print(f"{name} ({info['type']} on {info['device']}{band})")
+    print(f"  Address {info['address'] or '-'}, router {info['gateway'] or '-'}")
+    print(f"  Ping: router {info['ping_router'] or '-'} ms, internet {info['ping_internet'] or '-'} ms")
+    print(f"  DNS: {info.get('dns', 'auto')} ({', '.join(info['dns_servers']) or '-'})")
+    if info['last_speedtest']:
+        last = info['last_speedtest']
+        print(f"  Last speed test: {last['down']} Mbps down, {last['up']} Mbps up, {last['ping']} ms")
+    return 0
+
+
+def network_speedtest(args, ctx):
+    def emit(event):
+        if args.json:
+            print(json.dumps(event), flush=True)
+        elif event['phase'] == 'ping':
+            print(f"Ping {event['ms']} ms (jitter {event['jitter']} ms) to Cloudflare {event['server'] or ''}".rstrip())
+        elif event['phase'] in ('down', 'up'):
+            label = 'Download' if event['phase'] == 'down' else 'Upload'
+            print(f"\r{label}: {event['mbps']:>8.1f} Mbps", end='', flush=True)
+            if event['progress'] >= 1:
+                print()
+        elif event['phase'] == 'done':
+            print(f"Download {event['down']} Mbps, upload {event['up']} Mbps, ping {event['ping']} ms.")
+
+    try:
+        network.speedtest(emit)
+    except network.NetworkError as error:
+        print(json.dumps({'phase': 'error', 'message': str(error)}) if args.json else f'jade: {error}',
+              file=sys.stdout if args.json else sys.stderr)
+        return 1
+    return 0
+
+
+def network_qr(args, ctx):
+    try:
+        qr = network.wifi_qr()
+    except network.NetworkError as error:
+        print(f'jade: {error}', file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(qr))
+        return 0
+    # Two rows per line with half blocks, framed by a quiet zone phones need.
+    rows = ['0' * len(qr['matrix'][0])] * 2 + qr['matrix'] + ['0' * len(qr['matrix'][0])] * 3
+    for top, bottom in zip(rows[::2], rows[1::2], strict=False):
+        cells = zip('00' + top + '00', '00' + bottom + '00', strict=True)
+        print('  ' + ''.join(' ▄▀█'[(t == '0') * 2 + (b == '0')] for t, b in cells))
+    print(f"  Scan to join {qr['ssid']}")
+    return 0
+
+
+def network_dns(args, ctx):
+    try:
+        if not args.choice:
+            print(network.status(latency=False).get('dns', 'auto'))
+            return 0
+        network.set_dns(' '.join(args.choice))
+    except network.NetworkError as error:
+        print(f'jade: {error}', file=sys.stderr)
+        return 1
+    print(f"DNS set to {' '.join(args.choice)}. jade restore puts the old setting back.")
+    return 0
+
+
+def network_band(args, ctx):
+    try:
+        if not args.choice:
+            info = network.status(latency=False)
+            print(f"{info.get('band') or '-'} GHz now; pinned: {info.get('band_pin', 'auto')}")
+            return 0
+        network.set_band(args.choice)
+    except network.NetworkError as error:
+        print(f'jade: {error}', file=sys.stderr)
+        return 1
+    print(f'Wi-Fi band: {args.choice}.')
+    return 0
+
+
 # ------------------------------------------------------------------ font
 
 def monospace_families():
@@ -511,6 +606,17 @@ def parser():
     keymap.add_parser('apply', help="use Omarchy's keys (your shortcuts are saved first)")
     keymap.add_parser('revert', help='put your shortcuts back')
 
+    net = commands.add_parser('network', help='the connection, a speed test, Wi-Fi QR, DNS and the Wi-Fi band')
+    net = net.add_subparsers(dest='action', metavar='action')
+    net.add_parser('status', help='the connection now').add_argument('--json', action='store_true')
+    net.add_parser('speedtest', help="download and upload speed (Cloudflare's speed test)").add_argument(
+        '--json', action='store_true', help='progress as JSON lines (for the panel)')
+    net.add_parser('qr', help='the current Wi-Fi as a QR code phones can join from').add_argument(
+        '--json', action='store_true')
+    net.add_parser('dns', help='auto, cloudflare, google, or server addresses').add_argument('choice', nargs='*')
+    net.add_parser('band', help='pin the Wi-Fi band: auto, 2.4, 5 or 6').add_argument(
+        'choice', nargs='?', choices=list(network.BANDS))
+
     usage = commands.add_parser('usage', help='Claude and Codex usage').add_subparsers(
         dest='action', required=True, metavar='action')
     p = usage.add_parser('collect', help='collect usage for the top bar')
@@ -543,6 +649,9 @@ HANDLERS = {
     ('theme', 'reload'): theme_reload, ('theme', 'install'): theme_install, ('theme', 'update'): theme_update,
     ('theme', 'remove'): theme_remove, ('theme', 'fetch'): theme_fetch, ('theme', 'thumbs'): theme_thumbs,
     ('usage', 'collect'): usage_collect,
+    ('network', None): network_status, ('network', 'status'): network_status,
+    ('network', 'speedtest'): network_speedtest, ('network', 'qr'): network_qr,
+    ('network', 'dns'): network_dns, ('network', 'band'): network_band,
     ('keys', None): keys_list, ('keys', 'list'): keys_list, ('keys', 'apply'): keys_apply,
     ('keys', 'revert'): keys_revert,
     ('font', None): font_list, ('font', 'list'): font_list, ('font', 'set'): font_set,

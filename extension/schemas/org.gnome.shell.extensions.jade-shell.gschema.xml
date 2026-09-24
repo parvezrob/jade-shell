@@ -57,6 +57,10 @@
       <summary>Open the Jade Menu at System</summary>
       <description>Super+Escape with the Omarchy keymap (GNOME uses it to give shortcuts back to an app that took them).</description>
     </key>
+    <key name="toggle-network" type="as">
+      <default><![CDATA[['<Super><Control>w']]]></default>
+      <summary>Open the network panel</summary>
+    </key>
     <key name="show-picker" type="b">
       <default>true</default>
       <summary>Show the theme picker in the top bar</summary>
