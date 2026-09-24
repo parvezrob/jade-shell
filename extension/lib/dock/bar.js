@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import Graphene from 'gi://Graphene';
 import Meta from 'gi://Meta';
 import Mtk from 'gi://Mtk';
@@ -38,7 +39,17 @@ const PRESSURE_TIMEOUT = 1000;
 const TOP_LEFT = new Graphene.Point({x: 0, y: 0});
 const REMOVE_AFTER_MS = 650;  // held away from the dock this long, a pinned app can be dropped to remove it
 
-// '#rrggbb' at an alpha, as CSS.
+// A monitor-sized container that is there only for what it holds. Clicks
+// pass through it anyway (it isn't reactive), but drag and drop looks for its
+// target among every actor, reactive or not: picked itself, the dock would
+// take every drop on the screen, windows onto workspaces included.
+const Layer = GObject.registerClass(class JadeDockLayer extends St.Widget {
+    vfunc_pick(context) {
+        for (const child of this.get_children())
+            child.pick(context);
+    }
+});
+
 // '#rrggbb' mixed toward '#rrggbb' by `amount`, as CSS.
 function mix(hex, toward, amount) {
     const [a, b] = [hexToRgb(hex), hexToRgb(toward)];
@@ -76,12 +87,12 @@ export class Bar {
 
         const monitor = Main.layoutManager.monitors[monitorIndex];
         this._monitor = monitor;
-        this.actor = new St.Widget({
+        this.actor = new Layer({
             name: 'jadeDock', style_class: 'jade-dock', reactive: false,
             x: monitor.x, y: monitor.y, width: monitor.width, height: monitor.height,
         });
         this.actor._delegate = this;
-        this._content = new St.Widget({reactive: false, width: monitor.width, height: monitor.height});
+        this._content = new Layer({reactive: false, width: monitor.width, height: monitor.height});
         this._content.connect('notify::translation-y', () => {
             this._slide = this._content.translation_y;
             this._glass.slide = this._slide;

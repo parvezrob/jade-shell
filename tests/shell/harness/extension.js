@@ -357,6 +357,98 @@ async function capture() {
     part._dismiss(false);
 }
 
+// Dragging in the overview: a window onto another workspace's thumbnail, with
+// either glass, and an app from the app grid onto the dock. The dock spans the
+// monitor, and drag and drop picks every actor, reactive or not: it once took
+// every drop on the screen and refused it.
+async function overviewDrags() {
+    const dock = Main.extensionManager.lookup(UUID)?.stateObj?._parts?.find(part => part.key === 'show-dock')?.instance;
+    const settings = Extension.lookupByUUID(UUID).getSettings();
+    const mutter = new Gio.Settings({schema_id: 'org.gnome.mutter'});
+    const wm = new Gio.Settings({schema_id: 'org.gnome.desktop.wm.preferences'});
+    const [dynamic, count, glass] = [mutter.get_boolean('dynamic-workspaces'), wm.get_int('num-workspaces'),
+        settings.get_string('glass')];
+    mutter.set_boolean('dynamic-workspaces', false);
+    wm.set_int('num-workspaces', 4);
+    const app = Shell.AppSystem.get_default().lookup_app('org.gnome.Calculator.desktop');
+    app?.activate();
+    for (let i = 0; i < 40 && !app?.get_windows().length; i++)
+        await wait(250);
+    const window = app?.get_windows()[0];
+    if (!window || !dock?.bar) {
+        log(`drags: no ${window ? 'dock' : 'window'}`);
+        return;
+    }
+    await wait(1000);
+    const scene = new DockScene(dock.bar);
+    const center = actor => {
+        const [x, y] = actor.get_transformed_position();
+        const [w, h] = actor.get_transformed_size();
+        return [x + w / 2 - scene.monitor.x, y + h / 2 - scene.monitor.y];
+    };
+    const find = (actor, test) => {
+        if (test(actor))
+            return actor;
+        for (const child of actor.get_children()) {
+            const found = find(child, test);
+            if (found)
+                return found;
+        }
+        return null;
+    };
+    // The first drag of a fresh Shell doesn't start (the harness, not Jade):
+    // one to warm up.
+    Main.overview.show();
+    await wait(2500);
+    const warm = find(Main.overview._overview, a => a.metaWindow === window && a.visible);
+    if (warm)
+        await scene.drag(...center(warm), [[center(warm)[0] + 30, center(warm)[1] + 30], center(warm)], 300);
+    Main.overview.hide();
+    await wait(1500);
+    for (const [look, to] of [['solid', 2], ['frosted', 1]]) {
+        settings.set_string('glass', look);
+        await wait(1000);
+        Main.overview.show();
+        await wait(2500);
+        const preview = find(Main.overview._overview, a => a.metaWindow === window && a.visible);
+        const thumbnail = Main.overview._overview.controls._thumbnailsBox._thumbnails[to];
+        if (!preview || !thumbnail) {
+            log(`drags ${look}: preview ${Boolean(preview)}, thumbnail ${Boolean(thumbnail)}`);
+        } else {
+            const [x, y] = center(preview);
+            await scene.drag(x, y, [[x + 20, y - 20], center(thumbnail)], 500);
+            log(`drags ${look}: window dropped on workspace ${to + 1} → on workspace ${window.get_workspace().index() + 1}`);
+        }
+        Main.overview.hide();
+        await wait(1500);
+    }
+
+    // An app from the grid onto the dock pins it there.
+    const id = 'org.gnome.Calculator.desktop';
+    const favorites = () => global.settings.get_strv('favorite-apps');
+    const before = favorites();
+    Main.overview.showApps();
+    await wait(2500);
+    const icon = find(Main.overview._overview, a => a.app?.get_id?.() === id && a.visible && a.get_parent() !== null &&
+        !dock.bar.actor.contains(a));
+    if (icon) {
+        const [x, y] = center(icon);
+        await scene.drag(x, y, [[x + 20, y - 20], [scene.centerOf(1), scene.iconY - 20], [scene.centerOf(1), scene.iconY]], 700);
+        await wait(500);
+        log(`drags: grid app dropped on the dock → pinned ${favorites().includes(id)}`);
+    } else {
+        log('drags: no grid icon');
+    }
+    global.settings.set_strv('favorite-apps', before);
+    Main.overview.hide();
+    await wait(1200);
+    window.delete(global.get_current_time());
+    settings.set_string('glass', glass);
+    mutter.set_boolean('dynamic-workspaces', dynamic);
+    wm.set_int('num-workspaces', count);
+    await wait(800);
+}
+
 // Frosted glass: every surface blurs what is behind it. Each shot twice,
 // solid then frosted, where the difference shows.
 async function glass() {
@@ -1728,6 +1820,7 @@ export default class Harness extends Extension {
         await pickerScrolls();
         await networkPanel();
         await glass();
+        await overviewDrags();
         await popups();
         await clockFollowsGnome();
         await highContrast();
