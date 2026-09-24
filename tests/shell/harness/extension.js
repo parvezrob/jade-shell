@@ -862,6 +862,12 @@ async function popups() {
     await wait(500);
     await shoot('popup-volume');
     await wait(2500);
+    Main.osdWindowManager.showAll(new Gio.ThemedIcon({name: 'display-brightness-symbolic'}), null, 0.4, 1);
+    await wait(500);
+    await shoot('popup-brightness');
+    const osdIcon = Main.osdWindowManager._osdWindows[0]?._icon;
+    log(`popups: brightness pop-up draws ${osdIcon ? iconName(osdIcon) : 'nothing'}`);
+    await wait(2500);
 
     const dialog = new ModalDialog.ModalDialog({styleClass: 'prompt-dialog'});
     const content = new Dialog.MessageDialogContent({

@@ -6,6 +6,7 @@
 // the name changes (a volume level, a battery charging). Icons the family
 // doesn't have stay the icon theme's.
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import St from 'gi://St';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
@@ -51,9 +52,30 @@ export class BarIcons {
         this._originals = new Map();  // St.Icon → what it showed before
         this._watched = new Set();
         this._watch(Main.panel);
+        // The pop-ups for volume and brightness keys, one per screen, made
+        // again when the screens change (after GNOME's own handler).
+        this._watchOsd();
+        Main.layoutManager.connectObject('monitors-changed', () => {
+            this._osdIdle ??= GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._osdIdle = null;
+                this._watchOsd();
+                return GLib.SOURCE_REMOVE;
+            });
+        }, this);
+    }
+
+    _watchOsd() {
+        for (const osd of Main.osdWindowManager?._osdWindows ?? []) {
+            if (osd)
+                this._watch(osd);
+        }
     }
 
     disable() {
+        Main.layoutManager.disconnectObject(this);
+        if (this._osdIdle)
+            GLib.source_remove(this._osdIdle);
+        this._osdIdle = null;
         for (const actor of this._watched)
             actor.disconnectObject(this);
         this._watched.clear();

@@ -564,6 +564,21 @@ def icons():
                                           for x in (2.25, 9.5) for y in (2.25, 9.5)])
     make('view-restore-symbolic', lambda i: [i.add(box(5.25, 2.25, 8.5, 8.5, 1.25), evenodd=True),
                                              i.add(polyline([(2.25, 5.5), (2.25, 13.75), (10.5, 13.75)]))])
+    # Brightness (the pop-ups when a key changes it)
+    def brightness(i):
+        sun(i, 8, 8, 3.25, rays=(5.25, 6.75))
+        i.add('M8 5.25A2.75 2.75 0 0 0 8 10.75Z')  # half lit
+    make('display-brightness-symbolic', brightness)
+    for level, rays in (('high', 3), ('medium', 2), ('off', 0)):
+        def kbd(i, rays=rays, level=level):
+            i.add(box(1.5, 8, 13, 6, 1.5), evenodd=True)
+            for x in (4.25, 6.75, 9.25, 11.75):
+                i.add(disc(x, 10.1, 0.7), dim=level == 'off')
+            i.add(line(5.25, 12.25, 10.75, 12.25), dim=level == 'off')
+            for k, x in enumerate((4.5, 8, 11.5)):
+                i.add(line(x, 2.25, x, 5), dim=k >= rays)
+        make(f'keyboard-brightness-{level}-symbolic', kbd)
+
     for name in ('clear', 'clear-night', 'few-clouds', 'few-clouds-night', 'overcast', 'fog', 'showers',
                  'showers-scattered', 'snow', 'storm', 'severe-alert', 'windy', 'tornado'):
         out[f'weather-{name}'] = out[f'weather-{name}-symbolic']
