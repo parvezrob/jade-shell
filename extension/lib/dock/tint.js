@@ -1,6 +1,8 @@
 import Cogl from 'gi://Cogl';
+import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Shell from 'gi://Shell';
+import St from 'gi://St';
 
 import {hexToRgb} from './glass.js';
 
@@ -44,3 +46,80 @@ class JadeTintEffect extends Shell.GLSLEffect {
         this.queue_repaint();
     }
 });
+
+// The same tint, done once to an icon's pixels: what the dock draws. The
+// shader above draws through an offscreen buffer the size of the icon at
+// rest, which a magnified icon shows as blocky pixels; a tinted copy is an
+// ordinary texture, mipmapped and sharp at every size (and costs nothing per
+// frame). Made once per icon, size, accent and icon theme.
+const LUMA_POWER = 1.35;
+const cache = new Map();
+let iconTheme = null;
+
+function shades(accent) {
+    const [r, g, b] = hexToRgb(accent);
+    const mix = (to, k) => [r + (to - r) * k, g + (to - g) * k, b + (to - b) * k];
+    return [mix(0, 0.72), [r, g, b], mix(255, 0.74)];
+}
+
+// Lightness 0-255 -> tinted rgb, as the shader computes it.
+function table(accent) {
+    const [deep, mid, pale] = shades(accent);
+    const out = new Uint8Array(256 * 3);
+    for (let i = 0; i < 256; i++) {
+        const l = Math.pow(i / 255, LUMA_POWER);
+        const [from, to, k] = l < 0.5 ? [deep, mid, l * 2] : [mid, pale, (l - 0.5) * 2];
+        for (let c = 0; c < 3; c++)
+            out[i * 3 + c] = Math.round(from[c] + (to[c] - from[c]) * k);
+    }
+    return out;
+}
+
+function paint(pixbuf, accent) {
+    if (!pixbuf.get_has_alpha())
+        pixbuf = pixbuf.add_alpha(false, 0, 0, 0);
+    const [w, h, stride] = [pixbuf.get_width(), pixbuf.get_height(), pixbuf.get_rowstride()];
+    const pixels = pixbuf.get_pixels().slice();
+    const lut = table(accent);
+    for (let y = 0; y < h; y++) {
+        for (let i = y * stride, end = i + w * 4; i < end; i += 4) {
+            if (!pixels[i + 3])
+                continue;
+            const l = Math.round(0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]) * 3;
+            pixels[i] = lut[l];
+            pixels[i + 1] = lut[l + 1];
+            pixels[i + 2] = lut[l + 2];
+        }
+    }
+    const content = St.ImageContent.new_with_preferred_size(w, h);
+    const context = global.stage.context.get_backend().get_cogl_context();
+    content.set_bytes(context, GLib.Bytes.new(pixels), Cogl.PixelFormat.RGBA_8888, w, h, stride);
+    return content;
+}
+
+// A tinted copy of `gicon` at `pixels` pixels (an St.ImageContent, which St.Icon
+// takes as its gicon), or null when the icon can't be loaded.
+export function tintedIcon(gicon, pixels, accent) {
+    const themeName = St.Settings.get().gtk_icon_theme;
+    const key = `${gicon.to_string()}|${pixels}|${accent}|${themeName}`;
+    if (cache.has(key))
+        return cache.get(key);
+    let content = null;
+    try {
+        iconTheme ??= new St.IconTheme();
+        const pixbuf = iconTheme.lookup_by_gicon_for_scale(gicon, pixels, 1, St.IconLookupFlags.FORCE_SIZE)?.load_icon();
+        if (pixbuf)
+            content = paint(pixbuf, accent);
+    } catch (e) {
+        console.error(`Jade Shell: tinting ${gicon.to_string()}: ${e.message}`);
+    }
+    if (cache.size >= 256)
+        cache.clear();
+    cache.set(key, content);
+    return content;
+}
+
+export function forgetTinted() {
+    cache.clear();
+    iconTheme = null;
+}

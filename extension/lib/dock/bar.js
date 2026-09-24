@@ -13,6 +13,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Glass, hexToRgb} from './glass.js';
 import {AppItem, Separator, ShowAppsItem, TrashItem, setTint} from './items.js';
 import {Badges} from './badges.js';
+import {forgetTinted} from './tint.js';
 
 // Magnification, after dash2dock-motion's magnifier (GPL-2.0-or-later, see
 // THIRD_PARTY_LICENSES.md): each icon's size is a raised cosine of its
@@ -129,6 +130,12 @@ export class Bar {
             'window-marked-urgent', (_d, window) => this._attention(window, 'urgent'),
             this);
         global.workspace_manager.connectObject('active-workspace-changed', () => this._queueCheck(), this);
+        // Icons on disk changed (another icon theme, or Jade's rebuilt): the
+        // tinted copies go, and the icons are drawn again once GNOME has.
+        St.TextureCache.get_default().connectObject('icon-theme-changed', () => {
+            forgetTinted();
+            GLib.idle_add_once(GLib.PRIORITY_DEFAULT_IDLE, () => this._items && this._restyleItems());
+        }, this);
         for (const actor of global.get_window_actors())
             this._trackWindow(actor.meta_window);
         this._unfollow = theme.follow(palette => this._style(palette));
@@ -153,6 +160,7 @@ export class Bar {
         Main.overview.disconnectObject(this);
         global.display.disconnectObject(this);
         global.workspace_manager.disconnectObject(this);
+        St.TextureCache.get_default().disconnectObject(this);
         for (const window of this._windows ?? [])
             window.disconnectObject(this);
         this._removeBarrier();

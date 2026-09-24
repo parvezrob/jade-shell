@@ -11,7 +11,7 @@ import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {TintEffect} from './tint.js';
+import {TintEffect, tintedIcon} from './tint.js';
 
 // Icons are rendered this many times larger than they sit in the dock, so a
 // magnified icon is as sharp as a resting one.
@@ -35,7 +35,8 @@ const URGENT_GIVE_UP_S = 20;
 export function smooth(icon) {
     const prepare = child => {
         child.set_content_scaling_filters(Clutter.ScalingFilter.TRILINEAR, Clutter.ScalingFilter.LINEAR);
-        tintTexture(child);
+        if (!icon._jadePretinted)
+            tintTexture(child);
     };
     icon.get_children().forEach(prepare);
     icon.connect('child-added', (_icon, child) => prepare(child));
@@ -56,8 +57,28 @@ function tintTexture(texture) {
 }
 
 export function retint(icon) {
-    if (icon instanceof St.Icon)
+    if (icon?._jadeSource)
+        setDockGicon(icon);
+    else if (icon instanceof St.Icon)
         icon.get_children().forEach(tintTexture);
+}
+
+// A dock icon: `logical` pixels in the dock, drawn from OVERSAMPLE times as
+// many; tinted beforehand when the dock is (see tintedIcon), so it stays sharp
+// when magnified.
+function dockIcon(gicon, logical) {
+    const icon = new St.Icon({icon_size: logical * OVERSAMPLE});
+    icon._jadeSource = gicon;
+    setDockGicon(icon);
+    return smooth(icon);
+}
+
+function setDockGicon(icon) {
+    const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
+    const tinted = tint ? tintedIcon(icon._jadeSource, icon.icon_size * scaleFactor, tint.accent) : null;
+    icon._jadePretinted = Boolean(tinted);  // else the shader, as the app grid has it
+    icon.gicon = tinted ?? icon._jadeSource;
+    icon.get_children().forEach(child => (tinted ? child.remove_effect_by_name('jade-tint') : tintTexture(child)));
 }
 
 // Everything the dock lines up: apps, the separator, Show Apps and the trash.
@@ -128,7 +149,8 @@ class JadeDockAppIcon extends AppDisplay.AppIcon {
 
     _createIcon(size) {
         const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
-        const icon = smooth(this.app.create_icon_texture(size * OVERSAMPLE));
+        const gicon = this.app.get_icon() ?? new Gio.ThemedIcon({name: 'application-x-executable'});
+        const icon = dockIcon(gicon, size);
         icon.set_size(size * scaleFactor, size * scaleFactor);
         icon.style = this._owner?.iconStyle ?? null;
         return icon;
@@ -476,7 +498,7 @@ class JadeDockShowApps extends ButtonItem {
         this.button.child?.destroy();
         this._tile = null;
         if (this._interface?.get_string('icon-theme').startsWith('Jade-MacTahoe')) {
-            this.button.child = smooth(new St.Icon({icon_name: 'view-app-grid', icon_size: metrics.logical * OVERSAMPLE}));
+            this.button.child = dockIcon(new Gio.ThemedIcon({name: 'view-app-grid'}), metrics.logical);
             this.button.child.set_size(size, size);
             this.button.child.style = this._iconStyle ?? null;
             return;
@@ -547,10 +569,12 @@ class JadeDockTrash extends ButtonItem {
         if (!this._size)
             return;
         const gicon = new Gio.ThemedIcon({name: this._full ? 'user-trash-full' : 'user-trash'});
-        if (this.button.child)
-            this.button.child.gicon = gicon;
-        else
-            this.button.child = smooth(new St.Icon({gicon, icon_size: this._logical * OVERSAMPLE}));
+        if (this.button.child) {
+            this.button.child._jadeSource = gicon;
+            setDockGicon(this.button.child);
+        } else {
+            this.button.child = dockIcon(gicon, this._logical);
+        }
         this.button.child.set_size(this._size, this._size);
         this.button.child.style = this._iconStyle ?? null;
     }

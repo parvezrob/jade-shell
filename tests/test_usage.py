@@ -10,6 +10,9 @@ import unittest
 from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'tests'))
+import sandbox  # noqa: F401  (first: a throwaway home for the whole process)
+
 sys.path.insert(0, str(ROOT))
 
 from jade import cli, engine

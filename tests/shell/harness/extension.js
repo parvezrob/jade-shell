@@ -371,8 +371,13 @@ async function pickerScrolls() {
     }
     const picker = Main.panel.statusArea['jade-picker'];
     const part = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('Picker');
+    const closedBy = [];
+    const watch = picker.menu.connect('open-state-changed', (_m, open) => !open && closedBy.push(new Error().stack.split('\n').slice(1, 8).join(' | ')));
     picker.menu.open(false);
     await wait(2500);  // jade theme list
+    picker.menu.disconnect(watch);
+    if (closedBy.length)
+        log(`picker: closed by ${closedBy[0]}`);
     const adjustment = part._scroll.vadjustment;
     log(`picker: ${part._tiles.size} themes, still open ${picker.menu.isOpen}, scrolls ${adjustment.upper > adjustment.page_size + 1}`);
     [...part._tiles.values()].pop().grab_key_focus();
