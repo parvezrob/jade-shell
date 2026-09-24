@@ -4,7 +4,7 @@ Jade Shell is GPL-3.0-or-later. It includes, or is adapted from, the work below.
 
 | Part of Jade Shell | Comes from | License |
 |---|---|---|
-| `themes/*/colors.toml`, `templates/kitty.conf.tpl` (with a marked Jade addition), `templates/btop.theme.tpl`, `templates/vscode-theme.json.tpl`, `templates/ghostty.conf.tpl`, `templates/alacritty.toml.tpl`, `templates/claude.json.tpl` (its name changed to Jade Shell); `jade/palette.py` ports `bin/omarchy-theme-color` | [Omarchy](https://github.com/omacom/omarchy), commit d3cfd53b997f8bdcf776b8db68bf0d735e7a065d | MIT (below) |
+| `themes/*/colors.toml`, `templates/kitty.conf.tpl` (with a marked Jade addition), `templates/btop.theme.tpl`, `templates/vscode-theme.json.tpl`, `templates/ghostty.conf.tpl`, `templates/alacritty.toml.tpl`, `templates/claude.json.tpl` (its name changed to Jade Shell), `templates/obsidian.css.tpl` (its header changed); `jade/palette.py` ports `bin/omarchy-theme-color` | [Omarchy](https://github.com/omacom/omarchy), commit d3cfd53b997f8bdcf776b8db68bf0d735e7a065d | MIT (below) |
 | `jade/usage/claude.py`, `jade/usage/codex.py`: `bin/omarchy-agent-usage-claude` and `bin/omarchy-agent-usage-codex`, with small changes marked "Jade:" | Omarchy, same commit | MIT (below) |
 | `extension/lib/usage.js`: the menu's layout and formatting logic (window titles and tags, the binding window, durations, day names, model rows), adapted from `shell/plugins/agents/Panel.qml` | Omarchy, same commit | MIT (below) |
 | `shell-theme/gnome-50/`: GNOME Shell's theme sources, unmodified (see `SOURCE` there) | [GNOME Shell](https://gitlab.gnome.org/GNOME/gnome-shell) 50.5 | GPL-2.0-or-later (`shell-theme/gnome-50/gnome-shell-sass/COPYING`) |

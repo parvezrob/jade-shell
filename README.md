@@ -68,6 +68,7 @@ Log out and back in once to start the extension. A few notes at that first login
 | Ghostty (`ghostty`) | `jade-theme.conf`, loaded last from Ghostty's config (`config-file`); Ghostty reloads |
 | Alacritty (`alacritty`) | `jade-theme.toml`, imported first in `alacritty.toml` (colors you set there yourself still win); Alacritty reloads by itself |
 | Neovim (`neovim`) | a `jade` colorscheme drawn from the palette, no plugin needed: pick it with `:colorscheme jade` (LazyVim: `opts = { colorscheme = "jade" }`); every running Neovim using it recolors at once |
+| Obsidian (`obsidian`) | a Jade Shell theme in every vault Obsidian knows about (from Omarchy's), chosen in the vaults that are on Obsidian's default theme; undo gives back only that choice |
 | tmux (`tmux`) | `~/.config/tmux/jade-theme.conf` (styles only: status bar, windows, pane borders, messages, copy mode, menus; your status line's contents stay), sourced at the end of `~/.tmux.conf` or `~/.config/tmux/tmux.conf`; running tmux servers recolor at once |
 | Vicinae (`vicinae`) | an `omarchy-<theme>` theme, selected in its config |
 | Starship (`starship`) | a `jade` palette block (Catppuccin color names mapped to the theme) |

@@ -791,6 +791,28 @@ class Sandbox(unittest.TestCase):
         self.jade('theme', 'undo')
         self.assertFalse(colors.exists())
 
+    def test_obsidian_vaults_get_the_theme_where_none_was_chosen(self):
+        mine, chosen = self.home / 'Notes', self.home / 'Work'
+        for vault in (mine, chosen):
+            (vault / '.obsidian').mkdir(parents=True)
+        (chosen / '.obsidian/appearance.json').write_text('{"cssTheme": "Minimal", "baseFontSize": 16}')
+        registry = self.home / '.config/obsidian/obsidian.json'
+        registry.parent.mkdir(parents=True)
+        registry.write_text(json.dumps({'vaults': {'a': {'path': str(mine)}, 'b': {'path': str(chosen)}}}))
+        self.jade('theme', 'set', 'nord', '--only', 'obsidian')
+        for vault in (mine, chosen):
+            css = (vault / '.obsidian/themes/Jade Shell/theme.css').read_text()
+            self.assertIn('--background-primary: #2e3440', css)
+        self.assertEqual(json.loads((mine / '.obsidian/appearance.json').read_text())['cssTheme'], 'Jade Shell')
+        self.assertEqual(json.loads((chosen / '.obsidian/appearance.json').read_text())['cssTheme'], 'Minimal')
+        # Obsidian writes its settings as they change; undo gives back only the theme.
+        appearance = mine / '.obsidian/appearance.json'
+        appearance.write_text(json.dumps({**json.loads(appearance.read_text()), 'baseFontSize': 18}))
+        self.jade('theme', 'undo')
+        self.assertEqual(json.loads(appearance.read_text()), {'baseFontSize': 18})
+        self.assertFalse((mine / '.obsidian/themes/Jade Shell').exists() and
+                         any((mine / '.obsidian/themes/Jade Shell').iterdir()))
+
     def test_alacritty_keeps_its_own_imports_on_top(self):
         toml = self.home / '.config/alacritty/alacritty.toml'
         toml.write_text('[general]\nimport = ["~/.config/alacritty/mine.toml"]\n')

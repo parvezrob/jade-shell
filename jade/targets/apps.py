@@ -438,6 +438,70 @@ class Neovim:
                                stderr=subprocess.DEVNULL, timeout=3)
 
 
+class Obsidian:
+    """A Jade Shell theme in each vault Obsidian knows (as Omarchy writes its
+    own), chosen only in vaults still on Obsidian's default theme."""
+    name = 'obsidian'
+    title = 'Obsidian'
+    label = 'Obsidian vaults'
+    THEME = 'Jade Shell'
+    MANIFEST: ClassVar[dict] = {'name': 'Jade Shell', 'version': '1.0.0', 'minAppVersion': '0.16.0',
+                'description': 'Follows the Jade Shell theme of the desktop.', 'author': 'Jade Shell'}
+
+    def registries(self):
+        home = pathlib.Path.home()
+        return [config_home() / 'obsidian/obsidian.json',
+                home / '.var/app/md.obsidian.Obsidian/config/obsidian/obsidian.json',
+                home / 'snap/obsidian/current/.config/obsidian/obsidian.json']
+
+    def vaults(self):
+        found = []
+        for registry in self.registries():
+            try:
+                vaults = json.loads(registry.read_text()).get('vaults', {})
+            except (OSError, ValueError):
+                continue
+            for vault in vaults.values():
+                folder = pathlib.Path(vault.get('path', '')) / '.obsidian'
+                if vault.get('path') and folder.is_dir() and folder not in found:
+                    found.append(folder)
+        return found
+
+    def available(self, ctx):
+        return None if self.vaults() else Absent('Obsidian has no vaults')
+
+    def changes(self, theme, ctx):
+        css = themes.render(themes.template('obsidian.css.tpl'), theme.colors)
+        out = []
+        for folder in self.vaults():
+            themed = folder / 'themes' / self.THEME
+            out += [File(themed / 'theme.css', css),
+                    File(themed / 'manifest.json', json.dumps(self.MANIFEST, indent=2) + '\n')]
+            appearance = folder / 'appearance.json'
+            try:
+                settings = json.loads(read_text(appearance) or '{}')
+            except ValueError:
+                continue  # a file we can't read is left alone
+            if not settings.get('cssTheme'):  # the default theme: nobody chose another
+                out.append(File(appearance, json.dumps({**settings, 'cssTheme': self.THEME}, indent=2) + '\n'))
+        return out
+
+    def revert(self, path, text, old):
+        """Obsidian rewrites appearance.json as settings change: give back only its theme."""
+        if path.name != 'appearance.json':
+            return None
+        settings = json.loads(text)
+        before = json.loads(old).get('cssTheme') if old else None
+        if before:
+            settings['cssTheme'] = before
+        else:
+            settings.pop('cssTheme', None)
+        return json.dumps(settings, indent=2) + '\n'
+
+    def reload(self, ctx):
+        pass  # Obsidian reloads a theme's CSS when it changes
+
+
 class Alacritty:
     """Alacritty reloads its config and imports by itself. Colors set in
     alacritty.toml itself still win over an import, as Alacritty intends."""
