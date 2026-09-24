@@ -13,6 +13,7 @@ import {CheatSheet} from './lib/cheatsheet.js';
 import {ClipboardHistory} from './lib/clipboard.js';
 import {Clock} from './lib/clock.js';
 import {Desktop} from './lib/desktop.js';
+import {Glass} from './lib/glass.js';
 import {Dock} from './lib/dock/dock.js';
 import {SimpleCalendar} from './lib/datemenu.js';
 import {Modes} from './lib/modes.js';
@@ -37,6 +38,7 @@ export default class JadeShell extends Extension {
         // Parts the user can turn off; null key means always on.
         this._parts = [
             {key: null, keepWhileLocked: true, make: () => new Desktop(this._settings)},
+            {key: null, make: () => new Glass(this._settings)},
             {key: 'show-dock', make: () => new Dock(this._settings, this._shellTheme)},
             {key: 'show-workspaces', make: () => new Workspaces()},
             {key: 'show-clock-format', make: () => new Clock(this._settings)},

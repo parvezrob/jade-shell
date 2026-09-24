@@ -125,6 +125,8 @@ export class JadeMenu {
                 toggle('Dark Style', 'weather-clear-night-symbolic', () => iface.get_string('color-scheme') === 'prefer-dark',
                     on => iface.set_string('color-scheme', on ? 'prefer-dark' : 'default')),
                 setting('show-dock', 'Dock', 'user-bookmarks-symbolic'),
+                toggle('Frosted Glass', 'weather-fog-symbolic', () => settings.get_string('glass') === 'frosted',
+                    on => settings.set_string('glass', on ? 'frosted' : 'solid')),
                 {...setting('show-monitor', 'System Monitor', null), gicon: own('cpu')},
                 {...setting('show-usage', 'AI Usage', null), gicon: own('ai-usage')},
                 {...setting('notification-bell', 'Notification Bell', null), gicon: own('bell')},

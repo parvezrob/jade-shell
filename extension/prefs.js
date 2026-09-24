@@ -93,6 +93,14 @@ export default class JadePreferences extends ExtensionPreferences {
             'After a screenshot: edit it, copy its text, pin it on screen');
         switchRow(settings, desktop, 'start-on-desktop', 'Start on the desktop', 'Skip the overview after logging in');
         switchRow(settings, desktop, 'notification-bell', 'Notification bell', 'Notifications in their own panel, pop-ups at the top right');
+        const glassChoices = [['solid', 'Solid'], ['frosted', 'Frosted']];
+        const glass = new Adw.ComboRow({
+            title: 'Glass', subtitle: 'Frosted: the top bar, menus and pop-ups blur what is behind them',
+            model: Gtk.StringList.new(glassChoices.map(([, text]) => text)),
+            selected: Math.max(0, glassChoices.findIndex(([value]) => value === settings.get_string('glass'))),
+        });
+        glass.connect('notify::selected', () => settings.set_string('glass', glassChoices[glass.selected][0]));
+        desktop.add(glass);
         const dotChoices = [['waiting', 'While notifications wait'], ['unread', 'Only for missed pop-ups']];
         const dot = new Adw.ComboRow({
             title: 'Bell dot', subtitle: 'When the bell shows its dot',

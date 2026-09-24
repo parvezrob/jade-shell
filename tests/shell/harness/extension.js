@@ -357,6 +357,44 @@ async function capture() {
     part._dismiss(false);
 }
 
+// Frosted glass: every surface blurs what is behind it. Each shot twice,
+// solid then frosted, where the difference shows.
+async function glass() {
+    const jadeShell = Main.extensionManager.lookup(UUID);
+    const settings = jadeShell.getSettings?.() ?? Extension.lookupByUUID(UUID).getSettings();
+    const surfaces = async look => {
+        settings.set_string('glass', look);
+        await wait(800);
+        await shoot(`glass-${look}-bar`, Main.panel);
+        await panel('jade-picker', `glass-${look}-picker`);
+        await panel('quickSettings', `glass-${look}-quick-settings`);
+        const menu = jadeShell.stateObj._part('JadeMenu');
+        menu.open();
+        await wait(900);
+        await shoot(`glass-${look}-menu`);
+        menu._dialog?.close();
+        await wait(700);
+        Main.osdWindowManager.showAll(new Gio.ThemedIcon({name: 'audio-volume-high-symbolic'}), 'Speakers', 0.8, 1);
+        await wait(500);
+        await shoot(`glass-${look}-osd`);
+        await wait(2500);
+    };
+    // Isolation test: a bare widget with a background-mode blur.
+    const probe = new St.Widget({x: 100, y: 120, width: 500, height: 320, style: 'background-color: rgba(0,0,0,0.15);'});
+    probe.add_effect_with_name('probe', new Shell.BlurEffect({mode: Shell.BlurMode.BACKGROUND, radius: 36, brightness: 1}));
+    Main.uiGroup.add_child(probe);
+    await wait(600);
+    await shoot('glass-probe');
+    probe.destroy();
+    await surfaces('solid');
+    await surfaces('frosted');
+    const frostedCount = [Main.panel].filter(actor => actor.get_effect('jade-glass')).length;
+    log(`glass: frosted, top bar blurred ${frostedCount === 1}, ui group class ${Main.uiGroup.has_style_class_name('jade-frosted')}`);
+    settings.set_string('glass', 'solid');
+    await wait(500);
+    log(`glass: solid again, top bar blurred ${Boolean(Main.panel.get_effect('jade-glass'))}, class ${Main.uiGroup.has_style_class_name('jade-frosted')}`);
+}
+
 // The network panel: the real connection first; then, fed like jade network
 // would, Wi-Fi, a speed test on its way and done, and the Wi-Fi as a QR code.
 async function networkPanel() {
@@ -1645,6 +1683,7 @@ export default class Harness extends Extension {
         await capture();
         await pickerScrolls();
         await networkPanel();
+        await glass();
         await popups();
         await clockFollowsGnome();
         await highContrast();

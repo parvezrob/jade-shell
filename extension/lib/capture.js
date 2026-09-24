@@ -19,6 +19,7 @@ import Gettext from 'gettext';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {PickPixel, SelectArea} from 'resource:///org/gnome/shell/ui/screenshot.js';
 
+import {frost} from './glass.js';
 import {run, SPAWN, VERTICAL} from './util.js';
 
 const _gs = text => Gettext.dgettext('gnome-shell', text);
@@ -179,6 +180,7 @@ export class Capture {
     _present(card, monitor) {
         this._card = card;
         Main.layoutManager.addTopChrome(card);
+        frost(card);
         const area = Main.layoutManager.getWorkAreaForMonitor(monitor.index);
         const dock = monitor === Main.layoutManager.primaryMonitor ? this._parts('Dock')?.bar : null;
         const bottom = Math.min(area.y + area.height, dock?.top ?? Infinity);

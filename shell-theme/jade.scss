@@ -635,3 +635,18 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
     &:checked { color: $jade-strong; border-color: $jade-accent; background-color: transparentize($jade-accent, .82); }
   }
 }
+
+// ------------------------------------------------------------------ frosted glass (Settings › Glass)
+// The extension blurs what is behind each surface and puts .jade-frosted on
+// the Shell's ui group; these let the blur show through, tinted by the theme.
+
+$jade-glass: transparentize($jade-background, .45);
+$jade-glass-bar: transparentize($jade-background, .5);
+
+.jade-frosted {
+  #panel { background-color: $jade-glass-bar; }
+  #panel:overview { background-color: transparent; }
+  .popup-menu-content, .popup-menu-content.jade-frame, .candidate-popup-content,
+  .notification-banner, .notification-banner:hover, .osd-window, .modal-dialog,
+  .jade-capture-card { background-color: $jade-glass; }
+}

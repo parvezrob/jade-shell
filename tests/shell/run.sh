@@ -6,6 +6,7 @@
 # Or measure how fast its menus open and switch (JADE_ROUNDS=10, JADE_HZ=180):
 #
 #   JADE_MODE=timing tests/shell/run.sh   → "HARNESS TIMING …" lines, also in timing.txt
+#   JADE_GLASS=frosted …                  → start with frosted glass
 #
 # Everything is private to a temporary HOME: XDG dirs, a keyfile GSettings
 # backend, its own session bus and its own XDG_RUNTIME_DIR (GNOME keeps a crash
@@ -55,6 +56,8 @@ fi
 favorites="'org.mozilla.firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Ptyxis.desktop', 'org.gnome.Calendar.desktop', 'org.gnome.TextEditor.desktop', 'org.gnome.Loupe.desktop', 'org.gnome.Weather.desktop', 'org.gnome.Calculator.desktop', 'org.gnome.Software.desktop', 'org.gnome.Settings.desktop'"
 printf "[org/gnome/shell]\nenabled-extensions=['jade-shell@parvezrob.github.io', 'jade-shell-harness@local']\ndisable-user-extensions=false\nwelcome-dialog-last-shown-version='999'\nfavorite-apps=[%s]\n" "$favorites" \
     > "$home/.config/glib-2.0/settings/keyfile"
+# JADE_GLASS=frosted: start with frosted glass (e.g. to time it).
+[[ -n ${JADE_GLASS:-} ]] && printf "\n[org/gnome/shell/extensions/jade-shell]\nglass='%s'\n" "$JADE_GLASS" >> "$home/.config/glib-2.0/settings/keyfile"
 
 monitor=1400x900
 timeout=600  # half seconds
