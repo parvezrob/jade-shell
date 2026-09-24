@@ -11,13 +11,15 @@ import * as DND from 'resource:///org/gnome/shell/ui/dnd.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-import {TintEffect, tintedIcon} from './tint.js';
+import {TintEffect, shadedIcon} from './tint.js';
 
 // Icons are rendered this many times larger than they sit in the dock, so a
 // magnified icon is as sharp as a resting one.
 const OVERSAMPLE = 3;
 // Icons grow from their bottom edge, as on a Mac.
 const PIVOT = new Graphene.Point({x: 0.5, y: 1});
+// Pressed, an icon darkens this much, as a Mac's does.
+const PRESSED_DARK = 0.28;
 
 // One bounce: up with the pull of gravity slowing it, down with it speeding
 // it up, no rebound. A launch bounces about half an icon high and keeps
@@ -73,12 +75,27 @@ function dockIcon(gicon, logical) {
     return smooth(icon);
 }
 
+// Tinted and pressed looks are copies of the icon's pixels, not effects: an
+// effect draws through an offscreen buffer the size of the icon at rest,
+// blocky once the icon is magnified.
 function setDockGicon(icon) {
     const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
-    const tinted = tint ? tintedIcon(icon._jadeSource, icon.icon_size * scaleFactor, tint.accent) : null;
-    icon._jadePretinted = Boolean(tinted);  // else the shader, as the app grid has it
-    icon.gicon = tinted ?? icon._jadeSource;
-    icon.get_children().forEach(child => (tinted ? child.remove_effect_by_name('jade-tint') : tintTexture(child)));
+    const dark = icon._jadePressed ? PRESSED_DARK : 0;
+    const shaded = tint || dark
+        ? shadedIcon(icon._jadeSource, icon.icon_size * scaleFactor, {accent: tint?.accent, dark}) : null;
+    icon._jadePretinted = Boolean(shaded) || !tint;  // else the shader, as the app grid has it
+    icon.gicon = shaded ?? icon._jadeSource;
+    icon.get_children().forEach(child => (icon._jadePretinted ? child.remove_effect_by_name('jade-tint') : tintTexture(child)));
+}
+
+// The pressed look of a dock icon (or, for a tile of its own, a dimmer tile).
+function press(actor, pressed) {
+    if (actor?._jadeSource) {
+        actor._jadePressed = pressed;
+        setDockGicon(actor);
+    } else if (actor) {
+        actor.opacity = pressed ? 190 : 255;
+    }
 }
 
 // Everything the dock lines up: apps, the separator, Show Apps and the trash.
@@ -139,12 +156,7 @@ class JadeDockAppIcon extends AppDisplay.AppIcon {
         this.pivot_point = PIVOT;
         this._dot.hide();
         // Pressed, the icon darkens, as a Mac's does.
-        this._pressed = new Clutter.BrightnessContrastEffect({enabled: false});
-        this._pressed.set_brightness(-0.28);
-        this.icon.add_effect(this._pressed);
-        this.connect('notify::pressed', () => {
-            this._pressed.enabled = this.pressed;
-        });
+        this.connect('notify::pressed', () => press(this.icon.icon, this.pressed));
     }
 
     _createIcon(size) {
@@ -442,12 +454,7 @@ class JadeDockButtonItem extends Item {
         this.button.pivot_point = PIVOT;
         this.button.connect('enter-event', () => this._bar.wake());
         this.button.connect('clicked', (_b, button) => this.activate(button));
-        this._pressed = new Clutter.BrightnessContrastEffect({enabled: false});
-        this._pressed.set_brightness(-0.28);
-        this.button.add_effect(this._pressed);
-        this.button.connect('notify::pressed', () => {
-            this._pressed.enabled = this.button.pressed;
-        });
+        this.button.connect('notify::pressed', () => press(this.button.child, this.button.pressed));
         this.add_child(this.button);
         this.resize(bar.metrics.icon, bar.metrics);
     }

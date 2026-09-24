@@ -1540,6 +1540,21 @@ export default class Harness extends Extension {
                 await scene.shootDock(`dock-magnified-${theme}`);
                 continue;
             }
+            // Pressed and magnified: a darkened copy of the icon, drawn as sharp
+            // as at rest (an offscreen effect would draw it blocky).
+            scene.move(scene.centerOf(3), scene.iconY);
+            await wait(900);
+            scene.pointer.notify_button(now(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.PRESSED);
+            await wait(300);
+            const pressed = bar._items[3];
+            const effects = [pressed, pressed.icon, pressed.icon.icon, pressed.icon.icon.icon]
+                .flatMap(actor => actor?.get_effects?.() ?? []).map(e => e.constructor.name);
+            log(`DOCK pressed: ${pressed.label}, icon ${pressed.icon.icon.icon?.gicon?.constructor.name}, effects [${effects}]`);
+            await scene.shootDock('dock-pressed');
+            scene.move(scene.monitor.width / 2, 200);  // released away from it: nothing launches
+            await wait(300);
+            scene.pointer.notify_button(now(), Clutter.BUTTON_PRIMARY, Clutter.ButtonState.RELEASED);
+            await wait(900);
             await scene.run();
         }
     }
