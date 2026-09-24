@@ -1706,6 +1706,8 @@ class Timing {
             'dateMenu', 'quickSettings'];
         const themes = ['nord', 'osaka-jade', 'tokyo-night', 'osaka-jade'];
         const rows = [];
+        // $JADE_SOAK=menus,themes: only those parts of a round (all by default).
+        const only = (GLib.getenv('JADE_SOAK') || 'menus,dialogs,themes,locks,banners').split(',');
         const measure = async label => {
             for (let i = 0; i < 3; i++) {
                 gc();
@@ -1715,7 +1717,7 @@ class Timing {
             log(`TIMING SOAK ${label}: ${rows.at(-1).actors} actors, ${rows.at(-1).mb} MB resident`);
         };
         for (let round = 0; round <= ROUNDS; round++) {
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 5 && only.includes('menus'); i++) {
                 for (const role of roles) {
                     const menu = Main.panel.statusArea[role]?.menu;
                     if (!menu)
@@ -1726,7 +1728,7 @@ class Timing {
                     await wait(30);
                 }
             }
-            for (const name of ['JadeMenu', 'ClipboardHistory', 'CheatSheet']) {
+            for (const name of only.includes('dialogs') ? ['JadeMenu', 'ClipboardHistory', 'CheatSheet'] : []) {
                 for (let i = 0; i < 3; i++) {
                     state._part(name)?.toggle();
                     await wait(250);
@@ -1734,11 +1736,11 @@ class Timing {
                     await wait(250);
                 }
             }
-            for (const id of themes) {
+            for (const id of only.includes('themes') ? themes : []) {
                 await jade('theme', 'set', id, '--only', 'gnome,shell');
                 await wait(700);
             }
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < 3 && only.includes('locks'); i++) {
                 Main.sessionMode.isLocked = true;
                 state._syncParts();
                 await wait(200);
@@ -1746,13 +1748,15 @@ class Timing {
                 state._syncParts();
                 await wait(500);
             }
-            const source = new MessageTray.Source({title: 'Soak', iconName: 'dialog-information-symbolic'});
-            Main.messageTray.add(source);
-            const note = new MessageTray.Notification({source, title: `Round ${round}`, body: 'Soak'});
-            source.addNotification(note);
-            await wait(1200);
-            note.destroy();
-            await wait(800);
+            if (only.includes('banners')) {
+                const source = new MessageTray.Source({title: 'Soak', iconName: 'dialog-information-symbolic'});
+                Main.messageTray.add(source);
+                const note = new MessageTray.Notification({source, title: `Round ${round}`, body: 'Soak'});
+                source.addNotification(note);
+                await wait(1200);
+                note.destroy();
+                await wait(800);
+            }
             await measure(round === 0 ? 'warm' : `round ${round}`);
         }
         const [first, last] = [rows[0], rows.at(-1)];
