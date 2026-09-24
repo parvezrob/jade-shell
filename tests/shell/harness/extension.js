@@ -96,6 +96,35 @@ async function states(role, name) {
     await wait(300);
 }
 
+// The weather chip: nothing without a location; with one (Dhaka), the chip
+// and its forecast once the data is in.
+async function weather() {
+    const part = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('Weather');
+    if (!part) {
+        log('weather: none');
+        return;
+    }
+    log(`weather: no location → shown ${part._button.visible}`);
+    const {default: GWeather} = await import('gi://GWeather');
+    // A city, as GNOME Weather's search gives it.
+    const station = GWeather.Location.get_world().find_by_station_code('VGHS');
+    const place = station.get_parent()?.get_level() === GWeather.LocationLevel.CITY ? station.get_parent() : station;
+    log(`weather: the place is ${place.get_name()} (${place.get_level()})`);
+    const shellWeather = new Gio.Settings({schema_id: 'org.gnome.shell.weather'});
+    shellWeather.set_boolean('automatic-location', false);
+    shellWeather.set_value('locations', new GLib.Variant('av', [place.serialize()]));
+    for (let i = 0; i < 40 && !part._button.visible; i++)
+        await wait(500);
+    log(`weather: Dhaka → shown ${part._button.visible}, "${part._temp.text}" ${part._icon.icon_name}, ` +
+        `${part._hours.get_n_children()} hours`);
+    await shoot('weather-chip', Main.panel);
+    part._button.menu.open(false);
+    await wait(700);
+    await shoot('weather-menu', part._button.menu.box);
+    part._button.menu.close(false);
+    await wait(300);
+}
+
 // A media player on the bus (a stand-in for Spotify or Firefox): the chip
 // shows while it plays or is paused, scrolling skips, and it goes with it.
 const MPRIS_ROOT = `<node><interface name="org.mpris.MediaPlayer2">
@@ -1427,6 +1456,7 @@ export default class Harness extends Extension {
         await cheatSheet();
         await modes();
         await media();
+        await weather();
         await jadeMenu();
         await popups();
         await clockFollowsGnome();

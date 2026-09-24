@@ -587,3 +587,12 @@ $om-dimmer: mix($jade-foreground, $jade-background, 50%);
   .jade-media-app { color: $om-dim; }
   .jade-media-control { @include om-control; &:insensitive { color: $om-dimmer; } }
 }
+
+// ------------------------------------------------------------------ weather
+
+.jade-weather-menu {
+  .jade-weather-place { @include om-caps; }
+  .jade-weather-now { color: $jade-strong; }
+  .jade-weather-hour-time { color: $om-dim; }
+  .jade-weather-open { @include om-control; }
+}

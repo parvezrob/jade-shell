@@ -105,6 +105,11 @@
       <default>true</default>
       <summary>Show what's playing in the top bar</summary>
     </key>
+    <key name="show-weather" type="b">
+      <default>true</default>
+      <summary>Show the weather in the top bar</summary>
+      <description>For GNOME Weather's location; nothing shows without one.</description>
+    </key>
     <key name="show-monitor" type="b">
       <default>true</default>
       <summary>Show the system monitor in the top bar</summary>

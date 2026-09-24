@@ -171,3 +171,15 @@
 .jade-media-controls { spacing: 10px; padding: 4px 12px 6px; }
 .jade-media-control { padding: 6px 12px; }
 .jade-media-control StIcon { icon-size: 16px; }
+
+/* ---------- weather ---------- */
+.jade-weather-chip { spacing: 5px; }
+.jade-weather-temp { font-size: 9pt; }
+.jade-weather-menu { min-width: 280px; }
+.jade-weather-place { padding: 2px 12px 2px; }
+.jade-weather-now { padding: 2px 12px 10px; font-size: 10pt; }
+.jade-weather-hours { spacing: 18px; padding: 0 12px 10px; }
+.jade-weather-hour { spacing: 4px; }
+.jade-weather-hour-time, .jade-weather-hour-temp { font-size: 8.5pt; }
+.jade-weather-hour-icon { icon-size: 16px; }
+.jade-weather-open { margin: 2px 12px 4px; padding: 5px 10px; }
