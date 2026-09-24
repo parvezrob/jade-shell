@@ -70,6 +70,16 @@
       <summary>Solid panels, or frosted glass</summary>
       <description>Frosted: the top bar, menus, dialogs, banners and pop-ups blur what is behind them, tinted by the theme.</description>
     </key>
+    <key name="glass-tint" type="d">
+      <range min="0.15" max="0.95"/>
+      <default>0.55</default>
+      <summary>How much of the theme's background frosted glass keeps (0.15 clear to 0.95 nearly solid)</summary>
+    </key>
+    <key name="glass-blur" type="i">
+      <range min="0" max="80"/>
+      <default>36</default>
+      <summary>How strongly frosted glass blurs what is behind it</summary>
+    </key>
     <key name="show-picker" type="b">
       <default>true</default>
       <summary>Show the theme picker in the top bar</summary>

@@ -38,7 +38,7 @@ export default class JadeShell extends Extension {
         // Parts the user can turn off; null key means always on.
         this._parts = [
             {key: null, keepWhileLocked: true, make: () => new Desktop(this._settings)},
-            {key: null, make: () => new Glass(this._settings)},
+            {key: null, make: () => new Glass(this._settings, this._shellTheme)},
             {key: 'show-dock', make: () => new Dock(this._settings, this._shellTheme)},
             {key: 'show-workspaces', make: () => new Workspaces()},
             {key: 'show-clock-format', make: () => new Clock(this._settings)},

@@ -74,7 +74,7 @@ function iconsRow(settings, group) {
 }
 
 // A row with a slider, bound to a number key.
-function scaleRow(settings, group, key, title, subtitle, {lower, upper, step, digits, marks}) {
+export function scaleRow(settings, group, key, title, subtitle, {lower, upper, step, digits, marks}) {
     const adjustment = new Gtk.Adjustment({lower, upper, step_increment: step, page_increment: step * 4});
     const scale = new Gtk.Scale({
         adjustment, digits, draw_value: false, hexpand: true, width_request: 260, valign: Gtk.Align.CENTER,

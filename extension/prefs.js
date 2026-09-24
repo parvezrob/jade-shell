@@ -6,7 +6,7 @@ import Gtk from 'gi://Gtk';
 import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 import {aboutPage} from './settings/about.js';
-import {dockPage} from './settings/dock.js';
+import {dockPage, scaleRow} from './settings/dock.js';
 import {capture, jadeCommand, output, run} from './settings/common.js';
 import {hero} from './settings/hero.js';
 import {ShortcutRow} from './settings/shortcut.js';
@@ -101,6 +101,14 @@ export default class JadePreferences extends ExtensionPreferences {
         });
         glass.connect('notify::selected', () => settings.set_string('glass', glassChoices[glass.selected][0]));
         desktop.add(glass);
+        const tint = scaleRow(settings, desktop, 'glass-tint', 'Glass tint', 'How much of the theme shows over the blur',
+            {lower: 0.15, upper: 0.95, step: 0.05, digits: 2, marks: [[0.15, 'Clear'], [0.55, null], [0.95, 'Solid']]});
+        const blur = scaleRow(settings, desktop, 'glass-blur', 'Glass blur', 'How strongly what is behind is blurred',
+            {lower: 0, upper: 80, step: 2, digits: 0, marks: [[0, 'None'], [36, null], [80, 'Strong']]});
+        const frostedOnly = () => [tint, blur].forEach(row => (row.sensitive = settings.get_string('glass') === 'frosted'));
+        const glassChanged = settings.connect('changed::glass', frostedOnly);
+        tint.connect('destroy', () => settings.disconnect(glassChanged));
+        frostedOnly();
         const dotChoices = [['waiting', 'While notifications wait'], ['unread', 'Only for missed pop-ups']];
         const dot = new Adw.ComboRow({
             title: 'Bell dot', subtitle: 'When the bell shows its dot',

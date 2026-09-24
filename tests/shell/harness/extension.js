@@ -388,6 +388,19 @@ async function glass() {
     probe.destroy();
     await surfaces('solid');
     await surfaces('frosted');
+    // The sliders: a clearer tint and a stronger blur, live.
+    settings.set_double('glass-tint', 0.3);
+    settings.set_int('glass-blur', 70);
+    await wait(600);
+    log(`glass: tint 0.3 → top bar blur radius ${Main.panel.get_effect('jade-glass')?.radius}`);
+    const pickerBox = Main.panel.statusArea['jade-picker'].menu.box;
+    const alphaNow = () => pickerBox.get_theme_node().get_background_color().alpha;
+    log(`glass: picker background alpha at tint 0.3: ${alphaNow()}`);
+    await panel('jade-picker', 'glass-frosted-clear-picker');
+    settings.reset('glass-tint');
+    settings.reset('glass-blur');
+    await wait(400);
+    log(`glass: picker background alpha at the default tint: ${alphaNow()}`);
     const frostedCount = [Main.panel].filter(actor => actor.get_effect('jade-glass')).length;
     log(`glass: frosted, top bar blurred ${frostedCount === 1}, ui group class ${Main.uiGroup.has_style_class_name('jade-frosted')}`);
     settings.set_string('glass', 'solid');
