@@ -24,6 +24,8 @@ const JADE_KEYS = [
     ['bell-dismiss-all', 'Dismiss all notifications'],
     ['bell-open-newest', 'Open the newest notification'],
     ['bell-toggle-dnd', 'Do Not Disturb on or off'],
+    ['toggle-stay-awake', 'Stay awake on or off'],
+    ['toggle-night-light', 'Night light on or off'],
 ];
 
 // Every shortcut on this desktop: Jade Shell's, GNOME's (named as GNOME's

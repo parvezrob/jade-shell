@@ -9,6 +9,15 @@
       <default><![CDATA[['<Super>k']]]></default>
       <summary>Show the keyboard shortcuts cheat sheet</summary>
     </key>
+    <key name="toggle-stay-awake" type="as">
+      <default><![CDATA[['<Super><Control>i']]]></default>
+      <summary>Stay awake on or off</summary>
+      <description>Keeps the screen from dimming, locking and suspending until turned off (or the next login).</description>
+    </key>
+    <key name="toggle-night-light" type="as">
+      <default><![CDATA[['<Super><Control>n']]]></default>
+      <summary>Night light on or off</summary>
+    </key>
     <key name="show-picker" type="b">
       <default>true</default>
       <summary>Show the theme picker in the top bar</summary>

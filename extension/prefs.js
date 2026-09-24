@@ -78,7 +78,8 @@ export default class JadePreferences extends ExtensionPreferences {
         keyboard.add(new ShortcutRow(settings, 'show-cheatsheet', 'Show the keyboard shortcuts'));
         for (const [key, title] of [['bell-show', 'Open the notifications'], ['bell-dismiss', 'Dismiss the newest notification'],
             ['bell-dismiss-all', 'Dismiss all notifications'], ['bell-open-newest', 'Open the newest notification'],
-            ['bell-toggle-dnd', 'Do Not Disturb on or off']])
+            ['bell-toggle-dnd', 'Do Not Disturb on or off'], ['toggle-stay-awake', 'Stay awake on or off'],
+            ['toggle-night-light', 'Night light on or off']])
             keyboard.add(new ShortcutRow(settings, key, title));
 
         const apps = new Adw.PreferencesGroup({

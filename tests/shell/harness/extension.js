@@ -96,6 +96,33 @@ async function states(role, name) {
     await wait(300);
 }
 
+// Modes shown while on: stay awake by its shortcut (GNOME's session manager
+// is not in this shell, so only the attempt shows), Do Not Disturb with the
+// bell off, turned off by a click.
+async function modes() {
+    const part = Main.extensionManager.lookup(UUID)?.stateObj?._parts?.find(p => p.instance?.constructor.name === 'Modes')?.instance;
+    if (!part) {
+        log('modes: none');
+        return;
+    }
+    const settings = Extension.lookupByUUID(UUID).getSettings();
+    const notifications = new Gio.Settings({schema_id: 'org.gnome.desktop.notifications'});
+    settings.set_boolean('notification-bell', false);
+    notifications.set_boolean('show-banners', false);
+    await wait(600);
+    log(`modes: DND with the bell off → shown ${part._icons.dnd.visible}, bar ${part._button.visible}`);
+    await shoot('modes-dnd', Main.panel);
+    part._icons.dnd.emit('clicked', 1);
+    await wait(400);
+    log(`modes: clicked → Do Not Disturb ${!notifications.get_boolean('show-banners')}, bar ${part._button.visible}`);
+    settings.set_boolean('notification-bell', true);
+    part.setAwake(true);
+    await wait(800);
+    log(`modes: stay awake → cookie ${part._cookie ?? 0}, quick toggle ${part._quick.toggle.checked}`);
+    part.setAwake(false);
+    await wait(300);
+}
+
 // Super+K: the cheat sheet, searched, then closed with Escape.
 async function cheatSheet() {
     const sheet = Main.extensionManager.lookup(UUID)?.stateObj?._parts?.find(p => p.instance?.constructor.name === 'CheatSheet')?.instance;
@@ -1205,6 +1232,7 @@ export default class Harness extends Extension {
         await bellRoundTrip();
         await bellShortcuts();
         await cheatSheet();
+        await modes();
         await clockFollowsGnome();
         await highContrast();
     }

@@ -142,3 +142,7 @@
 .jade-key { padding: 1px 7px; font-size: 8.5pt; font-weight: 700; }
 .jade-cheatsheet-or { font-size: 8pt; padding: 0 4px; }
 .jade-cheatsheet-empty { padding: 16px 4px; }
+
+/* ---------- modes that are on (stay awake, night light, Do Not Disturb) ---------- */
+.jade-modes-box { spacing: 2px; }
+.jade-mode { padding: 0 3px; }

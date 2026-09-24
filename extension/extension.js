@@ -13,6 +13,7 @@ import {Clock} from './lib/clock.js';
 import {Desktop} from './lib/desktop.js';
 import {Dock} from './lib/dock/dock.js';
 import {SimpleCalendar} from './lib/datemenu.js';
+import {Modes} from './lib/modes.js';
 import {Monitor} from './lib/monitor.js';
 import {Notifications} from './lib/notifications.js';
 import {Picker} from './lib/picker.js';
@@ -39,6 +40,7 @@ export default class JadeShell extends Extension {
             {key: null, make: () => new Picker(this._settings, this._shellTheme)},
             {key: null, make: () => new CheatSheet(this._settings)},
             {key: 'notification-bell', make: () => new Notifications(this, this._settings)},
+            {key: null, make: () => new Modes(this, this._settings)},
             {key: null, make: () => new Updates(this, this._settings)},
             {key: null, make: () => new Welcome(this, this._settings, () => this._openPicker())},
         ];
