@@ -636,7 +636,7 @@ async function pickerScrolls() {
     const picker = Main.panel.statusArea['jade-picker'];
     const part = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('Picker');
     const closedBy = [];
-    const watch = picker.menu.connect('open-state-changed', (_m, open) => !open && closedBy.push(new Error().stack.split('\n').slice(1, 8).join(' | ')));
+    const watch = picker.menu.connect('open-state-changed', (_m, open) => !open && closedBy.push(new Error().stack.split('\n').slice(1, 30).join(' | ')));
     picker.menu.open(false);
     await wait(2500);  // jade theme list
     picker.menu.disconnect(watch);
@@ -1360,7 +1360,58 @@ class Timing {
         log(`TIMING spawn baseline: minor faults per idle 200 ms median ${median(idle)} max ${max(idle)}`);
     }
 
+    // A theme switch as the picker does it: from `jade theme set` starting to
+    // the Shell's new stylesheet on screen. $JADE_TIMING=themes runs only this.
+    async themeSwitches() {
+        const ids = ['nord', 'osaka-jade', 'tokyo-night', 'catppuccin-latte', 'gruvbox'];
+        const context = St.ThemeContext.get_for_stage(global.stage);
+        const rows = [];
+        for (let i = 0; i < ROUNDS * 2; i++) {
+            const id = ids[(i + 1) % ids.length];
+            const t0 = now();
+            let styled = 0, painted = 0;
+            const styledId = context.connect('changed', () => {
+                styled ||= now();
+            });
+            const paintId = global.stage.connect('after-paint', () => {
+                if (styled && !painted)
+                    painted = now();
+            });
+            const exited = new Promise(resolve => {
+                const proc = Gio.Subprocess.new([`${GLib.getenv('HOME')}/.local/bin/jade`, 'theme', 'set', id],
+                    Gio.SubprocessFlags.INHERIT_FDS | Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE);
+                proc.wait_async(null, () => resolve(now()));
+            });
+            const exit = await exited;
+            for (let w = 0; w < 300 && !painted; w++)
+                await wait(10);
+            await wait(1500);
+            context.disconnect(styledId);
+            global.stage.disconnect(paintId);
+            const blocks = this.blocks.filter(b => b.end >= t0 && b.t <= t0 + 3e6);
+            const frames = this.frames.filter(f => f.bu >= t0 && f.bu <= t0 + 3e6);
+            const row = {id, cli: exit - t0, styled: styled ? styled - t0 : NaN, painted: painted ? painted - t0 : NaN,
+                block: blocks.length ? max(blocks.map(b => b.end - b.t)) : 0, work: max(frames.map(f => f.au - f.bu))};
+            rows.push(row);
+            log(`TIMING theme ${id}: cli=${ms(row.cli)} styled=${ms(row.styled)} painted=${ms(row.painted)} ` +
+                `longest-block=${ms(row.block)} longest-frame=${ms(row.work)}`);
+        }
+        const pct = (values, p) => {
+            const v = values.filter(Number.isFinite).sort((a, b) => a - b);
+            return v.length ? v[Math.min(v.length - 1, Math.ceil(p / 100 * v.length) - 1)] : NaN;
+        };
+        for (const key of ['cli', 'styled', 'painted', 'block', 'work']) {
+            const values = rows.map(r => r[key]);
+            log(`TIMING THEME ${key.padEnd(8)} p50 ${ms(pct(values, 50))} p75 ${ms(pct(values, 75))} ` +
+                `p95 ${ms(pct(values, 95))} max ${ms(max(values))} (n ${values.length})`);
+        }
+    }
+
     async run() {
+        if (GLib.getenv('JADE_TIMING') === 'themes') {
+            await this.themeSwitches();
+            return;
+        }
         log(`TIMING start: ${ROUNDS} rounds, refresh ${this.hz.toFixed(1)} Hz, animations ${St.Settings.get().enable_animations}`);
         log(`TIMING test shell ${memoryText()}`);
         log(`TIMING jade on PATH: ${GLib.find_program_in_path('jade')}`);
@@ -1832,6 +1883,16 @@ export default class Harness extends Extension {
             ['Jade Shell', 'Tokyo Night applied · 9 changes']])
             source.addNotification(new MessageTray.Notification({source, title, body}));
         await wait(1000);
+        // $JADE_SCENES=capture,pickerScrolls: only those scenes, in that order.
+        const only = GLib.getenv('JADE_SCENES');
+        if (only) {
+            const scenes = {bellRoundTrip, bellShortcuts, cheatSheet, modes, media, weather, jadeMenu, clipboard, capture,
+                pickerScrolls, networkPanel, glass, overviewDrags, settingsEntries, popups, clockFollowsGnome, highContrast,
+                lockScreen};
+            for (const name of only.split(','))
+                await (scenes[name] ?? (() => log(`no scene ${name}`)))();
+            return;
+        }
         for (const theme of THEMES) {
             if (theme !== 'osaka-jade' || theme !== THEMES[0]) { // run.sh starts on Osaka Jade
                 await jade('theme', 'set', theme, '--only', 'gnome,shell');
