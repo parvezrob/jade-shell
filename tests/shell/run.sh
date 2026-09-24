@@ -104,5 +104,8 @@ if [[ $mode == timing ]]; then
     echo "Timing in $out/timing.txt"
 else
     grep -a 'HARNESS\|JS ERROR\|Jade Shell:' "$out/shell.log" || true
+    echo "Disposed-object warnings: $(grep -ac 'already disposed' "$out/shell.log" || true)," \
+        "JS warnings: $(grep -ac 'JS WARNING' "$out/shell.log" || true)," \
+        "unhandled promise rejections: $(grep -ac 'Unhandled promise rejection' "$out/shell.log" || true)"
     echo "Screenshots in $out"
 fi

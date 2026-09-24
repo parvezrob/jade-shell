@@ -635,6 +635,12 @@ async function pickerScrolls() {
     }
     const picker = Main.panel.statusArea['jade-picker'];
     const part = Main.extensionManager.lookup(UUID)?.stateObj?._part?.('Picker');
+    // The pointer off the top bar: resting on another button, GNOME's hover
+    // switching would take the open menu over to that one.
+    const pointer = Clutter.get_default_backend().get_default_seat().create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
+    const monitor = Main.layoutManager.primaryMonitor;
+    pointer.notify_absolute_motion(now(), monitor.x + monitor.width / 2, monitor.y + monitor.height / 2);
+    await wait(300);
     const closedBy = [];
     const watch = picker.menu.connect('open-state-changed', (_m, open) => !open && closedBy.push(new Error().stack.split('\n').slice(1, 30).join(' | ')));
     picker.menu.open(false);
@@ -656,6 +662,140 @@ async function pickerScrolls() {
 
 // GNOME's pop-ups and dialogs in the theme: volume, a password prompt (as
 // polkit draws it), Run a Command; the lock screen last (it stays locked).
+// Frosted banners come and go; then their parent fades. Each banner's blur
+// watched its ancestors' opacity with a handler that outlived it, and the
+// fade then touched destroyed banners ("already disposed" in the log: run.sh
+// counts those lines).
+async function frostedBanners() {
+    const jadeShell = Main.extensionManager.lookup(UUID);
+    const settings = jadeShell.getSettings?.() ?? Extension.lookupByUUID(UUID).getSettings();
+    settings.set_string('glass', 'frosted');
+    await wait(800);
+    // Whatever waits in the tray first (a banner shows one at a time).
+    for (const waiting of Main.messageTray.getSources().flatMap(s => s.notifications))
+        waiting.destroy();
+    await wait(1500);
+    let frostedCount = 0;
+    for (let i = 0; i < 6; i++) {
+        // A source goes with its last notification: a new one each time.
+        const source = new MessageTray.Source({title: 'Harness', iconName: 'dialog-information-symbolic'});
+        Main.messageTray.add(source);
+        const notification = new MessageTray.Notification({source, title: `Frosted ${i}`, body: 'A banner that goes'});
+        source.addNotification(notification);
+        await wait(1000);
+        if (Main.messageTray._bannerBin.get_first_child()?.get_effects().length)
+            frostedCount++;
+        notification.destroy();
+        await wait(900);
+    }
+    log(`frosted banners: ${frostedCount} of 6 shown frosted`);
+    const bin = Main.messageTray._bannerBin;
+    for (const opacity of [0, 255]) {
+        bin.ease({opacity, duration: 150, mode: Clutter.AnimationMode.LINEAR});
+        await wait(300);
+    }
+    settings.set_string('glass', 'solid');
+    await wait(500);
+    log('frosted banners: shown and gone, their parent faded');
+}
+
+// Many apps and Large icons: the dock shrinks its icons to stay on screen,
+// and grows them back when the apps go. With magnification off, leaving the
+// dock still takes its label away.
+async function dockFits() {
+    const jadeShell = Main.extensionManager.lookup(UUID);
+    const bar = jadeShell?.stateObj?._parts?.find(part => part.key === 'show-dock')?.instance?.bar;
+    const settings = jadeShell.getSettings?.() ?? Extension.lookupByUUID(UUID).getSettings();
+    if (!bar) {
+        log('dock fits: no dock');
+        return;
+    }
+    const shell = new Gio.Settings({schema_id: 'org.gnome.shell'});
+    const before = shell.get_strv('favorite-apps');
+    const apps = Shell.AppSystem.get_default().get_installed().map(info => info.get_id())
+        .filter(id => !before.includes(id)).slice(0, 30);
+    settings.set_int('dock-icon-size', 80);
+    shell.set_strv('favorite-apps', [...before, ...apps]);
+    await wait(2500);
+    const fits = () => {
+        const [left, right] = bar._extent;
+        return `${Math.round(left)}..${Math.round(right)} on a ${bar._monitor.width} px screen → ${left >= 0 && right <= bar._monitor.width}`;
+    };
+    const full = new DockScene(bar);
+    full.move(full.monitor.width / 2, 200);
+    await wait(900);
+    log(`dock fits: ${bar._items.length} items at ${bar.metrics.logical} px (80 wanted), ${fits()}`);
+    for (const at of [1, Math.floor(bar._items.length / 2), bar._items.length - 2]) {
+        full.move(full.centerOf(at), full.iconY);
+        await wait(900);
+        log(`dock fits: magnified at icon ${at}: ${fits()}`);
+    }
+    full.move(full.monitor.width / 2, 200);
+    await wait(900);
+    await shoot('dock-full', bar.actor);
+    shell.set_strv('favorite-apps', before);
+    await wait(2500);
+    log(`dock fits: apps gone, icons back to ${bar.metrics.logical} px`);
+    settings.reset('dock-icon-size');
+
+    const scene = new DockScene(bar);
+    scene.move(scene.monitor.width / 2, 200);
+    await wait(500);
+    scene.move(scene.centerOf(2), scene.iconY);
+    await wait(700);
+    log(`dock fits: magnified hover ${bar._hover}, label for ${bar._labelFor?.label}`);
+    scene.move(scene.monitor.width / 2, 200);
+    await wait(700);
+    settings.set_double('dock-magnification', 1);
+    await wait(500);
+    scene.move(scene.centerOf(2), scene.iconY);
+    await wait(700);
+    const labelOn = bar._label.opacity > 0;
+    log(`dock fits: hovering at ${Math.round(scene.centerOf(2))},${Math.round(scene.iconY)}: hover ${bar._hover}, ` +
+        `label for ${bar._labelFor?.label}, frames ${Boolean(bar._timeline)}`);
+    scene.move(scene.monitor.width / 2, 200);
+    await wait(700);
+    log(`dock fits: magnification off, label on hover ${labelOn}, after leaving ${bar._label.opacity > 0}, hover ${bar._hover}`);
+    settings.reset('dock-magnification');
+    await wait(500);
+}
+
+// What one shaded dock icon (tinted, or pressed) costs the main thread.
+async function tintCost() {
+    const dir = Main.extensionManager.lookup(UUID).dir;
+    const tint = await import(dir.get_child('lib').get_child('dock').get_child('tint.js').get_uri());
+    const apps = Shell.AppSystem.get_default().get_installed().slice(0, 12)
+        .map(info => info.get_icon()).filter(Boolean);
+    for (const pixels of [48, 96, 160, 240]) {
+        tint.forgetTinted();
+        const times = apps.map(gicon => {
+            const t0 = now();
+            tint.shadedIcon(gicon, pixels, {dark: 0.3});
+            return (now() - t0) / 1000;
+        });
+        log(`tint cost ${pixels}px: median ${median(times).toFixed(1)} ms, max ${max(times).toFixed(1)} ms over ${times.length} icons`);
+    }
+    tint.forgetTinted();
+}
+
+// A read-only command run with {kill: true} ends when its work is cancelled
+// (the screen locks); one without it is left to finish.
+async function runKill() {
+    const dir = Main.extensionManager.lookup(UUID).dir;
+    const {run} = await import(dir.get_child('lib').get_child('util.js').get_uri());
+    for (const kill of [true, false]) {
+        const marker = GLib.build_filenamev([GLib.get_tmp_dir(), `jade-run-kill-${kill}-${GLib.random_int()}`]);
+        const cancellable = new Gio.Cancellable();
+        const done = run(['sh', '-c', `sleep 0.5; touch ${marker}`], cancellable, {kill});
+        await wait(100);
+        cancellable.cancel();
+        await done;
+        await wait(900);
+        log(`run kill ${kill}: the command ${GLib.file_test(marker, GLib.FileTest.EXISTS) ? 'finished' : 'was ended'}`);
+        GLib.unlink(marker);
+    }
+}
+
 async function popups() {
     const ModalDialog = await import('resource:///org/gnome/shell/ui/modalDialog.js');
     const Dialog = await import('resource:///org/gnome/shell/ui/dialog.js');
@@ -1443,9 +1583,72 @@ class Timing {
         }
     }
 
+    // What an unlock costs: GNOME disables extensions at a lock and enables
+    // them at the unlock, so enable() is time spent before the desktop is
+    // back. $JADE_TIMING=enable runs only this; each part's share is logged.
+    async enableCycles() {
+        const extension = Main.extensionManager.lookup(UUID);
+        const pct = (values, p) => {
+            const v = values.filter(Number.isFinite).sort((a, b) => a - b);
+            return v.length ? v[Math.min(v.length - 1, Math.ceil(p / 100 * v.length) - 1)] : NaN;
+        };
+        const enables = [], disables = [], parts = new Map();
+        // As a lock does: the session says locked, and the parts stop (all but
+        // the desktop's); the unlock starts them again.
+        const state = extension.stateObj;
+        const locked = Object.getOwnPropertyDescriptor(Main.sessionMode, 'isLocked');
+        for (let i = 0; i < ROUNDS * 2; i++) {
+            Main.sessionMode.isLocked = true;
+            let t0 = now();
+            state._syncParts();
+            disables.push(now() - t0);
+            await wait(400);
+            Main.sessionMode.isLocked = false;
+            const original = state._syncPart.bind(state);
+            state._syncPart = part => {
+                const t = now();
+                original(part);
+                const name = part.instance?.constructor?.name ?? 'part';
+                parts.set(name, [...parts.get(name) ?? [], now() - t]);
+            };
+            t0 = now();
+            state._syncParts();
+            enables.push(now() - t0);
+            delete state._syncPart;
+            await wait(900);
+        }
+        if (locked)
+            Object.defineProperty(Main.sessionMode, 'isLocked', locked);
+        for (const [label, values] of [['unlock', enables], ['lock', disables]]) {
+            log(`TIMING UNLOCK ${label.padEnd(8)} p50 ${ms(pct(values, 50))} p75 ${ms(pct(values, 75))} ` +
+                `p95 ${ms(pct(values, 95))} max ${ms(max(values))} (n ${values.length})`);
+        }
+        log(`TIMING UNLOCK parts (median ms): ${[...parts].sort((a, b) => median(b[1]) - median(a[1]))
+            .map(([name, values]) => `${name} ${ms(median(values))}`).join(', ')}`);
+        // The first open of each menu after an unlock (its parts are new).
+        for (let i = 0; i < ROUNDS; i++) {
+            Main.sessionMode.isLocked = true;
+            state._syncParts();
+            await wait(300);
+            Main.sessionMode.isLocked = false;
+            state._syncParts();
+            await wait(1500);
+            this.instrumentParts();
+            for (const role of JADE_ROLES)
+                await this.open(role, 'after-unlock', 1);
+        }
+        if (locked)
+            Object.defineProperty(Main.sessionMode, 'isLocked', locked);
+        this.summarise();
+    }
+
     async run() {
         if (GLib.getenv('JADE_TIMING') === 'themes') {
             await this.themeSwitches();
+            return;
+        }
+        if (GLib.getenv('JADE_TIMING') === 'enable') {
+            await this.enableCycles();
             return;
         }
         log(`TIMING start: ${ROUNDS} rounds, refresh ${this.hz.toFixed(1)} Hz, animations ${St.Settings.get().enable_animations}`);
@@ -1924,7 +2127,7 @@ export default class Harness extends Extension {
         if (only) {
             const scenes = {bellRoundTrip, bellShortcuts, cheatSheet, modes, media, weather, jadeMenu, clipboard, capture,
                 pickerScrolls, networkPanel, glass, overviewDrags, settingsEntries, popups, clockFollowsGnome, highContrast,
-                lockScreen};
+                lockScreen, frostedBanners, dockFits, tintCost, runKill};
             for (const name of only.split(','))
                 await (scenes[name] ?? (() => log(`no scene ${name}`)))();
             return;
@@ -1966,6 +2169,9 @@ export default class Harness extends Extension {
         await glass();
         await overviewDrags();
         settingsEntries();
+        await frostedBanners();
+        await dockFits();
+        await runKill();
         await popups();
         await clockFollowsGnome();
         await highContrast();
