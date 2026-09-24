@@ -151,6 +151,10 @@ def theme_undo(args, ctx):
         print(f'Kept {path}: it changed after the switch, so it was left as it is')
     for item in manifest['skipped']:
         print(f'Skipped {item}')
+    if manifest.get('incomplete'):
+        print('Some files could not be put back; their saved copies are kept. '
+              'Fix what stopped them and run jade theme undo again.', file=sys.stderr)
+        return 1
     return 0
 
 
@@ -279,7 +283,7 @@ def set_left_alone(ctx, names, alone):
         return False
     settings = ctx.settings.get(schema)
     now = settings.get_strv(key)
-    wanted = [n for n in now if n not in names] + (list(dict.fromkeys(n for n in names if n not in now)) if alone else [])
+    wanted = [*now, *(n for n in dict.fromkeys(names) if n not in now)] if alone else [n for n in now if n not in names]
     settings.set_strv(key, wanted)
     Gio.Settings.sync()
     return True
@@ -625,6 +629,7 @@ def parser():
     keymap.add_parser('revert', help='put your shortcuts back')
 
     net = commands.add_parser('network', help='the connection, a speed test, Wi-Fi QR, DNS and the Wi-Fi band')
+    net.set_defaults(json=False)  # a bare `jade network` is `jade network status`
     net = net.add_subparsers(dest='action', metavar='action')
     net.add_parser('status', help='the connection now').add_argument('--json', action='store_true')
     net.add_parser('speedtest', help="download and upload speed (Cloudflare's speed test)").add_argument(
@@ -688,7 +693,8 @@ HANDLERS = {
 EXCLUSIVE = {('theme', 'set'), ('theme', 'wallpaper'), ('theme', 'undo'), ('theme', 'reload'),
              ('theme', 'install'), ('theme', 'update'), ('theme', 'remove'),
              ('setup', None), ('restore', None),
-             ('apps', 'off'), ('apps', 'on'), ('font', 'set'), ('keys', 'apply'), ('keys', 'revert')}
+             ('apps', 'off'), ('apps', 'on'), ('font', 'set'), ('keys', 'apply'), ('keys', 'revert'),
+             ('network', 'dns'), ('network', 'band')}
 
 
 def main(argv=None):

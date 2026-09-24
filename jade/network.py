@@ -360,13 +360,23 @@ def change(uuid, settings, reconnect_device=None):
     """Set connection `settings`, remembering the values from before Jade
     Shell first changed each one; then apply them."""
     state = load_state()
+    had = json.dumps(state, indent=2) + '\n' if state_file().exists() else None
     before = state['connections'].setdefault(uuid, {})
     missing = [key for key in settings if key not in before]
     if missing:
         before.update(connection_setting(uuid, *missing))
-    args = [item for key, value in settings.items() for item in (key, value)]
-    nmcli('connection', 'modify', uuid, *args)  # refused (not allowed, say): nothing recorded
+    # The old values are on disk before anything changes, so a full disk or
+    # a killed process can never leave a change `jade restore` can't undo.
     write_text(state_file(), json.dumps(state, indent=2) + '\n')
+    args = [item for key, value in settings.items() for item in (key, value)]
+    try:
+        nmcli('connection', 'modify', uuid, *args)
+    except NetworkError:  # refused (not allowed, say): nothing changed, nothing to remember
+        if had is None:
+            state_file().unlink(missing_ok=True)
+        else:
+            write_text(state_file(), had)
+        raise
     if reconnect_device:
         nmcli('connection', 'up', uuid, 'ifname', reconnect_device)
 

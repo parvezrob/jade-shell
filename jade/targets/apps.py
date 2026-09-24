@@ -525,6 +525,10 @@ class Alacritty:
             pass
         elif imports:  # the person's own import list: ours goes first, so theirs win
             text = text[:imports.end()] + self.IMPORT + ', ' + text[imports.end():]
+        elif table := re.search(r'^\[general\][ \t]*(?:#.*)?\n?', text, re.M):
+            # A [general] table of their own: the import goes inside it (a
+            # dotted general.import at the top would define the table twice).
+            text = text[:table.end()] + managed_block('', f'import = [{self.IMPORT}]') + text[table.end():]
         else:
             # Top-level keys must come before any table: at the very top.
             text = managed_block('', f'general.import = [{self.IMPORT}]') + ('\n' + text if text.strip() else '')

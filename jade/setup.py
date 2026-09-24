@@ -607,7 +607,7 @@ def restore(ctx, assume_yes=False):
         answer = input(f'Undo {len(history)} theme switch(es) and Jade Shell setup? [y/N] ')
         if answer.strip().lower() not in ('y', 'yes'):
             return 1
-    kept, merged, skipped, stuck = [], [], [], []
+    kept, merged, skipped, stuck, unfinished = [], [], [], [], 0
     skipped += keys.revert(ctx) or []  # the Omarchy keymap: your shortcuts back first
     if network.state_file().exists():
         skipped += network.restore()  # DNS and Wi-Fi band as they were
@@ -618,6 +618,9 @@ def restore(ctx, assume_yes=False):
         skipped += undone['skipped']
         if undone.get('stuck'):
             stuck.append(undone['stuck'])
+        if undone.get('incomplete'):  # kept for another try; this run goes on past it
+            stuck.append(undone['incomplete'])
+            unfinished += 1
 
     rest = []
     for entry in reversed(manifest['settings']):
@@ -647,7 +650,8 @@ def restore(ctx, assume_yes=False):
     manifest_path().unlink(missing_ok=True)
     # The first-run welcome and its notes: set up again later, they show again.
     (engine.state_dir() / 'welcome.json').unlink(missing_ok=True)
-    restore_offer.drop_kit()  # nothing left to offer after a removal
+    if not unfinished:
+        restore_offer.drop_kit()  # nothing left to offer after a removal
     for path in dict.fromkeys(merged):
         say(f'Took Jade Shell\'s part out of {path}; your edits since stay.')
     for path in dict.fromkeys(kept):
@@ -663,6 +667,10 @@ def restore(ctx, assume_yes=False):
             say(f'Skipped {item}')
     for schema in dict.fromkeys(gone):
         say(f'Skipped the settings of {schema}: no longer installed.')
+    if unfinished:
+        say('Some files could not be put back (see Skipped above); their saved copies are kept. '
+            'Fix what stopped them and run jade restore again.')
+        return 1
     say('Restored the desktop you had before Jade Shell. Log out and back in to finish.')
     return 0
 

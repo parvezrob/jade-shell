@@ -355,7 +355,8 @@ class RestoreKit(unittest.TestCase):
         self.assertEqual((kit / 'jade/setup.py').read_text(), '# code')
         self.assertFalse((kit / 'jade/__pycache__').exists())
         unit = restore_offer.unit_path().read_text()
-        self.assertIn(f'Environment=PYTHONPATH={kit}', unit)
+        self.assertIn(f'"PYTHONPATH={kit}"', unit)
+        self.assertIn(f'ConditionPathExists={store.state_home()}/jade-shell/setup.json', unit)
         self.assertIn('ConditionPathExists=!/usr/bin/jade', unit)
         restore_offer.systemctl.assert_any_call('enable', restore_offer.UNIT)
         restore_offer.drop_kit()
@@ -541,6 +542,24 @@ class Sandbox(unittest.TestCase):
         self.assertFalse(shell_css.exists())
         self.assertNotIn('accent-color', self.keyfile().get('org/gnome/desktop/interface', {}))
         self.assertIn('none', self.jade('theme', 'current'))
+
+    def test_an_undo_that_cannot_write_keeps_what_it_could_not_put_back(self):
+        kitty_dir = self.home / '.config/kitty'
+        self.jade('theme', 'set', 'nord', '--only', 'kitty,btop')
+        kitty_dir.chmod(0o500)  # read-only: nothing can be written back there
+        self.addCleanup(kitty_dir.chmod, 0o755)
+        result = self.run_jade('theme', 'undo')
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertEqual((self.home / '.config/btop/btop.conf').read_text(), self.originals[self.home / '.config/btop/btop.conf'])
+        backups = list((self.home / '.local/state/jade-shell/backups').iterdir())
+        self.assertEqual(len(backups), 1)  # kept, with only kitty's files still to do
+        left = json.loads((backups[0] / 'manifest.json').read_text())
+        self.assertEqual({pathlib.Path(e['path']).parent.name for e in left['files']}, {'kitty'})
+        kitty_dir.chmod(0o755)
+        self.jade('theme', 'undo')
+        self.assertEqual((kitty_dir / 'kitty.conf').read_text(), self.originals[kitty_dir / 'kitty.conf'])
+        self.assertFalse((kitty_dir / 'jade-theme.conf').exists())
+        self.assertEqual(list((self.home / '.local/state/jade-shell/backups').iterdir()), [])
 
     def test_undo_takes_only_jades_part_out_of_an_edited_config(self):
         skip = self.skip_shell_unless_compiler()
@@ -893,6 +912,17 @@ class Sandbox(unittest.TestCase):
         self.jade('theme', 'undo')
         self.assertEqual(toml.read_text(), '[general]\nimport = ["~/.config/alacritty/mine.toml"]\n\n[window]\nopacity = 0.9\n')
 
+    def test_alacritty_import_goes_inside_its_own_general_table(self):
+        toml = self.home / '.config/alacritty/alacritty.toml'
+        mine = '[general]\nlive_config_reload = true\n\n[font]\nsize = 11\n'
+        toml.write_text(mine)
+        self.jade('theme', 'set', 'nord', '--only', 'alacritty')
+        general = tomllib.loads(toml.read_text())['general']  # one [general], still valid TOML
+        self.assertEqual(general['import'], ['~/.config/alacritty/jade-theme.toml'])
+        self.assertTrue(general['live_config_reload'])
+        self.jade('theme', 'undo')
+        self.assertEqual(toml.read_text(), mine)
+
     def test_vscodium_and_flatpak_code_switch_too(self):
         codium = self.home / '.config/VSCodium/User/settings.json'
         flatpak = self.home / '.var/app/com.vscodium.codium/config/VSCodium/User/settings.json'
@@ -1077,6 +1107,9 @@ elif 'modify' in args and __import__('os').path.exists({str(self.home.parent / '
     print('Error: Failed to modify connection: Insufficient privileges', file=sys.stderr)
     sys.exit(1)
 elif 'modify' in args:
+    # Was the undo record on disk before the change? (see the restore test)
+    open({str(self.home.parent / 'nm-modified')!r}, 'a').write(
+        str(__import__('os').path.exists({str(self.home / '.local/state/jade-shell/network.json')!r})) + '\\n')
     rest = args[args.index('u-1') + 1:]
     conn.update(dict(zip(rest[::2], rest[1::2])))
     json.dump(conn, open({str(conn)!r}, 'w'))
@@ -1106,6 +1139,8 @@ elif 'show' in args and 'connection' in args:
                          ('1.1.1.1 1.0.0.1', 'yes', 'a'))
         self.assertEqual(json.loads(self.jade('network', 'status', '--json'))['dns'], 'cloudflare')
         self.jade('network', 'dns', 'google')  # a second change keeps the first "before"
+        # Each change found its undo record already written.
+        self.assertEqual(set((self.home.parent / 'nm-modified').read_text().split()), {'True'})
         self.jade('restore', '--yes')
         now = json.loads(conn.read_text())
         self.assertEqual((now['ipv4.dns'], now['ipv4.ignore-auto-dns'], now['802-11-wireless.band']), ('', 'no', ''))
@@ -1270,3 +1305,31 @@ class SettingsCommand(unittest.TestCase):
     def test_rejects_unknown_pages(self):
         with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
             cli.parser().parse_args(['settings', 'nowhere'])
+
+
+class CommandLine(unittest.TestCase):
+    def test_bare_network_is_status(self):
+        self.assertFalse(cli.parser().parse_args(['network']).json)
+
+    def test_leaving_an_app_alone_twice_keeps_it_alone(self):
+        stored = []
+
+        class Fake:
+            def get_strv(self, _key):
+                return list(stored)
+
+            def set_strv(self, _key, value):
+                stored[:] = value
+
+        ctx = mock.Mock()
+        ctx.settings.has.return_value = True
+        ctx.settings.get.return_value = Fake()
+        with mock.patch.object(cli.Gio.Settings, 'sync'):
+            for _ in range(2):
+                self.assertTrue(cli.set_left_alone(ctx, ['kitty'], alone=True))
+            self.assertEqual(stored, ['kitty'])
+            cli.set_left_alone(ctx, ['kitty', 'tmux'], alone=True)
+            self.assertEqual(stored, ['kitty', 'tmux'])
+            cli.set_left_alone(ctx, ['kitty'], alone=False)
+            self.assertEqual(stored, ['tmux'])
+

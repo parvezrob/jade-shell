@@ -345,7 +345,7 @@ def put_back(name, ctx):
             manifests.append((backup, load_manifest(backup)))
         except (OSError, ValueError):
             continue  # undo and restore report an unreadable backup
-    first_files, last_files, first_settings = {}, {}, {}
+    first_files, last_files, first_settings, failed = {}, {}, {}, set()
     for backup, manifest in manifests:
         for entry in manifest['files']:
             if entry.get('target') == name:
@@ -380,16 +380,19 @@ def put_back(name, ctx):
                 result['merged'].append(key)
         except OSError as error:
             result['skipped'].append(f'{path}: {error.strerror or error}')
+            failed.add(key)
     result['skipped'] += ctx.settings.restore_all(list(first_settings.values()))
 
+    # The history forgets the app, except the files that could not be put
+    # back: their saved copies stay for another try.
     for backup, manifest in manifests:
-        files = [e for e in manifest['files'] if e.get('target') != name]
+        files = [e for e in manifest['files'] if e.get('target') != name or e['path'] in failed]
         settings = [e for e in manifest['settings'] if e.get('target') != name]
         if (files, settings) == (manifest['files'], manifest['settings']):
             continue
         manifest['files'], manifest['settings'] = files, settings
         # Older backups don't name the target of each setting: the name stays there.
-        if not any(e.get('target') in (name, None) for e in files + settings):
+        if not any(e.get('target') in (name, None) for e in files + settings) and not failed:
             manifest['targets'] = [t for t in manifest['targets'] if t != name]
         write_text(backup / 'manifest.json', json.dumps(manifest, indent=2))
     reload([name], ctx)
@@ -419,6 +422,7 @@ def undo(ctx, ignore=()):
         return {'before': {}, 'kept': [], 'skipped': [f'{backup.name}: unreadable backup, set aside']}
     manifest['kept'], manifest['merged'] = [], []
     manifest['skipped'] = ctx.settings.restore_all(manifest['settings'])
+    failed = []  # files that could not be written back: their copies must survive
     for entry in manifest['files']:
         path = pathlib.Path(entry['path'])
         written = entry.get('written')  # missing in backups made before Jade Shell kept hashes
@@ -432,6 +436,7 @@ def undo(ctx, ignore=()):
                 manifest['merged'].append(str(path))
             except OSError as error:
                 manifest['skipped'].append(f'{path}: {error.strerror or error}')
+                failed.append(entry)
             continue
         try:
             if entry['saved']:
@@ -440,6 +445,7 @@ def undo(ctx, ignore=()):
                 path.unlink(missing_ok=True)
         except OSError as error:
             manifest['skipped'].append(f'{path}: {error.strerror or error}')
+            failed.append(entry)
     before = manifest.get('before') or {}
     if before:
         write_text(state_dir() / 'current.json', json.dumps(before))
@@ -448,6 +454,14 @@ def undo(ctx, ignore=()):
     try:
         reload(manifest['targets'], ctx)
     finally:
-        # Everything is back: the backup is spent, and keeping it would make the next undo repeat it.
-        shutil.rmtree(backup)
+        if failed:
+            # Not everything is back: the backup keeps only what is still to
+            # do, so fixing the cause and undoing again finishes the job.
+            left = {**{k: v for k, v in manifest.items() if k not in ('kept', 'merged', 'skipped')},
+                    'settings': [], 'files': failed}
+            write_text(backup / 'manifest.json', json.dumps(left, indent=2))
+            manifest['incomplete'] = backup
+        else:
+            # Everything is back: the backup is spent, and keeping it would make the next undo repeat it.
+            shutil.rmtree(backup)
     return manifest

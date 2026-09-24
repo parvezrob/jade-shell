@@ -32,13 +32,13 @@ UNIT_TEXT = '''[Unit]
 Description=Offer to restore the desktop from before Jade Shell once it is removed
 # Nothing to do while Jade Shell is installed: no Python starts.
 ConditionPathExists=!/usr/bin/jade
-ConditionPathExists=%h/.local/state/jade-shell/setup.json
+ConditionPathExists={manifest}
 After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
 Type=simple
-Environment=PYTHONPATH={kit}
+Environment={environment}
 ExecStart=/usr/bin/python3 -P -m jade.restore_offer
 
 [Install]
@@ -77,9 +77,21 @@ def keep_kit():
     shutil.copytree(PACKAGE_ROOT, fresh, ignore=shutil.ignore_patterns('__pycache__'))
     shutil.rmtree(kit, ignore_errors=True)
     fresh.rename(kit)
-    write_text(unit_path(), UNIT_TEXT.format(kit=kit))
+    write_text(unit_path(), unit_text(kit))
     systemctl('daemon-reload')
     systemctl('enable', UNIT)
+
+
+def unit_text(kit):
+    """The service, with the folders this setup used (XDG_STATE_HOME moved
+    elsewhere included: systemd's own environment may not have it)."""
+    def quoted(text):  # one Environment= assignment, as systemd reads it
+        return '"' + text.replace('%', '%%').replace('\\', '\\\\').replace('"', '\\"') + '"'
+    environment = ' '.join(quoted(f'{name}={value}') for name, value in (
+        ('PYTHONPATH', kit), ('XDG_STATE_HOME', state_home()), ('XDG_DATA_HOME', data_home()),
+        ('XDG_CONFIG_HOME', config_home())))
+    manifest = str(state_home() / 'jade-shell/setup.json').replace('%', '%%')
+    return UNIT_TEXT.format(manifest=manifest, environment=environment)
 
 
 def drop_kit():
