@@ -1042,6 +1042,9 @@ class Sandbox(unittest.TestCase):
         manifest = json.loads((self.home / '.local/state/jade-shell/setup.json').read_text())
         self.assertTrue(manifest['icons-offered'])
         self.assertNotIn('No Tahoe icons', self.jade('setup'))  # asked once, not at every update
+        # In use but gone from disk (deleted by hand, or by a cleanup tool): fetched again.
+        self.gsettings('set', 'org.gnome.desktop.interface', 'icon-theme', 'Jade-MacTahoe-dark')
+        self.assertIn('No Tahoe icons', self.jade('setup'))
         self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'dock-icon-style'), "'tinted'")
 
     def test_tahoe_icons_take_the_accent_and_leave_with_restore(self):

@@ -448,8 +448,11 @@ def setup(ctx, theme_id=None, after_update=False):
             say(f'Downloaded {len(missing)} theme previews.')
 
     # The Tahoe icons are Jade Shell's default look: fetched once (the first
-    # setup, or the first with a version that has them). Off stays off.
-    if not manifest.get('icons-offered'):
+    # setup, or the first with a version that has them). Off stays off. And
+    # if the desktop uses them but they are gone from disk, fetched again.
+    in_use = ctx.settings.has('org.gnome.desktop.interface', 'icon-theme') and \
+        str(ctx.settings.get('org.gnome.desktop.interface').get_string('icon-theme')).startswith(icons.NAME)
+    if not manifest.get('icons-offered') or (in_use and not icons.installed()):
         if 'icons' not in engine.left_alone(ctx.settings):
             try:
                 icons.install(progress)
