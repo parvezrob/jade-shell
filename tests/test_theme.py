@@ -735,6 +735,30 @@ class Sandbox(unittest.TestCase):
             self.assertEqual(path.read_text(), self.originals[path])
         self.assertFalse((self.home / '.claude/themes/jade.json').exists())
 
+    @unittest.skipUnless(shutil.which('tmux'), 'needs tmux')
+    def test_tmux_follows_running_servers_and_undo(self):
+        conf = self.home / '.tmux.conf'
+        conf.write_text('set -g mouse on\nset -g status-style "bg=red"\n')
+        tmpdir = pathlib.Path(self.tmp.name) / 'tmux'
+        tmpdir.mkdir()
+        self.env['TMUX_TMPDIR'] = str(tmpdir)
+        server = ['tmux', '-f', str(conf), '-L', 'jadetest']
+        subprocess.run([*server, 'new-session', '-d', '-s', 't'], env=self.env, check=True)
+        self.addCleanup(subprocess.run, [*server, 'kill-server'], env=self.env, capture_output=True)
+
+        def style():
+            return subprocess.run([*server, 'show', '-gv', 'status-style'], env=self.env, capture_output=True,
+                                  text=True).stdout.strip()
+
+        self.assertEqual(style(), 'bg=red')
+        self.jade('theme', 'set', 'nord', '--only', 'tmux')
+        self.assertTrue(conf.read_text().endswith('source-file -q ~/.config/tmux/jade-theme.conf\n# <<< jade-theme\n'))
+        foreground = themes.load('nord').colors['foreground'].lower()
+        self.assertIn(foreground, style().lower())  # the running server took it
+        self.jade('theme', 'undo')
+        self.assertEqual(conf.read_text(), 'set -g mouse on\nset -g status-style "bg=red"\n')
+        self.assertEqual(style(), 'bg=red')  # and its own again
+
     def test_alacritty_keeps_its_own_imports_on_top(self):
         toml = self.home / '.config/alacritty/alacritty.toml'
         toml.write_text('[general]\nimport = ["~/.config/alacritty/mine.toml"]\n')

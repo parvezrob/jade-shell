@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 from typing import ClassVar
 
@@ -351,6 +352,58 @@ class Ghostty:
 
     def reload(self, ctx):
         signal('ghostty', 'USR2')  # Ghostty 1.2+ reloads its config
+
+
+class Tmux:
+    """tmux: our colors file, sourced at the end of the user's config, and
+    applied to every running tmux server right away."""
+    name = 'tmux'
+    title = 'tmux'
+    label = 'tmux status bar and borders'
+
+    def config(self):
+        # tmux 3.1+ reads ~/.config/tmux/tmux.conf; older ones only ~/.tmux.conf.
+        home = pathlib.Path.home()
+        return next((path for path in (home / '.tmux.conf', config_home() / 'tmux/tmux.conf') if path.exists()), None)
+
+    def theme_file(self):
+        return config_home() / 'tmux/jade-theme.conf'
+
+    def available(self, ctx):
+        return None if self.config() else Absent('tmux is not configured')
+
+    def changes(self, theme, ctx):
+        home = pathlib.Path.home()
+        theme_file = self.theme_file()
+        shown = f'~/{theme_file.relative_to(home)}' if theme_file.is_relative_to(home) else str(theme_file)
+        return [
+            File(theme_file, themes.render(themes.template('tmux.conf.tpl'), theme.colors)),
+            File(self.config(), managed_block(read_text(self.config()), f'source-file -q {shown}')),
+        ]
+
+    def revert(self, path, text, old):
+        return revert_block(text, old) if path == self.config() else None
+
+    def reload(self, ctx):
+        """Every running server (one per socket) takes the colors, or, with
+        them undone, its config again."""
+        if not shutil.which('tmux'):
+            return
+        folder = pathlib.Path(os.environ.get('TMUX_TMPDIR') or '/tmp') / f'tmux-{os.getuid()}'
+        config = self.config()
+        ours = self.theme_file().exists() and config and MARK_BEGIN in read_text(config)
+        for socket in folder.glob('*') if folder.is_dir() else ():
+            command = ['source-file', str(self.theme_file())] if ours else \
+                [arg for option in TMUX_STYLES for arg in ('set', '-gu', option, ';')] + ['source-file', str(config)]
+            subprocess.run(['tmux', '-S', str(socket), *command], stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, timeout=5)
+
+
+# What tmux.conf.tpl sets, to unset again on undo.
+TMUX_STYLES = ['status-style', 'window-status-style', 'window-status-current-style', 'window-status-activity-style',
+               'window-status-bell-style', 'pane-border-style', 'pane-active-border-style', 'message-style',
+               'message-command-style', 'mode-style', 'copy-mode-match-style', 'copy-mode-current-match-style',
+               'popup-border-style', 'menu-style', 'menu-selected-style', 'menu-border-style', 'clock-mode-colour']
 
 
 class Alacritty:
