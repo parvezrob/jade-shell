@@ -1366,12 +1366,36 @@ class Timing {
         const ids = ['nord', 'osaka-jade', 'tokyo-night', 'catppuccin-latte', 'gruvbox'];
         const context = St.ThemeContext.get_for_stage(global.stage);
         const rows = [];
+        // Where a switch's time goes: the stylesheet load and each palette follower.
+        const state = Main.extensionManager.lookup(UUID)?.stateObj;
+        const shellTheme = state?._shellTheme;
+        if (shellTheme) {
+            this.instrument(shellTheme, '_loadStylesheet', 'ShellTheme._loadStylesheet');
+            const followers = [...shellTheme._listeners];
+            shellTheme._listeners.clear();
+            followers.forEach((callback, i) => {
+                const owner = callback.toString().slice(0, 60).replace(/\s+/g, ' ');
+                const self = this;
+                shellTheme._listeners.add(function (...args) {
+                    const t = now();
+                    callback.apply(this, args);
+                    self.span(`follower${i}[${owner}]`, t, now() - t);
+                });
+            });
+        }
+        for (const [name, methods] of [['Glass', ['_sync', '_loadTint', '_writeTint', '_styleOverview']]]) {
+            const part = state?._part?.(name);
+            for (const method of methods)
+                this.instrument(part, method, `${name}.${method}`);
+        }
         for (let i = 0; i < ROUNDS * 2; i++) {
             const id = ids[(i + 1) % ids.length];
             const t0 = now();
             let styled = 0, painted = 0;
+            const changes = [];
             const styledId = context.connect('changed', () => {
                 styled ||= now();
+                changes.push(now() - t0);
             });
             const paintId = global.stage.connect('after-paint', () => {
                 if (styled && !painted)
@@ -1390,11 +1414,23 @@ class Timing {
             global.stage.disconnect(paintId);
             const blocks = this.blocks.filter(b => b.end >= t0 && b.t <= t0 + 3e6);
             const frames = this.frames.filter(f => f.bu >= t0 && f.bu <= t0 + 3e6);
+            // Jade's own stylesheet in place, and the first frame painted with it.
+            const load = this.spans.filter(x => x.label === 'ShellTheme._loadStylesheet' && x.t >= t0 && x.t <= t0 + 3e6).pop();
+            if (load) {
+                styled = load.t + load.dur;
+                painted = frames.find(f => f.ap && f.ap > styled)?.ap ?? 0;
+            }
             const row = {id, cli: exit - t0, styled: styled ? styled - t0 : NaN, painted: painted ? painted - t0 : NaN,
                 block: blocks.length ? max(blocks.map(b => b.end - b.t)) : 0, work: max(frames.map(f => f.au - f.bu))};
             rows.push(row);
             log(`TIMING theme ${id}: cli=${ms(row.cli)} styled=${ms(row.styled)} painted=${ms(row.painted)} ` +
                 `longest-block=${ms(row.block)} longest-frame=${ms(row.work)}`);
+            if (FRAME_TRACE) {
+                log(`TIMING theme ${id} restyles at ${changes.map(ms).join(', ')}; blocks ` +
+                    `${blocks.filter(b => b.end - b.t > 8000).map(b => `+${ms(b.t - t0)}:${ms(b.end - b.t)}`).join(' ')}`);
+                log(`TIMING theme ${id} spans ${this.spans.filter(x => x.t >= t0 && x.t <= t0 + 3e6 && x.dur > 1000)
+                    .map(x => `${x.label}@+${ms(x.t - t0)}:${ms(x.dur)}`).join(' ')}`);
+            }
         }
         const pct = (values, p) => {
             const v = values.filter(Number.isFinite).sort((a, b) => a - b);
