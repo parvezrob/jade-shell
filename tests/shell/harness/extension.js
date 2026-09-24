@@ -591,6 +591,19 @@ async function networkPanel() {
     settings.set_boolean('show-network', true);
     await wait(300);
     log(`network: on again → bar icon shown ${part._button.visible}, GNOME's icon shown ${gnome?.visible}`);
+    // GNOME's indicator changes state: Jade's icon follows (its drawing is
+    // swapped by the bar's icon family, which reads names back).
+    const primary = gnome?._primaryIndicator;
+    if (primary) {
+        const was = primary.icon_name || 'network-wired-symbolic';
+        const seen = [];
+        for (const name of ['network-wireless-signal-good-symbolic', 'network-wireless-offline-symbolic', was]) {
+            primary.icon_name = name;
+            await wait(100);
+            seen.push(`${name} → ${iconName(part._icon)}`);
+        }
+        log(`network: follows GNOME: ${seen.join(', ')}`);
+    }
     part.toggle();
     await wait(2500);  // jade network status pings the router and 1.1.1.1
     log(`network: open ${part._button.menu.isOpen}, ${part._title.text} · ${part._meta.text} · internet ${part._facts.internet.text}`);
