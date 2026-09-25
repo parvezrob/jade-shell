@@ -16,6 +16,7 @@ from . import __version__, community, debug, engine, icons, keys, network, setup
 from . import targets as registry
 from .setup import join
 from .store import File, Settings, read_text
+from .targets import font as font_target
 from .targets.base import Absent
 from .usage import collect
 
@@ -330,7 +331,11 @@ def apps_on(args, ctx):
         return 0
     theme = themes.load(state['theme'])
     ctx.wallpaper_index = state.get('wallpaper') or 0
-    engine.apply(theme, ctx, only=args.names)
+    only = list(args.names)
+    # A terminal back on gets its font file with its include, in one switch.
+    if font_target.chosen() and set(only) & {'kitty', 'ghostty', 'ptyxis'}:
+        only.append('font')
+    engine.apply(theme, ctx, only=only)
     print(f'{theme.name} applied to {titles}.')
     print_skipped(ctx, args.names)
     return 0

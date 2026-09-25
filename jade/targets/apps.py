@@ -314,7 +314,7 @@ class Kitty:
         folder = config_home() / 'kitty'
         conf = read_text(folder / 'kitty.conf')
         # Included last, so it overrides the inline colors without deleting them.
-        included = managed_block(conf, 'include jade-theme.conf' + ('\ninclude jade-font.conf' if font.chosen(ctx) else ''))
+        included = managed_block(conf, 'include jade-theme.conf' + ('\ninclude jade-font.conf' if font.included(ctx) else ''))
         return [
             File(folder / 'jade-theme.conf', themes.render(themes.template('kitty.conf.tpl'), theme.colors)),
             File(folder / 'kitty.conf', included),
@@ -344,7 +344,7 @@ class Ghostty:
         config = self.config()
         # Loaded last, so it overrides the colors set above it without deleting them.
         included = managed_block(read_text(config), 'config-file = jade-theme.conf' +
-                                 ('\nconfig-file = jade-font.conf' if font.chosen(ctx) else ''))
+                                 ('\nconfig-file = jade-font.conf' if font.included(ctx) else ''))
         return [
             File(config.parent / 'jade-theme.conf', themes.render(themes.template('ghostty.conf.tpl'), theme.colors)),
             File(config, included),

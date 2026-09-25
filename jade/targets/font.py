@@ -44,6 +44,12 @@ def left_alone(ctx):
     return engine.left_alone(ctx.settings)
 
 
+def included(ctx):
+    """Whether a terminal's theme includes its jade-font file: a font is
+    chosen and the font target writes those files (fonts not left alone)."""
+    return bool(chosen(ctx)) and 'font' not in left_alone(ctx)
+
+
 def font_file(terminal):
     return config_home() / terminal / 'jade-font.conf'
 

@@ -14,8 +14,8 @@ import pathlib
 import re
 import shutil
 import subprocess
-import tarfile
 import sys
+import tarfile
 import tempfile
 import time
 import tomllib
@@ -1284,6 +1284,26 @@ elif 'show' in args and 'connection' in args:
         self.jade('restore', '--yes')  # restore puts the old font back
         self.assertEqual(self.gsettings('get', *interface), "'Source Code Pro 13'")
         self.assertFalse((config / 'ghostty/jade-font.conf').exists())
+
+    @needs_jetbrains
+    def test_a_terminal_turned_back_on_gets_its_font_file_too(self):
+        config = self.home / '.config'
+        self.jade('apps', 'off', 'kitty', 'ghostty')
+        self.jade('setup')  # JetBrains Mono chosen; the terminals left alone get no font file
+        self.assertFalse((config / 'ghostty/jade-font.conf').exists())
+        self.jade('apps', 'on', 'kitty', 'ghostty')
+        self.assertIn('include jade-font.conf', (config / 'kitty/kitty.conf').read_text())
+        self.assertEqual((config / 'kitty/jade-font.conf').read_text(), 'font_family JetBrains Mono\n')
+        self.assertIn('config-file = jade-font.conf', (config / 'ghostty/config').read_text())
+        self.assertTrue((config / 'ghostty/jade-font.conf').exists())
+        # Fonts left alone: no include pointing at a file nobody writes.
+        self.jade('apps', 'off', 'font')
+        self.jade('theme', 'set', 'nord')
+        self.assertNotIn('jade-font', (config / 'kitty/kitty.conf').read_text())
+        self.jade('restore', '--yes')
+        for path in (config / 'kitty/jade-font.conf', config / 'ghostty/jade-font.conf'):
+            self.assertFalse(path.exists(), path)
+        self.assertEqual((config / 'kitty/kitty.conf').read_text(), self.originals[config / 'kitty/kitty.conf'])
 
     def test_setup_keeps_a_font_chosen_before(self):
         interface = ('org.gnome.desktop.interface', 'monospace-font-name')
