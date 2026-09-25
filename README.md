@@ -2,6 +2,8 @@
 
 **Omarchy's look for the GNOME you already have.**
 
+Website: **[jadeshell.app](https://jadeshell.app)**
+
 One install gives Fedora or Ubuntu Omarchy's 22 themes, dark and light, a theme picker that re-colors the whole desktop at once, a Mac-style dock, workspace buttons, a light system monitor and your Claude and Codex usage in the top bar. No new OS, no tiling window manager to learn.
 
 **Status: early (0.9), GNOME 50 only.** Tested on Fedora 44 and Ubuntu 26.04. Fedora Atomic desktops (Silverblue, Kinoite) are not supported yet: the installer stops on them.
@@ -11,8 +13,10 @@ One install gives Fedora or Ubuntu Omarchy's 22 themes, dark and light, a theme 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/parvezrob/jade-shell/main/install.sh | bash
+curl -fsSL https://jadeshell.app/install | bash
 ```
+
+`jadeshell.app/install` is [`install.sh`](install.sh) in this repository (it forwards there); read it first if you like.
 
 Run it as your desktop user. It downloads the latest `.rpm` or `.deb` release, checks it against the release checksums, installs it with `dnf` or `apt` (asking for your password), then runs `jade setup`, which:
 
@@ -106,7 +110,7 @@ Modelled on Omarchy Quattro's bar: every icon on the right sits on the same rhyt
 ## Remove
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/parvezrob/jade-shell/main/install.sh | bash -s -- --uninstall
+curl -fsSL https://jadeshell.app/install | bash -s -- --uninstall
 ```
 
 This runs `jade restore`, which asks first, undoes the theme switches and the settings `jade setup` changed, then removes the package. Without a terminal to ask on (from a script, say), add `--yes`: `bash -s -- --uninstall --yes`. The extensions setup turned off come back; extensions you turned on or off yourself since stay as they are, and config files you edited after a switch keep your edits, the same way undo does. If an older or development copy is still in your home folder afterwards, the uninstaller prints the command to remove it. Downloaded wallpapers and previews stay in `~/.local/share/jade-shell`, `~/.local/state/jade-shell` and `~/.cache/jade-shell`; delete those folders to remove them too.

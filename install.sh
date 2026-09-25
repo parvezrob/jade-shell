@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Install Jade Shell on Fedora or Ubuntu with GNOME 50:
 #
-#   curl -fsSL https://raw.githubusercontent.com/parvezrob/jade-shell/main/install.sh | bash
+#   curl -fsSL https://jadeshell.app/install | bash
 #
 # Checks the system, downloads the latest release package, checks it against
 # the release's SHA256SUMS, installs it with dnf or apt (asking for sudo), then
 # runs `jade setup` as you. Every setting setup changes is recorded first, and
 #
-#   curl -fsSL https://raw.githubusercontent.com/parvezrob/jade-shell/main/install.sh | bash -s -- --uninstall
+#   curl -fsSL https://jadeshell.app/install | bash -s -- --uninstall
 #
 # puts your desktop back and removes the package (add --yes after --uninstall
 # to skip the question, e.g. without a terminal).
