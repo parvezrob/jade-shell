@@ -20,7 +20,7 @@ import {familyGicon} from './baricons.js';
 import {notify} from './notify.js';
 import {jadeCommand, openSettings, run, SPAWN} from './util.js';
 
-const README = 'https://github.com/parvezrob/jade-shell#readme';
+const MANUAL = 'https://github.com/parvezrob/jade-shell/blob/main/docs/guide.md';
 const MAX_RESULTS = 60;
 
 // A command line, started in the background (the shell's PATH, ~ expanded).
@@ -152,7 +152,7 @@ export class JadeMenu {
             ]},
             {label: 'Learn', icon: 'help-browser-symbolic', children: () => [
                 {label: 'Keyboard Shortcuts', icon: 'input-keyboard-symbolic', action: () => this._parts('CheatSheet')?.open()},
-                {label: 'Jade Shell Manual', icon: 'help-browser-symbolic', action: () => Gio.AppInfo.launch_default_for_uri(README, null)},
+                {label: 'Jade Shell Manual', icon: 'help-browser-symbolic', action: () => Gio.AppInfo.launch_default_for_uri(MANUAL, null)},
             ]},
             {label: 'System', icon: 'system-shutdown-symbolic', children: () => [
                 {label: 'Lock', icon: 'system-lock-screen-symbolic', action: () => system.activateLockScreen()},
