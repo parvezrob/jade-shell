@@ -738,8 +738,8 @@ class VSCode:
                 settings = re.sub(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', lambda _m, line=line: line, settings, count=1)
             elif '{' in settings:
                 settings = settings.replace('{', '{\n    ' + line + ',', 1)
-            else:  # no settings.json yet (or an empty one): undo deletes the one made here
-                settings = '{\n    ' + line + '\n}\n'
+            else:  # none yet (undo deletes the one made here), or only comments: kept above it
+                settings = (settings.rstrip() + '\n' if settings.strip() else '') + '{\n    ' + line + '\n}\n'
             out.append(File(settings_path, settings))
         return out
 

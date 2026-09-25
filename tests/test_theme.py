@@ -1004,6 +1004,12 @@ class Sandbox(unittest.TestCase):
         path.write_text(path.read_text().replace('"Jade · Nord"', '"Jade · Nord",\n    "editor.fontSize": 15'))
         self.jade('theme', 'undo')
         self.assertEqual(json.loads(path.read_text()), {'editor.fontSize': 15})
+        # Only comments in it: they stay, the theme goes after them, and undo gives the file back.
+        path.write_text('// Keep editor defaults\n')
+        self.jade('theme', 'set', 'nord', '--only', 'vscode')
+        self.assertEqual(path.read_text(), '// Keep editor defaults\n{\n    "workbench.colorTheme": "Jade · Nord"\n}\n')
+        self.jade('theme', 'undo')
+        self.assertEqual(path.read_text(), '// Keep editor defaults\n')
         # Not run yet (no User folder): left alone.
         shutil.rmtree(self.home / '.config/Code')
         self.assertIn('VS Code is not set up', self.jade('apps'))
