@@ -28,15 +28,26 @@ jobs:
   test:
     runs-on: ubuntu-24.04
     # GNOME 50's schemas: the runner's own (GNOME 46) lack keys jade sets, such as accent-color.
-    container: ubuntu:26.04
+    container:
+      image: ubuntu:26.04
+      options: --privileged  # image loading (glycin) sandboxes itself with bwrap, as on a desktop
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
-      - name: Dependencies (GObject, GSettings schemas, the Shell theme compiler)
+      - name: Dependencies (GObject, GSettings schemas, the Shell theme compiler, what the targets drive)
         run: |
           apt-get update -qq
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq python3 python3-gi gir1.2-gdkpixbuf-2.0 sassc \
-            gsettings-desktop-schemas gnome-shell-common libglib2.0-bin
-      - run: python3 -m unittest discover -s tests -v
+            gsettings-desktop-schemas gnome-settings-daemon-common gnome-shell-common libglib2.0-bin git \
+            fonts-jetbrains-mono fontconfig tmux neovim
+      - name: Allow unprivileged user namespaces (glycin's bwrap sandbox; Ubuntu 24.04 runners restrict them)
+        run: |
+          f=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+          if [ -e "$f" ]; then echo 0 > "$f"; fi
+      - name: Tests, as a desktop user (root can write where the tests make sure jade cannot)
+        run: |
+          useradd -m tester
+          chown -R tester .
+          su tester -c 'python3 -m unittest discover -s tests -v'
 
   packages:
     runs-on: ubuntu-24.04

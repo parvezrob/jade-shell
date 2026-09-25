@@ -1063,6 +1063,10 @@ class Sandbox(unittest.TestCase):
         self.assertIn('Turned off Blur my Shell', self.jade('setup'))
 
     def test_the_omarchy_keymap_goes_back_exactly(self):
+        # Super+Return opens a terminal only on a desktop that has one: this one does.
+        terminal = pathlib.Path(self.env['PATH'].split(os.pathsep)[0]) / 'ptyxis'
+        terminal.write_text('#!/bin/sh\nexit 0\n')
+        terminal.chmod(0o755)
         custom = '/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/custom0/'
         self.gsettings('set', 'org.gnome.desktop.wm.keybindings', 'switch-to-workspace-1', "['<Super>Home', '<Super>1']")
         self.gsettings('set', 'org.gnome.settings-daemon.plugins.media-keys', 'custom-keybindings', f"['{custom}']")
