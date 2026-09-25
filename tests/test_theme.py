@@ -14,6 +14,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import tarfile
 import sys
 import tempfile
 import time
@@ -33,6 +34,50 @@ from jade.targets.apps import VSCode, jsonc, managed_block, restore_theme_names,
 from jade.targets.gnome import Gnome, nearest_accent
 
 needs_compiler = unittest.skipUnless(shelltheme.compiler_available(), 'sassc (or python libsass) is not installed')
+needs_jetbrains = unittest.skipUnless(
+    'JetBrains Mono' in subprocess.run(['fc-list', ':spacing=100', 'family'], capture_output=True, text=True).stdout,
+    'needs JetBrains Mono installed')
+
+
+class TahoeArchive(unittest.TestCase):
+    def setUp(self):
+        from jade import icons
+        self.icons = icons
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = pathlib.Path(tmp.name)
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode='w:gz') as tar:
+            data = b'[Icon Theme]\n'
+            info = tarfile.TarInfo('MacTahoe-icon-theme-x/src/index.theme')
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
+        self.release = buffer.getvalue()
+        self.copy = self.dir / 'usr/share/jade-shell/icons/MacTahoe.tar.gz'
+        self.copy.parent.mkdir(parents=True)
+        for patcher in (mock.patch.dict(os.environ, XDG_CACHE_HOME=str(self.dir / 'cache')),
+                        mock.patch.object(icons, 'bundled', return_value=self.copy),
+                        mock.patch.object(icons, 'SHA256', hashlib.sha256(self.release).hexdigest())):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_the_package_copy_needs_no_download(self):
+        self.copy.write_bytes(self.release)
+        with mock.patch('urllib.request.urlopen', side_effect=AssertionError('downloaded')):
+            folder = self.icons.download()
+        self.assertEqual((folder / 'src/index.theme').read_text(), '[Icon Theme]\n')
+
+    def test_a_damaged_package_copy_falls_back_to_the_download(self):
+        self.copy.write_bytes(b'damaged')
+        with mock.patch('urllib.request.urlopen', return_value=io.BytesIO(self.release)) as urlopen:
+            folder = self.icons.download()
+        urlopen.assert_called_once()
+        self.assertTrue((folder / 'src/index.theme').exists())
+
+    def test_neither_one_says_so(self):
+        with mock.patch('urllib.request.urlopen', return_value=io.BytesIO(b'not it')), \
+                self.assertRaises(self.icons.IconsUnavailable):
+            self.icons.download()
 
 
 class Palette(unittest.TestCase):
@@ -334,7 +379,9 @@ class RestoreKit(unittest.TestCase):
         (package / 'jade/__pycache__').mkdir(parents=True)
         (package / 'jade/setup.py').write_text('# code')
         (package / 'jade/__pycache__/setup.pyc').write_text('bytes')
-        (package / 'themes').mkdir()
+        (package / 'themes/icons').mkdir(parents=True)  # a folder named icons elsewhere is kept
+        (package / 'icons').mkdir()
+        (package / 'icons/MacTahoe-icon-theme.tar.gz').write_text('10 MB')
         home = self.dir / 'home'
         for patcher in (mock.patch.object(restore_offer, 'PACKAGE_ROOT', package),
                         mock.patch.object(restore_offer, 'systemctl'),
@@ -354,6 +401,8 @@ class RestoreKit(unittest.TestCase):
         kit = restore_offer.kit_path()
         self.assertEqual((kit / 'jade/setup.py').read_text(), '# code')
         self.assertFalse((kit / 'jade/__pycache__').exists())
+        self.assertFalse((kit / 'icons').exists())  # restoring needs none of the icons' archive
+        self.assertTrue((kit / 'themes/icons').is_dir())
         unit = restore_offer.unit_path().read_text()
         self.assertIn(f'"PYTHONPATH={kit}"', unit)
         self.assertIn(f'ConditionPathExists={store.state_home()}/jade-shell/setup.json', unit)
@@ -897,8 +946,7 @@ class Sandbox(unittest.TestCase):
         self.jade('theme', 'undo')
         self.assertFalse((self.home / '.local/state/jade-shell/themed/colors.sh').exists())
 
-    @unittest.skipUnless('JetBrains Mono' in subprocess.run(['fc-list', ':spacing=100', 'family'], capture_output=True,
-                                                             text=True).stdout, 'needs JetBrains Mono installed')
+    @needs_jetbrains
     def test_font_set_reaches_gnome_and_terminals_and_undoes(self):
         interface = ('org.gnome.desktop.interface', 'monospace-font-name')
         self.gsettings('set', *interface, "'Source Code Pro 13'")
@@ -1197,16 +1245,54 @@ elif 'show' in args and 'connection' in args:
         self.fake_network(kind='ethernet')
         self.assertIn('the band is for Wi-Fi', self.run_jade('network', 'band', '5').stderr)
 
-    def test_setup_fetches_the_tahoe_icons_once(self):
-        out = self.jade('setup')  # offline: said, and setup goes on
+    def manifest(self):
+        return json.loads((self.home / '.local/state/jade-shell/setup.json').read_text())
+
+    def test_setup_builds_the_tahoe_icons_until_it_works(self):
+        out = self.jade('setup')  # offline, and a checkout has no package copy: said, and setup goes on
         self.assertIn('No Tahoe icons', out)
-        manifest = json.loads((self.home / '.local/state/jade-shell/setup.json').read_text())
-        self.assertTrue(manifest['icons-offered'])
-        self.assertNotIn('No Tahoe icons', self.jade('setup'))  # asked once, not at every update
-        # In use but gone from disk (deleted by hand, or by a cleanup tool): fetched again.
+        self.assertNotIn('icons-offered', self.manifest())
+        self.assertIn('No Tahoe icons', self.jade('setup'))  # tried again at the next setup (an update)
+        # In use but gone from disk (deleted by hand, or by a cleanup tool): built again.
         self.gsettings('set', 'org.gnome.desktop.interface', 'icon-theme', 'Jade-MacTahoe-dark')
         self.assertIn('No Tahoe icons', self.jade('setup'))
         self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'dock-icon-style'), "'color'")
+        self.jade('apps', 'off', 'icons')  # off stays off: no more tries
+        self.assertNotIn('No Tahoe icons', self.jade('setup'))
+        self.assertTrue(self.manifest()['icons-offered'])
+
+    @needs_jetbrains
+    def test_setup_makes_jetbrains_mono_the_font_once_it_can(self):
+        interface = ('org.gnome.desktop.interface', 'monospace-font-name')
+        self.gsettings('set', *interface, "'Source Code Pro 13'")
+        config = self.home / '.config'
+        # The font not found (yet): nothing changes, and the next setup tries again.
+        fc_list = pathlib.Path(self.tmp.name) / 'bin/fc-list'
+        fc_list.write_text('#!/bin/sh\nexit 1\n')
+        fc_list.chmod(0o755)
+        self.jade('setup')
+        self.assertEqual(self.gsettings('get', *interface), "'Source Code Pro 13'")
+        self.assertNotIn('font-offered', self.manifest())
+        fc_list.unlink()
+        self.jade('apps', 'off', 'kitty')  # a terminal left alone keeps its own font
+        self.jade('setup')
+        self.assertEqual(self.gsettings('get', *interface), "'JetBrains Mono 13'")  # the size stays
+        self.assertTrue(self.manifest()['font-offered'])
+        self.assertEqual((config / 'ghostty/jade-font.conf').read_text(), 'font-family = ""\nfont-family = "JetBrains Mono"\n')
+        self.assertFalse((config / 'kitty/jade-font.conf').exists())
+        self.jade('restore', '--yes')  # restore puts the old font back
+        self.assertEqual(self.gsettings('get', *interface), "'Source Code Pro 13'")
+        self.assertFalse((config / 'ghostty/jade-font.conf').exists())
+
+    def test_setup_keeps_a_font_chosen_before(self):
+        interface = ('org.gnome.desktop.interface', 'monospace-font-name')
+        self.gsettings('set', *interface, "'Iosevka 12'")
+        choice = self.home / '.local/state/jade-shell/font.json'
+        choice.parent.mkdir(parents=True, exist_ok=True)
+        choice.write_text('{"family": "Iosevka"}\n')
+        self.jade('setup')
+        self.assertEqual(self.gsettings('get', *interface), "'Iosevka 12'")
+        self.assertTrue(self.manifest()['font-offered'])
 
     def test_tahoe_icons_take_the_accent_and_leave_with_restore(self):
         from jade import icons

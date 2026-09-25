@@ -37,6 +37,13 @@ def with_size(value, family, default=11):
     return f'{family} {found.group(1) if found else default}'
 
 
+def left_alone(ctx):
+    """The apps people told Jade to leave alone (`jade apps off`): a terminal
+    among them keeps its own font too."""
+    from .. import engine  # at call time: the engine imports the targets
+    return engine.left_alone(ctx.settings)
+
+
 def font_file(terminal):
     return config_home() / terminal / 'jade-font.conf'
 
@@ -60,18 +67,22 @@ class Font:
 
     def changes(self, theme, ctx):
         family = chosen(ctx)
+        alone = left_alone(ctx)
         out = [File(choice_path(), json.dumps({'family': family}) + '\n')]
         interface = ctx.settings.get(INTERFACE)
         out.append(Setting(INTERFACE, 'monospace-font-name', with_size(interface.get_string('monospace-font-name'), family)))
-        if ctx.settings.has(PTYXIS, 'font-name'):
+        if 'ptyxis' not in alone and ctx.settings.has(PTYXIS, 'font-name'):
             ptyxis = ctx.settings.get(PTYXIS)
             if not ptyxis.get_boolean('use-system-font'):  # else GNOME's monospace setting is Ptyxis's
                 out.append(Setting(PTYXIS, 'font-name', with_size(ptyxis.get_string('font-name'), family)))
         for terminal in TERMINALS:
-            if (config_home() / terminal).is_dir():
+            if terminal not in alone and (config_home() / terminal).is_dir():
                 out.append(File(font_file(terminal), font_text(terminal, family)))
         return out
 
     def reload(self, ctx):
+        alone = left_alone(ctx)
         for process, sig in (('kitty', 'USR1'), ('ghostty', 'USR2')):
+            if process in alone:
+                continue
             subprocess.run(['pkill', f'-{sig}', '-x', process], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

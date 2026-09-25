@@ -1,8 +1,10 @@
 """Mac-style app icons: MacTahoe, with its folders in the theme's accent.
 
-Opt-in (`jade apps on icons`, or the switch in the settings). MacTahoe
-(vinceliuice/MacTahoe-icon-theme, GPL-3.0) is downloaded once, at a pinned
-release checked against its SHA-256, and built into ~/.local/share/icons as
+Jade Shell's default look (`jade apps off icons`, or the switch in the
+settings, puts GNOME's back). MacTahoe (vinceliuice/MacTahoe-icon-theme,
+GPL-3.0) comes with the package: its release archive, unmodified, at a pinned
+release checked against its SHA-256 (a checkout without it downloads the
+same archive). Setup builds it into ~/.local/share/icons as
 Jade-MacTahoe (for light themes) and Jade-MacTahoe-dark (light symbolic
 icons, for dark ones). The build follows the theme's own install.sh (which
 leaves stray cursor-only folders behind when a color is chosen, so it is
@@ -10,8 +12,8 @@ not run). Every theme switch then repaints the 18 folder icons in the
 theme's exact accent: MacTahoe's blue folders are one flat color, with
 their shading and glyphs in black and white on top.
 
-Nothing is bundled in the package: the icons imitate trademarked logos,
-and they are 10 MB to download, about 90 MB built.
+The archive is 10 MB; built, about 180 MB per person. Its Finder and App
+Store icons are never installed: Jade draws its own Files and Software.
 """
 import hashlib
 import os
@@ -63,6 +65,35 @@ def source_dir():
     return cache_home() / 'jade-shell' / f'MacTahoe-icon-theme-{TAG}'
 
 
+def bundled():
+    """The release archive the package ships beside the code (a checkout has none)."""
+    return pathlib.Path(__file__).resolve().parent.parent / 'icons' / f'MacTahoe-icon-theme-{TAG}.tar.gz'
+
+
+def copy_checked(source, archive):
+    """Copy the stream into `archive`; whether it is the pinned release."""
+    digest = hashlib.sha256()
+    with archive.open('wb') as out:
+        while chunk := source.read(1 << 16):
+            digest.update(chunk)
+            out.write(chunk)
+    return digest.hexdigest() == SHA256
+
+
+def fetch(archive):
+    """The pinned release into `archive`: the package's copy, else downloaded
+    (a checkout, or a package copy that is damaged)."""
+    try:
+        with bundled().open('rb') as source:
+            if copy_checked(source, archive):
+                return
+    except OSError:
+        pass
+    with urllib.request.urlopen(URL, timeout=30) as response:
+        if not copy_checked(response, archive):
+            raise IconsUnavailable('the download did not match its checksum')
+
+
 def download():
     """The release, unpacked into the cache: its folder."""
     folder = source_dir()
@@ -71,13 +102,7 @@ def download():
     folder.parent.mkdir(parents=True, exist_ok=True)
     archive = folder.with_name(f'.{folder.name}.{os.getpid()}.tar.gz')
     try:
-        digest = hashlib.sha256()
-        with urllib.request.urlopen(URL, timeout=30) as response, archive.open('wb') as out:
-            while chunk := response.read(1 << 16):
-                digest.update(chunk)
-                out.write(chunk)
-        if digest.hexdigest() != SHA256:
-            raise IconsUnavailable('the download did not match its checksum')
+        fetch(archive)
         unpacked = folder.with_name(f'.{folder.name}.{os.getpid()}')
         shutil.rmtree(unpacked, ignore_errors=True)
         with tarfile.open(archive) as tar:

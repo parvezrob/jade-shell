@@ -30,6 +30,24 @@ EOF
 # the two at login to finish an update.
 sed -i "s/^__version__ = .*/__version__ = '$JADE_VERSION'/" build/stage/lib/jade/__init__.py
 glib-compile-schemas --strict build/stage/extension/schemas
+# MacTahoe's release archive, the pinned one jade/icons.py names (read as text:
+# importing jade needs GNOME's libraries), for setup to build the Tahoe icons
+# from without a download. Kept in build/cache between builds.
+read -r tag url sha < <(python3 -c '
+import re
+text = open("jade/icons.py").read()
+get = lambda name: re.search(rf"^{name} = f?.([^\x27]+).", text, re.M).group(1)
+tag = get("TAG")
+print(tag, get("URL").replace("{TAG}", tag), get("SHA256"))')
+archive=build/cache/MacTahoe-icon-theme-$tag.tar.gz
+mkdir -p build/cache build/stage/lib/icons
+if ! echo "$sha  $archive" | sha256sum --check --status 2>/dev/null; then
+    curl -fsSL --retry 3 -o "$archive.part" "$url"
+    echo "$sha  $archive.part" | sha256sum --check --status ||
+        { rm -f "$archive.part"; echo "MacTahoe $tag did not match its checksum" >&2; exit 1; }
+    mv "$archive.part" "$archive"
+fi
+cp "$archive" build/stage/lib/icons/
 find build/stage -name __pycache__ -prune -exec rm -rf {} +
 
 for packager in rpm deb; do

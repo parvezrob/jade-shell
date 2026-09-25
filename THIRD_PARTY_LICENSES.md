@@ -10,6 +10,7 @@ Jade Shell is GPL-3.0-or-later. It includes, or is adapted from, the work below.
 | `shell-theme/gnome-50/`: GNOME Shell's theme sources, unmodified (see `SOURCE` there) | [GNOME Shell](https://gitlab.gnome.org/GNOME/gnome-shell) 50.5 | GPL-2.0-or-later (`shell-theme/gnome-50/gnome-shell-sass/COPYING`) |
 | `extension/lib/workspaces.js` | [Simple Workspaces Bar](https://gitlab.com/null-git/simple-workspaces-bar) by Francois Thirioux and null-git | GPL-3.0 |
 | `extension/lib/clock.js` | [Panel Date Format](https://github.com/KEIII/gnome-shell-panel-date-format) by Ivan Kasenkov | MIT (below) |
+| `/usr/share/jade-shell/icons/MacTahoe-icon-theme-2026-09-10.tar.gz` in the packages: the release archive, unmodified (its `COPYING` inside), from which setup builds the Tahoe icons (`jade/icons.py`) | [MacTahoe icon theme](https://github.com/vinceliuice/MacTahoe-icon-theme) by Vince Liuice, release 2026-09-10 | GPL-3.0 |
 | `extension/icons/claude-symbolic.svg`, `openai-symbolic.svg` | [Simple Icons](https://simpleicons.org) | CC0 1.0 |
 | `extension/lib/dock/bar.js`: the magnification (the raised-cosine curve, the slot walk anchored at the pointer, the spring that fades it in and out, the smoothed pointer), ported from `magnifier.js` | [dash2dock-motion](https://github.com/Unmade760/dash2dock-motion) by Unmade760, itself based on Dash to Dock | GPL-2.0-or-later |
 

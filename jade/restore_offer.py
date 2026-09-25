@@ -74,7 +74,9 @@ def keep_kit():
     kit = kit_path()
     fresh = kit.with_name(kit.name + '.new')
     shutil.rmtree(fresh, ignore_errors=True)
-    shutil.copytree(PACKAGE_ROOT, fresh, ignore=shutil.ignore_patterns('__pycache__'))
+    # Not the icons' release archive: restoring needs none of its 10 MB.
+    shutil.copytree(PACKAGE_ROOT, fresh, ignore=lambda folder, names: [
+        name for name in names if name == '__pycache__' or (name == 'icons' and pathlib.Path(folder) == PACKAGE_ROOT)])
     shutil.rmtree(kit, ignore_errors=True)
     fresh.rename(kit)
     write_text(unit_path(), unit_text(kit))

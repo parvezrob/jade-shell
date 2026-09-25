@@ -21,6 +21,7 @@ from gi.repository import Gio, GLib
 
 from . import __version__, engine, hooks, icons, keys, migrations, network, restore_offer, shelltheme, themes
 from .store import File, Setting, config_home, data_home, write_text
+from .targets import font as font_target
 from .usage import collect
 
 UUID = 'jade-shell@parvezrob.github.io'
@@ -378,6 +379,16 @@ def sticks(change):
     return not (change.key == 'show-usage' and change.value is False)
 
 
+DEFAULT_FONT = 'JetBrains Mono'  # a dependency of the package, as Omarchy's font
+
+
+def font_installed(family):
+    try:
+        return subprocess.run(['fc-list', '-q', family], timeout=20).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def welcomed():
     """Whether the Jade Shell app's Welcome page has been on screen here."""
     try:
@@ -455,20 +466,24 @@ def setup(ctx, theme_id=None, after_update=False):
             progress(None)
             say(f'Downloaded {len(missing)} theme previews.')
 
-    # The Tahoe icons are Jade Shell's default look: fetched once (the first
-    # setup, or the first with a version that has them). Off stays off. And
-    # if the desktop uses them but they are gone from disk, fetched again.
+    # The Tahoe icons are Jade Shell's default look: built once (the first
+    # setup, or the first with a version that has them) from the package's
+    # copy. Off stays off. A build that failed is tried again at the next
+    # setup; and if the desktop uses them but they are gone from disk, rebuilt.
     in_use = ctx.settings.has('org.gnome.desktop.interface', 'icon-theme') and \
         str(ctx.settings.get('org.gnome.desktop.interface').get_string('icon-theme')).startswith(icons.NAME)
     if not manifest.get('icons-offered') or (in_use and not icons.installed()):
-        if 'icons' not in engine.left_alone(ctx.settings):
+        if 'icons' in engine.left_alone(ctx.settings):
+            manifest['icons-offered'] = True
+        else:
             try:
                 icons.install(progress)
                 progress(None)
+                manifest['icons-offered'] = True
             except (icons.IconsUnavailable, OSError) as error:
                 progress(None)
-                say(f'No Tahoe icons ({engine.first_line(error)}); turn them on later in Jade Shell\'s settings, Dock.')
-        manifest['icons-offered'] = True
+                say(f'No Tahoe icons ({engine.first_line(error)}); setup tries again next time, '
+                    'or turn them on in Jade Shell\'s settings, Dock.')
         write_text(manifest_path(), json.dumps(manifest, indent=2))
 
     # The theme asked for, else the current one, else Osaka Jade, applied
@@ -487,7 +502,20 @@ def setup(ctx, theme_id=None, after_update=False):
         paths = join([f'~/{path.relative_to(home)}' for _t, path in edited])
         say(f'Adding the theme to {paths}.')
         say(f'Your settings in them stay, and a copy of each is kept. To leave an app alone: jade apps off {edited[0][0].name}')
+    # JetBrains Mono (installed with the package) as the monospace font of
+    # GNOME and the terminals, as in Omarchy: once, for someone who has not
+    # chosen one. Done only when it took; otherwise tried at the next setup.
+    offer_font = not manifest.get('font-offered')
+    if offer_font:
+        if font_target.chosen() is not None or 'font' in engine.left_alone(ctx.settings):
+            manifest['font-offered'] = True  # a font of their own, or fonts left alone
+            offer_font = False
+        elif font_installed(DEFAULT_FONT):
+            ctx.font = DEFAULT_FONT
     changes, _backup = engine.apply(theme, ctx)
+    if offer_font and ctx.font and font_target.chosen() == DEFAULT_FONT:
+        manifest['font-offered'] = True
+    write_text(manifest_path(), json.dumps(manifest, indent=2))
     alone = engine.left_alone(ctx.settings)
     themed = [t.title for t in engine.selected(skip=alone) if t.name not in ctx.absent and t.name not in ctx.skipped]
     say(f'{theme.name} applied to {join(themed)}.')
