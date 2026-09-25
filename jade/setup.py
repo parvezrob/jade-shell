@@ -515,6 +515,7 @@ def setup(ctx, theme_id=None, after_update=False):
     changes, _backup = engine.apply(theme, ctx)
     if offer_font and ctx.font and font_target.chosen() == DEFAULT_FONT:
         manifest['font-offered'] = True
+        say(f'{DEFAULT_FONT} is now the monospace font of GNOME and your terminals (change it: jade font set).')
     write_text(manifest_path(), json.dumps(manifest, indent=2))
     alone = engine.left_alone(ctx.settings)
     themed = [t.title for t in engine.selected(skip=alone) if t.name not in ctx.absent and t.name not in ctx.skipped]

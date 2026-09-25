@@ -1275,8 +1275,9 @@ elif 'show' in args and 'connection' in args:
         self.assertNotIn('font-offered', self.manifest())
         fc_list.unlink()
         self.jade('apps', 'off', 'kitty')  # a terminal left alone keeps its own font
-        self.jade('setup')
+        self.assertIn('JetBrains Mono is now the monospace font', self.jade('setup'))
         self.assertEqual(self.gsettings('get', *interface), "'JetBrains Mono 13'")  # the size stays
+        self.assertNotIn('monospace font', self.jade('setup'))  # said once
         self.assertTrue(self.manifest()['font-offered'])
         self.assertEqual((config / 'ghostty/jade-font.conf').read_text(), 'font-family = ""\nfont-family = "JetBrains Mono"\n')
         self.assertFalse((config / 'kitty/jade-font.conf').exists())
