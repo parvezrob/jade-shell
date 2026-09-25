@@ -990,6 +990,24 @@ class Sandbox(unittest.TestCase):
         self.jade('theme', 'undo')
         self.assertEqual(toml.read_text(), mine)
 
+    def test_vscode_that_has_run_but_has_no_settings_yet_is_themed(self):
+        user = self.home / '.config/Code/User'
+        (user / 'settings.json').unlink()
+        (user / 'globalStorage').mkdir()  # what a first launch leaves: no settings.json until a setting changes
+        self.jade('theme', 'set', 'nord', '--only', 'vscode')
+        self.assertEqual(json.loads((user / 'settings.json').read_text()), {'workbench.colorTheme': 'Jade · Nord'})
+        self.jade('theme', 'undo')
+        self.assertFalse((user / 'settings.json').exists())  # made by Jade Shell, so gone again
+        # Changed in VS Code since: undo keeps the new setting and drops only the theme.
+        self.jade('theme', 'set', 'nord', '--only', 'vscode')
+        path = user / 'settings.json'
+        path.write_text(path.read_text().replace('"Jade · Nord"', '"Jade · Nord",\n    "editor.fontSize": 15'))
+        self.jade('theme', 'undo')
+        self.assertEqual(json.loads(path.read_text()), {'editor.fontSize': 15})
+        # Not run yet (no User folder): left alone.
+        shutil.rmtree(self.home / '.config/Code')
+        self.assertIn('VS Code is not set up', self.jade('apps'))
+
     def test_vscodium_and_flatpak_code_switch_too(self):
         codium = self.home / '.config/VSCodium/User/settings.json'
         flatpak = self.home / '.var/app/com.vscodium.codium/config/VSCodium/User/settings.json'

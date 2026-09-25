@@ -663,9 +663,11 @@ class VSCode:
         ]
 
     def installs(self):
-        """The variants set up here: (settings.json, extension folders to fill)."""
+        """The variants set up here: (settings.json, extension folders to fill).
+        One counts once it has run (its User folder is there): VS Code writes
+        no settings.json until a setting is changed."""
         return [(settings, [d for d in folders if d.exists()] or folders[:1])
-                for settings, folders in self.variants() if settings.exists()]
+                for settings, folders in self.variants() if settings.exists() or settings.parent.is_dir()]
 
     def settings_path(self):
         return self.variants()[0][0]
@@ -730,12 +732,14 @@ class VSCode:
                 done.add(base)
                 folder, files = self.extension(theme, base)
                 out += files + self.register(ctx, base, folder)
-            settings = read_text(settings_path)
+            settings = read_text(settings_path) or ''
             line = f'"workbench.colorTheme": "{self.label_for(theme)}"'
             if re.search(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', settings):
                 settings = re.sub(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', lambda _m, line=line: line, settings, count=1)
-            else:
+            elif '{' in settings:
                 settings = settings.replace('{', '{\n    ' + line + ',', 1)
+            else:  # no settings.json yet (or an empty one): undo deletes the one made here
+                settings = '{\n    ' + line + '\n}\n'
             out.append(File(settings_path, settings))
         return out
 
