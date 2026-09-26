@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT))
 from jade import __version__, cli, debug, engine, migrations, palette, restore_offer, setup, shelltheme, store, themes, update
 from jade.setup import DASH_TO_DOCK, REPLACED, UBUNTU_DOCK, UUID
 from jade.targets.apps import (
+    Alacritty,
     Starship,
     VSCode,
     jsonc,
@@ -197,6 +198,15 @@ class TargetedRevert(unittest.TestCase):
         registry = json.dumps([other, {'identifier': {'id': VSCode.ID}}, {'identifier': {'id': 'new.one'}}])
         self.assertEqual(json.loads(vscode.revert(vscode.registry_path(), registry, json.dumps([other]))),
                          [other, {'identifier': {'id': 'new.one'}}])
+
+    def test_alacritty_keeps_a_file_the_import_cannot_join(self):
+        config = Alacritty().config()
+        config.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(config.unlink)
+        config.write_text('general = { live_config_reload = true }\n')
+        ctx = engine.Context(NoSettings())
+        self.assertEqual(Alacritty().changes(themes.load('nord'), ctx), [])
+        self.assertIn('alacritty', ctx.skipped)
 
     def test_vicinae_theme_names(self):
         old = '// vicinae\n{\n  "theme": { "dark": { "name": "a" }, "light": { "name": "a" } },\n  "x": 1\n}'

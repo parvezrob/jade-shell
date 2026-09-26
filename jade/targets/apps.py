@@ -56,6 +56,14 @@ def revert_block(text, old, marks=(MARK_BEGIN, MARK_END)):
     return (head + '\n' if head else '') + text[found.end():]
 
 
+def valid_toml(text):
+    try:
+        tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return False
+    return True
+
+
 def revert_line(text, old, key, ours):
     """Put back the first `key = ...` line as it was in `old` (or take it out if
     `old` had none), when the line is still the one we wrote. None otherwise."""
@@ -520,7 +528,7 @@ class Alacritty:
         return None if self.config().exists() else Absent('Alacritty is not configured')
 
     def changes(self, theme, ctx):
-        text = read_text(self.config())
+        text = original = read_text(self.config())
         imports = re.search(r'^(\s*(?:general\.)?import\s*=\s*\[)', text, re.M)
         if self.IMPORT in text:
             pass
@@ -533,6 +541,11 @@ class Alacritty:
         else:
             # Top-level keys must come before any table: at the very top.
             text = managed_block('', f'general.import = [{self.IMPORT}]') + ('\n' + text if text.strip() else '')
+        if valid_toml(original) and not valid_toml(text):
+            # A layout the import can't join, such as general = { ... } on one line.
+            # Alacritty would drop every setting in a broken file, not just the colors.
+            ctx.skipped[self.name] = "couldn't add the theme to its settings file, so it stays as it was"
+            return []
         themed = themes.render(themes.template('alacritty.toml.tpl'), theme.colors)
         family = font.chosen(ctx)
         if family:  # `jade font set`
@@ -628,9 +641,7 @@ class Starship:
         else:
             text = 'palette = "jade"\n' + text
         text = managed_block(text, '\n'.join(lines))
-        try:
-            tomllib.loads(text)
-        except tomllib.TOMLDecodeError:  # a palette of their own called jade, or a layout ours can't join
+        if not valid_toml(text):  # a palette of their own called jade, or a layout ours can't join
             ctx.skipped[self.name] = "kept your prompt's own colors"
             return []
         return [File(path, text)]
