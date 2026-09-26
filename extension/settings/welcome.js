@@ -4,14 +4,36 @@
 // learn a handful of keys, and be done. Everything applies right away and is
 // optional: closing it keeps the defaults.
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
 
 import {capture, choiceRow, jadeCommand} from './common.js';
+import {stateFile} from './style.js';
 import {weatherGroup} from './weather.js';
 
 const COLUMNS = 4;
+
+// Until its preview is here (setup leaves most to download after it, and on
+// a slow line that takes a while), a theme shows its colors, as the picker
+// does: the background with the accent under it.
+function swatch(colors) {
+    const area = new Gtk.DrawingArea({height_request: 64});
+    area.set_draw_func((_area, cr, width, height) => {
+        const fill = (color, y, h) => {
+            const rgba = new Gdk.RGBA();
+            if (!rgba.parse(color ?? '#444444'))
+                return;
+            cr.setSourceRGBA(rgba.red, rgba.green, rgba.blue, 1);
+            cr.rectangle(0, y, width, h);
+            cr.fill();
+        };
+        fill(colors?.background, 0, height - 6);
+        fill(colors?.accent, height - 6, 6);
+    });
+    return area;
+}
 
 // The keys worth knowing on day one: [setting, what it does].
 const KEYS = [
@@ -46,6 +68,34 @@ function themesGroup() {
     group.add(status);
     const jade = jadeCommand();
     let themes = [];
+    // Each tile's preview, as it arrives: the folder is watched while the
+    // page is open, and a swatch gives way to the picture.
+    const tiles = new Map();
+    const show = id => {
+        const tile = tiles.get(id);
+        const file = stateFile('thumbs', `${id}.png`);
+        if (!tile || !file.query_exists(null))
+            return;
+        tile.picture.set_file(file);
+        tile.stack.visible_child_name = 'picture';
+    };
+    const folder = stateFile('thumbs');
+    try {
+        folder.make_directory_with_parents(null);
+    } catch {}  // there already
+    let monitor = null;
+    try {
+        monitor = folder.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, null);
+        monitor.connect('changed', (_monitor, file, other) => {
+            for (const changed of [file, other]) {
+                const name = changed?.get_basename() ?? '';
+                if (name.endsWith('.png'))
+                    show(name.slice(0, -4));
+            }
+        });
+        group.connect('destroy', () => monitor.cancel());
+    } catch {}  // no watching: the previews show the next time the page opens
+    group._monitor = monitor;  // kept for as long as the page
     const load = async () => {
         const result = jade ? await capture([jade, 'theme', 'list', '--json']) : {ok: false};
         try {
@@ -55,12 +105,19 @@ function themesGroup() {
         }
         for (let child = flow.get_first_child(); child; child = flow.get_first_child())
             flow.remove(child);
+        tiles.clear();
         for (const theme of themes) {
             const tile = new Gtk.Box({orientation: Gtk.Orientation.VERTICAL, spacing: 4, css_classes: ['jade-welcome-theme']});
             const picture = new Gtk.Picture({content_fit: Gtk.ContentFit.COVER, height_request: 64, can_shrink: true});
-            if (theme.thumbnail && GLib.file_test(theme.thumbnail, GLib.FileTest.EXISTS))
+            const stack = new Gtk.Stack({transition_type: Gtk.StackTransitionType.CROSSFADE});
+            stack.add_named(swatch(theme.colors), 'swatch');
+            stack.add_named(picture, 'picture');
+            tiles.set(theme.id, {picture, stack});
+            if (theme.thumbnail && GLib.file_test(theme.thumbnail, GLib.FileTest.EXISTS)) {
                 picture.set_filename(theme.thumbnail);
-            tile.append(picture);
+                stack.visible_child_name = 'picture';
+            }
+            tile.append(stack);
             tile.append(new Gtk.Label({label: theme.name, xalign: 0, ellipsize: 3, css_classes: ['caption']}));
             flow.append(tile);
             if (theme.current)
