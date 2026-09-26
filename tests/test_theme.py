@@ -1684,6 +1684,12 @@ class CommandLine(unittest.TestCase):
     def test_bare_network_is_status(self):
         self.assertFalse(cli.parser().parse_args(['network']).json)
 
+    def test_jade_alone_says_where_to_start(self):
+        with mock.patch('sys.stdout', new_callable=io.StringIO) as out:
+            self.assertEqual(cli.main([]), 0)
+        self.assertEqual(out.getvalue().split()[:2], ['jade', 'theme'])
+        self.assertNotIn('usage:', out.getvalue())
+
     def test_leaving_an_app_alone_twice_keeps_it_alone(self):
         stored = []
 

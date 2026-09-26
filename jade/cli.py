@@ -704,7 +704,18 @@ EXCLUSIVE = {('theme', 'set'), ('theme', 'wallpaper'), ('theme', 'undo'), ('them
              ('network', 'dns'), ('network', 'band')}
 
 
+# `jade` alone: where to start, rather than argparse's "arguments are required".
+START = '''\
+jade theme      change the look
+jade settings   open Jade Shell's settings
+jade restore    put your desktop back the way it was
+jade --help     everything else'''
+
+
 def main(argv=None):
+    if not (sys.argv[1:] if argv is None else argv):
+        print(START)
+        return 0
     args = parser().parse_args(argv)
     command = args.command, getattr(args, 'action', None)
     try:
