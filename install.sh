@@ -37,68 +37,140 @@ done
 
 # ------------------------------------------------------------------ output
 
-if [[ -t 1 ]]; then
-    bold=$'\033[1m' dim=$'\033[2m' green=$'\033[32m' red=$'\033[31m' plain=$'\033[0m'
+# On a terminal (without --verbose) each step is one line that redraws in
+# place: a spinner, a download bar, then a check mark. NO_COLOR turns colors off.
+fancy=''
+if [[ -t 1 && -z $verbose ]]; then fancy=1; fi
+if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
+    bold=$'\033[1m' dim=$'\033[2m' red=$'\033[31m' plain=$'\033[0m'
+    if [[ ${COLORTERM:-} == truecolor || ${COLORTERM:-} == 24bit ]]; then
+        accent=$'\033[38;2;121;185;154m'  # the site's jade
+    else
+        accent=$'\033[38;5;115m'
+    fi
 else
-    bold='' dim='' green='' red='' plain=''
+    bold='' dim='' red='' plain='' accent=''
 fi
-step_count=0 step_total=0 step_name='' step_start=0 step_log_line=0 step_waited=''
+pad=${fancy:+   }
+step_count=0 step_total=0 step_name='' step_start=0 step_log_line=0 step_waited='' step_below=0
+dl_file='' dl_total=0 fail_message=''
 
 say() { printf '%s\n' "$*"; }
+# Under the steps on a terminal, every line indented with them.
+note() {
+    local line
+    while IFS= read -r line; do printf '%s%s\n' "$pad" "$line"; done <<<"$*"
+}
 log() { printf '%s\n' "$*" >>"$LOG"; }
 
-# A numbered step: its name now, a check mark (and its time) when done.
+elapsed() {
+    local t=$((SECONDS - step_start))
+    if ((t >= 60)); then printf '%dm %02ds' $((t / 60)) $((t % 60)); else printf '%ds' "$t"; fi
+}
+
+# The step's line, drawn again: over itself, or from below when lines were
+# printed under it (step_below counts them, the cursor's line included).
+draw_step() {
+    local line="   $1  $step_name${2:+  $2}"
+    if ((step_below)); then
+        printf '\0337\033[%dA\r%s\033[K\0338' "$step_below" "$line"
+    else
+        printf '\r%s\033[K' "$line"
+    fi
+}
+
 step() {
     step_count=$((step_count + 1)) step_name=$1 step_start=$SECONDS
-    step_waited=''
+    step_waited='' step_below=0
     step_log_line=$(wc -l <"$LOG")
     log "== [$(date '+%F %T')] $1"
-    printf '%s[%d/%d]%s %s ' "$dim" "$step_count" "$step_total" "$plain" "$1"
+    if [[ -n $fancy ]]; then
+        draw_step "$accent●$plain"
+    else
+        printf '%s[%d/%d]%s %s ' "$dim" "$step_count" "$step_total" "$plain" "$1"
+    fi
 }
 done_step() {
-    local took=$((SECONDS - step_start))
-    printf '%s✓%s' "$green" "$plain"
-    if ((took >= 60)); then
-        printf ' %s%dm %02ds%s' "$dim" $((took / 60)) $((took % 60)) "$plain"
-    elif ((took > 2)); then
-        printf ' %s%ds%s' "$dim" "$took" "$plain"
+    local took=''
+    if ((SECONDS - step_start > 2)); then took=$(elapsed); fi
+    if [[ -n $fancy ]]; then
+        draw_step "$accent✓$plain" "${took:+$dim$took$plain}"
+        if [[ -n $step_waited ]]; then  # the wait is over: say it in the past
+            # Two lines become one; the next step takes the freed line.
+            printf '\0337\033[2A\r      %s%s%s\033[K\n\033[2K\0338\033[1A' "$dim" \
+                'It waited for your other updates to finish first.' "$plain"
+            step_below=0
+            return
+        fi
+        ((step_below)) || printf '\n'
+    else
+        printf '%s✓%s%s\n' "$accent" "$plain" "${took:+ $dim$took$plain}"
     fi
-    printf '\n'
+}
+
+# What the spinner shows after the name: the download so far, or the time.
+bar() {
+    local s='' k
+    for ((k = 0; k < $1; k++)); do s+=$2; done
+    printf '%s' "$s"
+}
+mb() { printf '%d.%d' $(($1 / 1048576)) $(($1 * 10 / 1048576 % 10)); }
+progress() {
+    if ((dl_total > 0)); then
+        local have fill width=24
+        have=$(stat -c %s "$dl_file" 2>/dev/null) || have=0
+        ((have <= dl_total)) || have=$dl_total
+        fill=$((have * width / dl_total))
+        printf '%s%s%s%s%s  %s / %s MB' "$accent" "$(bar "$fill" ━)" "$dim" "$(bar $((width - fill)) ─)" "$plain" \
+            "$(mb "$have")" "$(mb "$dl_total")"
+    else
+        printf '%s%s%s' "$dim" "$(elapsed)" "$plain"
+    fi
 }
 
 # Stop with what went wrong, what the log says, and what to do next.
 fail() {
-    printf '%s✗%s\n\n' "$red" "$plain"
-    [[ -z ${1:-} ]] || say "$1"
+    if [[ -n $fancy ]]; then
+        draw_step "$red✗$plain"
+        ((step_below)) || printf '\n'
+        printf '\n'
+    else
+        printf '%s✗%s\n\n' "$red" "$plain"
+    fi
+    local message=${1:-$fail_message}
+    [[ -z $message ]] || note "$message"
     if [[ $step_name == 'Checking your system' ]]; then
-        say 'Nothing was changed.'
+        note 'Nothing was changed.'
         exit 1
     fi
-    local tail
+    local tail hint=''
     tail=$(tail -n +"$((step_log_line + 2))" "$LOG" | grep -v '^\s*$' | tail -15 || true)
-    if [[ -n $tail ]]; then
-        say "${dim}Last lines of the log:${plain}"
-        say "    ${tail//$'\n'/$'\n'    }"
-        say ''
-    fi
-    # What a desktop in daily use can already have going on.
+    # What a desktop in daily use can already have going on, in plain words;
+    # anything else shows the end of the log.
     case $tail in
         *'dpkg was interrupted'*)
-            say "An earlier install on this computer was interrupted. Finish it first with:
+            hint="An earlier install on this computer was interrupted. Finish it first with:
     sudo dpkg --configure -a" ;;
         *'Unmet dependencies'* | *'held broken packages'* | *'fix-broken'*)
-            say "Some packages on this computer were left half-installed before Jade Shell. Repair them first with:
+            hint="Some packages on this computer were left half-installed before Jade Shell. Repair them first with:
     sudo apt --fix-broken install" ;;
-        *'Could not get lock'* | *'Waiting for a lock'*)
-            say 'Your computer was still installing other updates after 20 minutes. Let them finish (or restart the computer), then run this again.' ;;
-        *) false ;;
-    esac && say ''
-    say "${step_name} did not finish. The full log is in $LOG"
-    say 'Running the installer again is safe: it picks up where this one stopped.'
+        *'E: Could not get lock /var/lib/dpkg/'*)  # apt gave up waiting (dnf waits for as long as it takes)
+            hint='Your computer was still installing other updates after 20 minutes. Let them finish (or restart the computer), then run this again.' ;;
+    esac
+    if [[ -n $hint ]]; then
+        note "$hint"
+        say ''
+    elif [[ -n $tail ]]; then
+        note "${dim}Last lines of the log:${plain}"
+        note "    ${tail//$'\n'/$'\n'    }"
+        say ''
+    fi
+    note "${step_name} did not finish. The full log is in ${LOG/#$HOME/\~}"
+    note 'Running the installer again is safe: it picks up where this one stopped.'
     if command -v jade >/dev/null; then
-        say "Still stuck? Run 'jade doctor', or open an issue with the log: $ISSUES"
+        note "Still stuck? Run 'jade doctor', or open an issue with the log: $ISSUES"
     else
-        say "Still stuck? Open an issue with the log: $ISSUES"
+        note "Still stuck? Open an issue with the log: $ISSUES"
     fi
     exit 1
 }
@@ -118,26 +190,23 @@ run() {
     log "\$ $*"
     if [[ -n $verbose ]]; then
         "$@" 2>&1 | tee -a "$LOG" || fail
-    elif [[ -t 1 ]]; then
+    elif [[ -n $fancy ]]; then
         # In the background sudo can't ask: it uses the password need_sudo
         # asked for, and fails rather than waits if that has run out.
         if [[ $1 == sudo ]]; then set -- sudo -n "${@:2}"; fi
         "$@" >>"$LOG" 2>&1 &
-        local pid=$! frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 took
+        local pid=$! frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0
         while kill -0 "$pid" 2>/dev/null; do
-            took=$((SECONDS - step_start))
-            # Once per step, in words anyone reads, on short lines of their own
-            # (a wrapped line would outlive the spinner); the spinner goes on below.
+            # Once per step, in words anyone reads, on short lines of their
+            # own under the step (a wrapped line would outlive the redraws).
             if [[ -z $step_waited ]] && ((i % 10 == 0)) && other_updates_running; then
-                step_waited=1
-                printf '\033[K\n      %s\n      %s ' 'Your computer is installing other updates right now.' \
+                step_waited=1 step_below=3
+                printf '\n      %s\n      %s\n' 'Your computer is installing other updates right now.' \
                     'Jade Shell waits for them to finish, then carries on.'
             fi
-            printf '\0337%s%s %s%s\033[K\0338' "$dim" "${frames:i++ % 10:1}" \
-                "$( ((took >= 60)) && printf '%dm %02ds' $((took / 60)) $((took % 60)) || printf '%ds' "$took")" "$plain"
+            draw_step "$accent${frames:i++ % 10:1}$plain" "$(progress)"
             sleep 0.1
         done
-        printf '\033[K'
         wait "$pid" || fail
     else
         "$@" >>"$LOG" 2>&1 || fail
@@ -148,12 +217,107 @@ run() {
 need_sudo() {
     sudo -n true 2>/dev/null && return
     if ! (exec </dev/tty) 2>/dev/null; then
-        say "$1 needs administrator rights, and sudo can only ask for your password in a terminal."
-        say 'Run this in a terminal window. Nothing was changed.'
+        note "$1 needs administrator rights, and sudo can only ask for your password in a terminal."
+        note 'Run this in a terminal window. Nothing was changed.'
         exit 1
     fi
-    say "$1 needs administrator rights, so sudo asks for your password."
-    sudo -v || { say 'No password given; nothing was changed.'; exit 1; }
+    note "$1 needs your password (administrator rights)."
+    sudo -v || { note 'No password given; nothing was changed.'; exit 1; }
+}
+
+# Setup in a session of its own: with no terminal it doesn't ask to log out,
+# and its progress lines stay quiet under the spinner. finish() then shows
+# what it said, and the card.
+quiet_setup() {
+    local rc=0
+    setsid -w /usr/bin/jade setup >"$tmp/setup.out" 2>&1 || rc=$?
+    cat "$tmp/setup.out"
+    return "$rc"
+}
+
+# The restore, the same way, once the installer has asked.
+quiet_restore() {
+    local rc=0
+    setsid -w "$jade" restore --yes >"$tmp/restore.out" 2>&1 || rc=$?
+    cat "$tmp/restore.out"
+    return "$rc"
+}
+
+# What a jade command said, under its step: dimmed, indented, wrapped to fit.
+show_lines() {
+    local line row cols
+    cols=$(stty size </dev/tty 2>/dev/null | cut -d' ' -f2) || true
+    for line; do
+        while IFS= read -r row; do printf '      %s%s%s\n' "$dim" "$row" "$plain"; done \
+            < <(fold -s -w $((${cols:-80} - 7)) <<<"$line")
+    done
+}
+
+# The closing card. $1: its title (after a check mark); then rows: '' for a
+# gap, 'label|value' for a dimmed label, anything else as it is.
+card() {
+    local title=$1 row w=$((${#1} + 3)) rule text
+    shift
+    for row; do
+        [[ $row == *'|'* ]] && row="$(printf '%-15s' "${row%%|*}")${row#*|}"
+        ((${#row} <= w)) || w=${#row}
+    done
+    rule=$(printf '%*s' $((w + 4)) '' | sed 's/ /─/g')
+    printf '\n   %s╭%s╮%s\n' "$accent" "$rule" "$plain"
+    printf '   %s│%s  %s✓%s  %s%s%s%*s  %s│%s\n' "$accent" "$plain" "$accent" "$plain" "$bold" "$title" "$plain" \
+        $((w - ${#title} - 3)) '' "$accent" "$plain"
+    for row in '' "$@"; do
+        if [[ $row == *'|'* ]]; then
+            text="$dim$(printf '%-15s' "${row%%|*}")$plain${row#*|}"
+            row="$(printf '%-15s' "${row%%|*}")${row#*|}"
+        else
+            text=$row
+        fi
+        printf '   %s│%s  %s%*s  %s│%s\n' "$accent" "$plain" "$text" $((w - ${#row})) '' "$accent" "$plain"
+    done
+    printf '   %s╰%s╯%s\n\n' "$accent" "$rule" "$plain"
+}
+
+# As setup asks when it has the terminal: GNOME's own dialog then confirms.
+offer_logout() {
+    in_gnome_session && (exec </dev/tty) 2>/dev/null || return 0
+    local answer=''
+    printf '   Log out now? GNOME asks you to confirm first. [Y/n] '
+    read -r answer </dev/tty || true
+    say ''
+    if [[ ${answer,,} == '' || ${answer,,} == y || ${answer,,} == yes ]]; then
+        gnome-session-quit --logout 2>/dev/null || note "Could not open the log-out dialog; log out from the top bar's menu."
+    fi
+}
+
+# Setup's closing lines become the card; the others stay, under the step.
+# Wording setup doesn't end with (a later version) is shown as it is.
+finish() {
+    local line shortcut='' login='' welcome='' known=''
+    local -a info=() rows=()
+    while IFS= read -r line; do
+        case $line in
+            'Change theme with '*) shortcut=${line#Change theme with }; shortcut=${shortcut%%. Undo*} ;;
+            'Done. Log out and back in'*) known=1 login=1; [[ $line != *Welcome* ]] || welcome=1 ;;
+            'Done.') known=1 ;;
+            '') ;;
+            *) info+=("$line") ;;
+        esac
+    done <"$tmp/setup.out"
+    if [[ -z $known ]]; then
+        cat "$tmp/setup.out"
+        return
+    fi
+    show_lines "${info[@]}"
+    if [[ -n $login ]]; then
+        rows+=('Log out and back in to start it.')
+        [[ -z $welcome ]] || rows+=('A welcome window helps you pick a look.')
+        rows+=('')
+    fi
+    [[ -z $shortcut ]] || rows+=("Change theme|$shortcut")
+    rows+=('Undo it all|jade restore')
+    card "Jade Shell ${version%-*} is installed" "${rows[@]}"
+    [[ -z $login ]] || offer_logout
 }
 
 # ------------------------------------------------------------------ system
@@ -270,10 +434,18 @@ in_gnome_session() {
     fi
 }
 
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+chmod 755 "$tmp"  # apt reads the package as its sandbox user, _apt
+
 # ------------------------------------------------------------------ uninstall
 
 tagline="Omarchy's look for the GNOME you already have"
-printf '\n  %sJade Shell%s  %s·  %s%s\n\n' "$bold" "$plain" "$dim" "$tagline" "$plain"
+if [[ -n $fancy ]]; then
+    printf '\n   %s◆%s %sJade Shell%s\n   %s%s%s\n\n' "$accent" "$plain" "$bold" "$plain" "$dim" "$tagline" "$plain"
+else
+    printf '\n  %sJade Shell%s  %s·  %s%s\n\n' "$bold" "$plain" "$dim" "$tagline" "$plain"
+fi
 
 if [[ $action == uninstall ]]; then
     step_total=3
@@ -294,9 +466,30 @@ if [[ $action == uninstall ]]; then
         fail 'No terminal to ask on; run this again with --uninstall --yes to restore your desktop without asking.'
     fi
     done_step
+    # On a terminal the question is the installer's, in plain words; the
+    # restore then runs under a spinner like the other steps.
+    if [[ -n $fancy && -n $jade && -z $assume_yes ]]; then
+        answer=''
+        printf '\n   Put your desktop back as it was before Jade Shell, and remove it? [y/N] '
+        read -r answer </dev/tty || true
+        if [[ ${answer,,} != y && ${answer,,} != yes ]]; then
+            note 'Nothing was changed.'
+            exit 0
+        fi
+        say ''
+    fi
 
     step 'Restoring your desktop'
-    if [[ -n $jade ]]; then
+    restored=''
+    if [[ -n $jade && -n $fancy ]]; then
+        fail_message='The desktop was not restored, so nothing was removed.'
+        run quiet_restore
+        fail_message=''
+        done_step
+        mapfile -t said < <(grep -v -e '^$' -e '^Restored the desktop you had' "$tmp/restore.out")
+        show_lines "${said[@]}"
+        grep -q '^Restored the desktop you had' "$tmp/restore.out" && restored=1
+    elif [[ -n $jade ]]; then
         say ''
         if [[ -n $assume_yes ]]; then
             "$jade" restore --yes || fail 'The desktop was not restored, so nothing was removed.'
@@ -315,11 +508,20 @@ if [[ $action == uninstall ]]; then
     [[ -z $(installed_version) ]] || package_remove
     done_step
     if [[ -n $(user_copies) ]]; then
-        say "An older or development copy of Jade Shell is still in your home folder. To remove it: $(remove_hint)"
+        note "An older or development copy of Jade Shell is still in your home folder. To remove it: $(remove_hint)"
     fi
-    say ''
-    # With a desktop restored, restore has already said to log out.
-    if [[ -n $jade ]]; then say 'Jade Shell is removed.'; else say 'Jade Shell is removed. Log out and back in to finish.'; fi
+    if [[ -n $fancy ]]; then
+        if [[ -n $restored ]]; then
+            card 'Jade Shell is removed' 'Your desktop is back as it was.' 'Log out and back in to finish.'
+        else
+            card 'Jade Shell is removed' 'Log out and back in to finish.'
+        fi
+        offer_logout
+    else
+        say ''
+        # With a desktop restored, restore has already said to log out.
+        if [[ -n $jade ]]; then say 'Jade Shell is removed.'; else say 'Jade Shell is removed. Log out and back in to finish.'; fi
+    fi
     exit 0
 fi
 
@@ -350,16 +552,19 @@ if [[ -z $package ]] && ! curl -fsI -o /dev/null --max-time 15 "$RELEASE/SHA256S
 fi
 done_step
 
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-chmod 755 "$tmp"  # apt reads the package as its sandbox user, _apt
 if [[ -n $package ]]; then
     step 'Using your package'
     [[ -f $package && $package == *.$kind ]] || fail "Expected a .$kind package, got: $package"
     cp -- "$package" "$tmp/jade-shell.$kind"
 else
     step 'Downloading Jade Shell'
+    # Its size first, for the download bar (none if the server doesn't say).
+    dl_total=$(curl -fsIL --max-time 15 "$RELEASE/jade-shell.$kind" 2>>"$LOG" \
+        | awk 'tolower($1) == "content-length:" { n = $2 + 0 } END { print n + 0 }') || dl_total=0
+    [[ $dl_total =~ ^[0-9]+$ ]] || dl_total=0
+    dl_file=$tmp/jade-shell.$kind
     run curl -fsSL -o "$tmp/jade-shell.$kind" "$RELEASE/jade-shell.$kind"
+    dl_total=0
     run curl -fsSL -o "$tmp/SHA256SUMS" "$RELEASE/SHA256SUMS"
     (cd "$tmp" && grep " jade-shell.$kind\$" SHA256SUMS | sha256sum --check --quiet) >>"$LOG" 2>&1 \
         || fail 'The download does not match the release checksum, so nothing was installed. Run this again; if it keeps happening, tell us.'
@@ -380,7 +585,13 @@ package_install "$tmp/jade-shell.$kind" "$mode"
 done_step
 
 step 'Setting up your desktop'
-say ''
 # Setup says when a log-out is needed (the Shell keeps running the extension
 # code it loaded at login) and, on a terminal, offers to do it.
-/usr/bin/jade setup || fail 'Setup stopped (see above).'
+if [[ -n $fancy ]]; then
+    run quiet_setup
+    done_step
+    finish
+else
+    say ''
+    /usr/bin/jade setup || fail 'Setup stopped (see above).'
+fi
