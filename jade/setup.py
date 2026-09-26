@@ -427,9 +427,11 @@ def setup(ctx, theme_id=None, after_update=False):
     elif not migrations.run_pending(ctx, say):
         return 1
     # An extension Jade Shell already replaced when setup last ran and that is
-    # on again was turned back on by its owner: an update leaves it alone. Only
-    # ones a new version learned about are turned off.
-    keep = set(manifest.get('replaced', REPLACED)) if after_update else ()
+    # on again was turned back on by its owner: an update leaves it alone,
+    # whether the extension finishes it at login or the installer is run
+    # again. Only ones a new version learned about are turned off.
+    updating = after_update or (not fresh and manifest.get('version') != __version__)
+    keep = set(manifest.get('replaced', REPLACED)) if updating else ()
     out_of_the_way = replaced(ctx)
     running_before = {uuid for uuid in out_of_the_way if running_extension(ctx, uuid)}
     planned = planned_settings(ctx, keep)

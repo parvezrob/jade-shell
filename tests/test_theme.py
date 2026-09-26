@@ -1406,6 +1406,13 @@ class Sandbox(unittest.TestCase):
         self.assertIn(blur, self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'))
         # Running setup by hand is asking for Jade Shell's layout again.
         self.assertIn('Turned off Blur my Shell', self.jade('setup'))
+        # The installer run again for a new version is an update too.
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{UUID}', '{blur}']")
+        manifest = json.loads((self.home / '.local/state/jade-shell/setup.json').read_text())
+        manifest['version'] = '0.1.0'
+        (self.home / '.local/state/jade-shell/setup.json').write_text(json.dumps(manifest))
+        self.assertNotIn('Turned off', self.jade('setup'))
+        self.assertIn(blur, self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'))
 
     def test_the_omarchy_keymap_goes_back_exactly(self):
         # Super+Return opens a terminal only on a desktop that has one: this one does.
