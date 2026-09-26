@@ -6,26 +6,71 @@
 # package named jade-shell.
 set -eu
 [ $# -eq 1 ] && [ -f "$1" ] || { echo 'usage: install-update <jade-shell.rpm|jade-shell.deb>' >&2; exit 64; }
+# Untranslated messages, so `jade update` can tell what went wrong.
+export LC_ALL=C.UTF-8 LANGUAGE=
 # A copy only root can change, so what is checked is what gets installed.
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 chmod 755 "$dir"  # apt reads the package as its own user
+
+# apt gives up at once when another program holds its lock (GNOME Software's
+# packagekitd, unattended-upgrades): wait up to 20 minutes instead. Recommended
+# extras the person removed stay removed.
+apt_install() {
+    DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
+        apt-get -o DPkg::Lock::Timeout=1200 install -y --no-install-recommends "$dir/jade-shell.deb"
+}
+
+# Show a command's output as it comes (`jade update` follows it) and keep a
+# copy to look at afterwards; its exit status is the command's.
+logged() {
+    { "$@" && echo 0 >"$dir/status" || echo $? >"$dir/status"; } 2>&1 | tee "$dir/output"
+    return "$(cat "$dir/status")"
+}
+
+# The lock of the package lists ignores that timeout, so it is tried again.
+apt_update() {
+    tries=0
+    while :; do
+        if out=$(apt-get update -q 2>&1); then
+            printf '%s\n' "$out"
+            return 0
+        fi
+        printf '%s\n' "$out"
+        case $out in
+            *'Could not get lock'*)
+                tries=$((tries + 1))
+                [ $tries -lt 240 ] || return 0
+                echo 'Waiting for cache lock: another program is updating the package lists.'
+                sleep 5 ;;
+            *) echo 'apt-get update reported problems; trying the install anyway.'; return 0 ;;
+        esac
+    done
+}
+
 case $1 in
     *.rpm)
         cp -- "$1" "$dir/jade-shell.rpm"
         [ "$(rpm -qp --qf '%{NAME}' "$dir/jade-shell.rpm" 2>/dev/null)" = jade-shell ] \
             || { echo 'Not a Jade Shell package.' >&2; exit 65; }
-        dnf install -y "$dir/jade-shell.rpm"
+        # dnf waits for other transactions by itself.
+        dnf install -y --setopt=install_weak_deps=False "$dir/jade-shell.rpm"
         ;;
     *.deb)
         cp -- "$1" "$dir/jade-shell.deb"
         chmod 644 "$dir/jade-shell.deb"
         [ "$(dpkg-deb -f "$dir/jade-shell.deb" Package 2>/dev/null)" = jade-shell ] \
             || { echo 'Not a Jade Shell package.' >&2; exit 65; }
-        # A new version may need a new dependency: fresh package lists first.
-        apt-get update -q || true
-        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
-            apt-get install -y "$dir/jade-shell.deb"
+        # Usually everything the new version needs is installed already, and
+        # refreshing every source first can take minutes. Only when apt can't
+        # find a dependency are the package lists refreshed, and it tries again.
+        logged apt_install && exit 0
+        case $(cat "$dir/output") in
+            *'Unable to locate'* | *'no installation candidate'* | *'not installable'* | *'Unable to fetch'* | *' 404 '*)
+                apt_update
+                apt_install ;;
+            *) exit 100 ;;
+        esac
         ;;
     *) echo 'Expected a .rpm or .deb file.' >&2; exit 64 ;;
 esac
