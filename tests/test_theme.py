@@ -1145,7 +1145,8 @@ class Sandbox(unittest.TestCase):
         out = self.jade('setup')
         self.assertIn("Kept your current wallpaper: the theme's wallpaper couldn't be downloaded right now "
                       "(couldn't reach GitHub). It downloads the next time you pick a theme.", out)
-        self.assertIn('Osaka Jade is on: the top bar and menus, your apps', out)
+        # (Icons named or not: a checkout has no icon archive, and this sandbox is offline.)
+        self.assertRegex(out, r'Osaka Jade is on: the top bar and menus(,| and) your apps')
         self.assertNotIn('wallpaper and', out)  # not listed as themed
         self.assertIn('osaka-jade', self.jade('theme', 'current'))
         self.assertEqual(self.gsettings('get', 'org.gnome.desktop.background', 'picture-uri'), "'file:///mine.png'")
@@ -1967,7 +1968,7 @@ elif 'show' in args and 'connection' in args:
                       'jade restore turns it back on.', out)
         # Apps that aren't installed are not worth a line; what was themed is.
         self.assertNotIn('skipped', out)
-        self.assertIn('Osaka Jade is on: the top bar and menus, your apps, wallpaper', out)
+        self.assertRegex(out, r'Osaka Jade is on: the top bar and menus, your apps(, icons)?(,| and) wallpaper')
         # (With the package installed on this machine, the sandbox's own extension copy is named too.)
         self.assertTrue(any(line.strip().startswith('rm -rf ') and str(old_copy) in line for line in out.splitlines()), out)
         self.assertTrue(old_copy.exists())  # said, never deleted
