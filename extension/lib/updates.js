@@ -16,6 +16,9 @@ let finishStarted = false;
 let notice = null;
 // A check or an update running; one at a time.
 let busy = false;
+// `jade update` running: it says how it went, so the package's new
+// metadata.json (on disk before it ends) brings no notice of its own.
+let updating = false;
 
 // dnf, apt or GNOME Software can update the package at any time; Jade Shell
 // finishes the update itself:
@@ -139,7 +142,7 @@ export class Updates {
         this._starting = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
             this._starting = 0;
             this._update(version).catch(e => {
-                busy = false;
+                busy = updating = false;
                 console.error(`Jade Shell: update failed: ${e.message}`);
             });
             return GLib.SOURCE_REMOVE;
@@ -153,7 +156,7 @@ export class Updates {
         const jade = jadeCommand();
         if (busy || !jade)
             return;
-        busy = true;
+        busy = updating = true;
         const progress = notify(`Downloading Jade Shell ${version}…`, 'Your password is asked for next.');
         const {ok, status, lines, errors} = await runLines([jade, 'update'], line => {
             if (notice !== progress)  // closed meanwhile
@@ -163,14 +166,13 @@ export class Updates {
             else if (line.startsWith('Waiting for other updates'))
                 progress.set({body: 'Waiting for other updates on this computer to finish…'});
         });
-        busy = false;
+        busy = updating = false;
         // `jade update` keeps update.log itself; a crash doesn't get there.
         if (errors.length)
             writeLog(`${errors.join('\n')}\n`, true);
         const log = stateDir().get_child('update.log');
         const retry = ['Try again', () => this._startUpdate(version)];
         if (ok) {
-            // The new metadata.json would say the same a second later.
             this._told = version;
             notify(`Jade Shell ${version} is installed`, 'Log out and back in to start the new version.', [
                 ['Log out', () => SystemActions.getDefault().activateLogout()],
@@ -190,7 +192,7 @@ export class Updates {
     // The package on disk changed under the running version.
     _checkInstalled() {
         const installed = readJson(this._dir.get_child('metadata.json'))?.['version-name'];
-        if (!installed || installed === this._version || installed === this._told)
+        if (!installed || installed === this._version || installed === this._told || updating)
             return;
         this._told = installed;
         notify(`Jade Shell ${installed} is installed`, 'Log out and back in to finish the update.', [
@@ -229,12 +231,16 @@ function runLines(argv, onLine) {
         }
         const out = [], err = [];
         let open = 2;
+        // Bytes, decoded leniently: a line that isn't UTF-8 must not stop the
+        // reading (a full pipe would hold `jade update` forever).
+        const decoder = new TextDecoder();
         const read = (pipe, lines, callback) => {
             const stream = new Gio.DataInputStream({base_stream: pipe, close_base_stream: true});
             const next = () => stream.read_line_async(GLib.PRIORITY_DEFAULT, null, (s, result) => {
                 let line;
                 try {
-                    [line] = s.read_line_finish_utf8(result);
+                    const [bytes] = s.read_line_finish(result);
+                    line = bytes === null ? null : decoder.decode(bytes);
                 } catch {
                     line = null;
                 }
