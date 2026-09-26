@@ -42,7 +42,7 @@ if [[ -t 1 ]]; then
 else
     bold='' dim='' green='' red='' plain=''
 fi
-step_count=0 step_total=0 step_name='' step_start=0 step_log_line=0
+step_count=0 step_total=0 step_name='' step_start=0 step_log_line=0 step_waited=''
 
 say() { printf '%s\n' "$*"; }
 log() { printf '%s\n' "$*" >>"$LOG"; }
@@ -50,6 +50,7 @@ log() { printf '%s\n' "$*" >>"$LOG"; }
 # A numbered step: its name now, a check mark (and its time) when done.
 step() {
     step_count=$((step_count + 1)) step_name=$1 step_start=$SECONDS
+    step_waited=''
     step_log_line=$(wc -l <"$LOG")
     log "== [$(date '+%F %T')] $1"
     printf '%s[%d/%d]%s %s ' "$dim" "$step_count" "$step_total" "$plain" "$1"
@@ -89,7 +90,7 @@ fail() {
             say "Some packages on this computer were left half-installed before Jade Shell. Repair them first with:
     sudo apt --fix-broken install" ;;
         *'Could not get lock'* | *'Waiting for a lock'*)
-            say 'Another program is still installing updates (GNOME Software or automatic updates). Let it finish, or restart the computer.' ;;
+            say 'Your computer was still installing other updates after 20 minutes. Let them finish (or restart the computer), then run this again.' ;;
         *) false ;;
     esac && say ''
     say "${step_name} did not finish. The full log is in $LOG"
@@ -102,16 +103,12 @@ fail() {
     exit 1
 }
 
-# On a desktop in use, GNOME Software (packagekitd) or automatic updates may be
-# installing something: apt and dnf wait for them, and the spinner says so.
-waiting_for() {
+# On a desktop in use, the Software app (packagekitd) or automatic updates may
+# be installing something. apt and dnf wait for them; the log names them.
+other_updates_running() {
     local last
-    last=$(tail -n 6 "$LOG" 2>/dev/null) || return 0
-    if [[ $last =~ Could\ not\ get\ lock.*held\ by\ process\ [0-9]+\ \(([^\)]+)\) ]]; then
-        printf 'waiting for %s to finish its updates' "${BASH_REMATCH[1]}"
-    elif [[ $last == *'Could not get lock'* || $last == *'Waiting for a lock'* || $last == *'currently accessing it'* ]]; then
-        printf 'waiting for another update to finish'
-    fi
+    last=$(tail -n 6 "$LOG" 2>/dev/null) || return 1
+    [[ $last == *'Could not get lock'* || $last == *'Waiting for a lock'* || $last == *'currently accessing it'* ]]
 }
 
 # Run a command for the current step: output into the log (and on screen with
@@ -126,13 +123,18 @@ run() {
         # asked for, and fails rather than waits if that has run out.
         if [[ $1 == sudo ]]; then set -- sudo -n "${@:2}"; fi
         "$@" >>"$LOG" 2>&1 &
-        local pid=$! frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 took note=''
+        local pid=$! frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 took
         while kill -0 "$pid" 2>/dev/null; do
             took=$((SECONDS - step_start))
-            if ((i % 10 == 0)); then note=$(waiting_for); fi
-            printf '\0337%s%s %s%s%s\033[K\0338' "$dim" "${frames:i++ % 10:1}" \
-                "$( ((took >= 60)) && printf '%dm %02ds' $((took / 60)) $((took % 60)) || printf '%ds' "$took")" \
-                "${note:+ · $note}" "$plain"
+            # Once per step, in words anyone reads, on short lines of their own
+            # (a wrapped line would outlive the spinner); the spinner goes on below.
+            if [[ -z $step_waited ]] && ((i % 10 == 0)) && other_updates_running; then
+                step_waited=1
+                printf '\033[K\n      %s\n      %s ' 'Your computer is installing other updates right now.' \
+                    'Jade Shell waits for them to finish, then carries on.'
+            fi
+            printf '\0337%s%s %s%s\033[K\0338' "$dim" "${frames:i++ % 10:1}" \
+                "$( ((took >= 60)) && printf '%dm %02ds' $((took / 60)) $((took % 60)) || printf '%ds' "$took")" "$plain"
             sleep 0.1
         done
         printf '\033[K'
@@ -206,15 +208,18 @@ package_install() {
 # `apt-get update` ignores the timeout, so that one is retried.
 APT_WAIT=(-o DPkg::Lock::Timeout=1200)
 apt_update() {
-    local tries=0
-    until sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update; do
-        if [[ $(tail -n 3 "$LOG") == *'Could not get lock'* ]] && ((tries++ < 60)); then
+    # Each attempt's own output decides; the log may lag behind (tee, --verbose).
+    local tries=0 out
+    until out=$(sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update 2>&1); do
+        printf '%s\n' "$out"
+        if [[ $out == *'Could not get lock'* ]] && ((tries++ < 60)); then
             sleep 5
             continue
         fi
         echo 'apt-get update reported problems; trying the install anyway.'
         return 0
     done
+    printf '%s\n' "$out"
 }
 
 # dnf also removes the dependencies nothing else needs. apt only suggests
