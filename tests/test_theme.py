@@ -1815,6 +1815,7 @@ elif 'show' in args and 'connection' in args:
         script = ('import sys\nfrom unittest import mock\nfrom jade import cli, setup\n'
                   'mock.patch.object(setup, "needs_login", return_value=True).start()\n'
                   'mock.patch.object(setup, "finishes_at_login", return_value=True).start()\n'
+                  'mock.patch.object(setup, "extension_state", return_value="active").start()\n'
                   'sys.exit(cli.main(sys.argv[1:]))\n')
         result = subprocess.run([sys.executable, '-c', script, 'setup'], env={**self.env, 'XDG_CURRENT_DESKTOP': ''},
                                 capture_output=True, text=True, cwd=ROOT)
@@ -1850,6 +1851,25 @@ elif 'show' in args and 'connection' in args:
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), "['old@me']")
 
     @needs_compiler
+    def test_a_dock_not_on_screen_goes_at_once(self):
+        extensions = self.home / '.local/share/gnome-shell/extensions'
+        (extensions / UBUNTU_DOCK).mkdir(parents=True)
+        (extensions / UBUNTU_DOCK / 'metadata.json').write_text('{}')
+        # Listed as on, but not running in GNOME Shell (Dash to Dock not even installed).
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{DASH_TO_DOCK}']")
+        script = ('import sys\nfrom unittest import mock\nfrom jade import cli, setup\n'
+                  'mock.patch.object(setup, "needs_login", return_value=True).start()\n'
+                  'mock.patch.object(setup, "finishes_at_login", return_value=True).start()\n'
+                  'mock.patch.object(setup, "extension_state", lambda uuid: "error").start()\n'
+                  'sys.exit(cli.main(sys.argv[1:]))\n')
+        result = subprocess.run([sys.executable, '-c', script, 'setup'], env={**self.env, 'XDG_CURRENT_DESKTOP': ''},
+                                capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Turned off Dash to Dock and Ubuntu Dock', result.stdout)
+        self.assertNotIn('until you log out', result.stdout)
+        self.assertNotIn('after_login', self.manifest())
+
+    @needs_compiler
     def test_restore_before_logging_in_leaves_the_dock_on(self):
         extensions = self.home / '.local/share/gnome-shell/extensions'
         (extensions / UBUNTU_DOCK).mkdir(parents=True)
@@ -1858,6 +1878,7 @@ elif 'show' in args and 'connection' in args:
         script = ('import sys\nfrom unittest import mock\nfrom jade import cli, setup\n'
                   'mock.patch.object(setup, "needs_login", return_value=True).start()\n'
                   'mock.patch.object(setup, "finishes_at_login", return_value=True).start()\n'
+                  'mock.patch.object(setup, "extension_state", return_value="active").start()\n'
                   'sys.exit(cli.main(sys.argv[1:]))\n')
         subprocess.run([sys.executable, '-c', script, 'setup'], env={**self.env, 'XDG_CURRENT_DESKTOP': ''},
                        capture_output=True, text=True, cwd=ROOT, check=True)

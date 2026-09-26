@@ -568,8 +568,11 @@ def set_up_desktop(ctx, report, theme_id, after_update):
     # the next login: turning the other dock off now would leave no dock at
     # all until then. It stays on (Jade's dock steps aside while it runs),
     # and the extension has it turned off when it starts (`after_login`).
+    # Only a dock on screen now: one listed but not running (not installed,
+    # or failing) is nothing to wait for.
     report.login_needed = needs_login(UUID)
-    later = {uuid for uuid in DOCKS if uuid in running_before and uuid not in keep} \
+    later = {uuid for uuid in DOCKS if uuid in running_before and uuid not in keep
+             and extension_state(uuid) == 'active'} \
         if report.login_needed and not after_update and finishes_at_login() else set()
     if later:
         manifest['after_login'] = sorted(later)
