@@ -122,6 +122,16 @@ class TahoeArchive(unittest.TestCase):
         self.assertEqual(self.icons.reason(OSError(errno.ENOSPC, 'No space left on device')), 'your home folder is full')
         self.assertEqual(self.icons.reason(urllib.error.URLError('name resolution')), 'no internet connection right now')
         self.assertEqual(self.icons.reason(TimeoutError()), 'no internet connection right now')
+        self.assertEqual(self.icons.reason(ConnectionResetError(104, 'Connection reset by peer')),
+                         "the download didn't work")
+
+    def test_a_download_cut_short_says_so(self):
+        import http.client
+        self.copy.write_bytes(b'damaged')
+        with mock.patch('urllib.request.urlopen', side_effect=http.client.IncompleteRead(b'')), \
+                self.assertRaisesRegex(self.icons.IconsUnavailable, "^the download didn't work$"):
+            self.icons.install()
+        self.assertEqual(list(self.icons_home.iterdir()), [])
 
     def test_a_full_home_is_said_before_starting(self):
         (self.icons_home / 'Jade-MacTahoe').mkdir()  # an older build in use stays
@@ -175,6 +185,14 @@ class TahoeArchive(unittest.TestCase):
         self.icons.remove_orphans()
         self.assertEqual([path for path in left if path.exists()], [])
         self.assertTrue(running.exists())  # another build, still going
+
+    def test_cleaning_up_never_stops_a_restore(self):
+        odd = self.icons_home / '.MacTahoe-icon-theme-2026-09-10.99999999999999999999'  # no such pid
+        odd.mkdir()
+        with mock.patch.object(self.icons, 'alive', side_effect=PermissionError):
+            self.icons.remove_orphans()
+        self.icons.remove()
+        self.assertTrue(odd.exists())
 
 
 class Palette(unittest.TestCase):

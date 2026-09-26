@@ -17,8 +17,10 @@ The package's copy is about 3 MB; built, about 180 MB per person. Its
 Finder and App Store icons are never installed: Jade draws its own Files
 and Software.
 """
+import contextlib
 import errno
 import hashlib
+import http.client
 import os
 import pathlib
 import re
@@ -163,22 +165,25 @@ def alive(pid):
 
 
 def remove_orphans():
-    """What a build that was stopped (Ctrl-C, a closed window) left behind."""
+    """What a build that was stopped (Ctrl-C, a closed window) left behind.
+    Never fails: restore runs this, and a leftover must not stop it."""
     for folder in (icons_home(), cache_home() / 'jade-shell'):  # 0.9.0 unpacked into the cache
-        for path in folder.glob('.MacTahoe-icon-theme-*'):
-            match = PARTIAL.fullmatch(path.name)
-            if match and not alive(int(match.group(1))):
-                if path.is_dir() and not path.is_symlink():
-                    shutil.rmtree(path, ignore_errors=True)
-                else:
-                    path.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            for path in list(folder.glob('.MacTahoe-icon-theme-*')):
+                match = PARTIAL.fullmatch(path.name)
+                with contextlib.suppress(OSError, OverflowError):  # a number too big for a pid
+                    if match and not alive(int(match.group(1))):
+                        if path.is_dir() and not path.is_symlink():
+                            shutil.rmtree(path, ignore_errors=True)
+                        else:
+                            path.unlink(missing_ok=True)
 
 
 def reason(error):
     """An error while building, in plain words."""
     if error.errno in (errno.ENOSPC, errno.EDQUOT):
         return FULL
-    if isinstance(error, urllib.error.HTTPError):
+    if isinstance(error, (urllib.error.HTTPError, ConnectionError)):  # a server error, or cut off midway
         return "the download didn't work"
     if isinstance(error, (urllib.error.URLError, TimeoutError)):
         return 'no internet connection right now'
@@ -393,6 +398,8 @@ def install(progress=lambda _text: None):
                 shutil.rmtree(folder, ignore_errors=True)
         if isinstance(error, OSError):
             raise IconsUnavailable(reason(error)) from None
+        if isinstance(error, http.client.HTTPException):  # a download cut short
+            raise IconsUnavailable("the download didn't work") from None
         raise
     finally:
         shutil.rmtree(work, ignore_errors=True)
