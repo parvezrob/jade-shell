@@ -341,9 +341,9 @@ try() {
     # for (kept fresh by keep_sudo), and fails rather than waits without it.
     if [[ $1 == sudo ]]; then set -- sudo -n "${@:2}"; fi
     if [[ -n $verbose ]]; then
-        ( "$@" 2>&1 | tee -a "$LOG"; exit "${PIPESTATUS[0]}" ) &
+        ( "$@" 2>&1 | tee -a "$LOG"; exit "${PIPESTATUS[0]}" ) 9>&- &
     else
-        "$@" >>"$LOG" 2>&1 &
+        "$@" >>"$LOG" 2>&1 9>&- &  # the installer's lock stays with the installer
     fi
     run_pid=$!
     local i=0 rc=0 lines
@@ -411,6 +411,10 @@ need_sudo() {
     fi
     sleep 0.2  # the error lines reach the file
     say ''
+    if [[ -n ${desktop_done:-} ]]; then  # the rest is done: only the extras wait
+        note "Your desktop is set up. Text and QR code reading weren't added (the password wasn't accepted); run this again to add them."
+        exit 1
+    fi
     local said
     said=$(cat "$tmp/sudo.err" 2>/dev/null) || said=''
     if [[ $said =~ afraid\ I\ can|not\ in\ the\ sudoers|not\ allowed\ to ]] \
@@ -424,7 +428,8 @@ need_sudo() {
 keep_sudo() {
     [[ -z $sudo_keeper ]] || return 0
     local parent=$$
-    ( while sleep 50; do kill -0 "$parent" 2>/dev/null && sudo -n -v 2>/dev/null || exit 0; done ) &
+    # (without the installer's lock: a leftover sleep would hold it after the end)
+    ( exec 9>&-; while sleep 50; do kill -0 "$parent" 2>/dev/null && sudo -n -v 2>/dev/null || exit 0; done ) &
     sudo_keeper=$!
 }
 
@@ -838,17 +843,23 @@ apt_update() {
 }
 
 # The package's recommended parts (text and QR code reading) that this
-# computer doesn't have yet.
+# computer doesn't have yet. $1: the package file, or "installed".
 missing_extras() {
     local group alt name
     if [[ $kind == rpm ]]; then
+        local -a query=(-qp --recommends "$1")
+        [[ $1 != installed ]] || query=(-q --recommends jade-shell)
         while read -r name _; do
             [[ -z $name ]] || rpm -q --quiet --whatprovides "$name" 2>/dev/null || printf '%s\n' "$name"
-        done < <(rpm -qp --recommends "$1" 2>/dev/null)
+        done < <(rpm "${query[@]}" 2>/dev/null)
         return 0
     fi
     local recommends
-    recommends=$(dpkg-deb -f "$1" Recommends 2>/dev/null) || return 0
+    if [[ $1 == installed ]]; then
+        recommends=$(dpkg-query -W -f '${Recommends}' jade-shell 2>/dev/null) || return 0
+    else
+        recommends=$(dpkg-deb -f "$1" Recommends 2>/dev/null) || return 0
+    fi
     IFS=',' read -ra groups <<<"$recommends"
     for group in "${groups[@]}"; do
         local first='' have=''
@@ -1023,7 +1034,12 @@ if [[ $action == uninstall ]]; then
                 -e '^Not everything could be put back' "$tmp/restore.out" || true)
             if grep -q '^Restored the desktop you had' "$tmp/restore.out"; then restored=1; fi
         fi
-        if ((rc == 0)); then
+        if ((rc == 0)) && ((${#partial[@]})); then
+            # Put back, except what it lists: its record and backups stay.
+            done_step "$dim–$plain"
+            show_lines "${info[@]}" "${partial[@]}"
+            restored='' keep_record=1
+        elif ((rc == 0)); then
             done_step
             show_lines "${info[@]}" "${partial[@]}"
         elif grep -q 'Not everything could be put back' "$tmp/restore.out" && (exec </dev/tty) 2>/dev/null; then
@@ -1051,7 +1067,13 @@ if [[ $action == uninstall ]]; then
     # stays for a report. Only after a full restore: the record is its undo.
     if [[ -z $keep_record ]] && [[ -n $restored || ( -z $changed && ! -d $kit ) ]]; then
         rm -rf "${DATA:?}" "${CACHE:?}"
-        find "${STATE:?}" -mindepth 1 -maxdepth 1 ! -name install.log ! -name install.lock -exec rm -rf {} + 2>/dev/null || true
+        # Backups a restore left (one it could not read, set aside) hold
+        # someone's own files: they stay, and are named.
+        find "${STATE:?}" -mindepth 1 -maxdepth 1 ! -name install.log ! -name install.lock ! -name backups \
+            -exec rm -rf {} + 2>/dev/null || true
+        if [[ -d $STATE/backups ]] && ! rmdir "$STATE/backups" 2>/dev/null; then
+            note "Some of your earlier settings files are kept in ${STATE/#$HOME/\~}/backups."
+        fi
     fi
     if [[ -n $(user_copies) ]]; then
         note 'An older or development copy of Jade Shell is still in your home folder. To remove it:'
@@ -1222,7 +1244,14 @@ fail_message=''
 done_step
 finish
 
-if [[ $plan == install ]]; then add_extras "$tmp/jade-shell.$kind"; fi
+if [[ $plan == install ]]; then
+    add_extras "$tmp/jade-shell.$kind"
+elif [[ -n $(missing_extras installed) ]] && { sudo -n true 2>/dev/null || (exec </dev/tty) 2>/dev/null; }; then
+    # Added last time only if that worked: a run again adds what is missing.
+    desktop_done=1
+    need_sudo 'to add text and QR code reading'
+    add_extras installed
+fi
 
 if ((${#finish_rows[@]})); then
     if [[ $plan == setup ]]; then
