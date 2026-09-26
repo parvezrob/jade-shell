@@ -1689,6 +1689,11 @@ class CommandLine(unittest.TestCase):
             self.assertEqual(cli.main([]), 0)
         self.assertEqual(out.getvalue().split()[:2], ['jade', 'theme'])
         self.assertNotIn('usage:', out.getvalue())
+        # Each command it names works as shown.
+        for line in cli.START.splitlines():
+            words = line.split('  ')[0].replace('<name>', themes.ids()[0]).split()[1:]
+            if words != ['--help']:
+                cli.parser().parse_args(words)
 
     def test_leaving_an_app_alone_twice_keeps_it_alone(self):
         stored = []

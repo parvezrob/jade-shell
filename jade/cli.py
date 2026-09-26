@@ -706,10 +706,11 @@ EXCLUSIVE = {('theme', 'set'), ('theme', 'wallpaper'), ('theme', 'undo'), ('them
 
 # `jade` alone: where to start, rather than argparse's "arguments are required".
 START = '''\
-jade theme      change the look
-jade settings   open Jade Shell's settings
-jade restore    put your desktop back the way it was
-jade --help     everything else'''
+jade theme list         see the themes
+jade theme set <name>   change the look
+jade settings           open Jade Shell's settings
+jade restore            put your desktop back the way it was
+jade --help             everything else'''
 
 
 def main(argv=None):
