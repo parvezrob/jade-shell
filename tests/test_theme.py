@@ -1036,12 +1036,12 @@ class Sandbox(unittest.TestCase):
         nord = themes.load('nord')
         (self.home / '.local/share/jade-shell/backgrounds/nord' / nord.backgrounds[0]).unlink()
         out = self.jade('theme', 'set', 'nord', '--only', 'gnome')
-        self.assertIn('skipped wallpaper: could not download the Nord wallpaper', out)
+        self.assertIn("skipped wallpaper: couldn't download the Nord wallpaper (couldn't reach GitHub)", out)
         self.assertEqual(self.gsettings('get', 'org.gnome.desktop.interface', 'color-scheme'), "'prefer-dark'")
         self.assertNotIn('nord', self.gsettings('get', 'org.gnome.desktop.background', 'picture-uri'))
         result = self.run_jade('theme', 'wallpaper')
         self.assertEqual(result.returncode, 1)
-        self.assertIn('Wallpaper not changed: could not download', result.stderr)
+        self.assertIn("Wallpaper not changed: couldn't download", result.stderr)
         self.assertNotIn('Traceback', result.stderr)
 
     def test_mistyped_target_is_refused(self):

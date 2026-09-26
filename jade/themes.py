@@ -3,14 +3,12 @@ import math
 import os
 import pathlib
 import re
-import shutil
 import time
 import tomllib
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
+from http.client import HTTPException
 
-from . import community
+from . import community, download, reasons
 from . import palette as pal
 from .store import config_home, data_home, state_home
 
@@ -24,14 +22,12 @@ RETRY_DELAYS = (1, 2)  # seconds between download attempts
 
 
 class WallpaperUnavailable(Exception):
-    """A wallpaper that is not on disk could not be downloaded."""
+    """A wallpaper that is not on disk could not be downloaded. Its text is
+    for people; `detail`, the error behind it, is for the log."""
 
-
-def transient(error):
-    # A server hiccup or a dropped connection may pass; a missing file will not.
-    if isinstance(error, urllib.error.HTTPError):
-        return error.code == 429 or error.code >= 500
-    return True
+    def __init__(self, text, detail=None):
+        super().__init__(text)
+        self.detail = detail
 
 # Shades GNOME needs that Omarchy has no key for. A user override file can pin
 # any of them (or any palette key) to a hand-tuned value.
@@ -77,16 +73,19 @@ class Theme:
             tmp = path.with_name(f'.{path.name}.{os.getpid()}.part')
             for attempt in range(len(RETRY_DELAYS) + 1):
                 try:
-                    with urllib.request.urlopen(url, timeout=20) as response, tmp.open('wb') as out:
-                        shutil.copyfileobj(response, out)
+                    with download.open_url(url) as response, tmp.open('wb') as out:
+                        download.copy(response, out)
                     tmp.replace(path)
                     break
-                except OSError as error:  # URLError, HTTPError and timeouts are all OSErrors
+                # URLError, HTTPError and timeouts are all OSErrors; a garbled reply is not.
+                except (OSError, HTTPException) as error:
                     tmp.unlink(missing_ok=True)
-                    if attempt == len(RETRY_DELAYS) or not transient(error):
-                        reason = getattr(error, 'reason', None) or error
+                    if hasattr(error, 'close'):  # an HTTPError holds the reply open
+                        error.close()
+                    if attempt == len(RETRY_DELAYS) or not download.transient(error):
                         raise WallpaperUnavailable(
-                            f'could not download the {self.name} wallpaper ({reason})') from None
+                            f"couldn't download the {self.name} wallpaper ({reasons.plain(error)})",
+                            reasons.detail(error)) from None
                     time.sleep(RETRY_DELAYS[attempt])
         return path
 
