@@ -5,7 +5,9 @@
 so `restore` can return the desktop to exactly how it was.
 """
 import configparser
+import contextlib
 import datetime
+import errno
 import json
 import os
 import pathlib
@@ -45,11 +47,13 @@ REPLACED = {
     'transparent-top-bar@zhanghai.me': ('Transparent Top Bar', 'Jade Shell styles the top bar itself'),
     'dash-to-panel@jderose9.github.com': ('Dash to Panel', 'it would move the top bar into a taskbar'),
     'bottom-dash-panel@fthx': ('Bottom Dash Panel', 'Jade Shell has its own dock'),
-    'user-theme@gnome-shell-extensions.gcampax.github.com': ('User Themes', 'Jade Shell brings its own look for the top bar and menus'),
+    'user-theme@gnome-shell-extensions.gcampax.github.com': ('User Themes',
+                                                             'Jade Shell brings its own look for the top bar and menus'),
     'simple-workspaces-bar@null-git': ('Simple Workspaces Bar', 'Jade Shell shows the workspaces in the top bar'),
     'panel-date-format@keiii.github.com': ('Panel Date Format', 'Jade Shell sets the clock format'),
     'app-grid-tuner@m-lab': ('App Grid Tuner', 'Jade Shell arranges the app grid'),
-    'just-perfection-desktop@just-perfection': ('Just Perfection', 'Jade Shell already hides Activities and starts on the desktop'),
+    'just-perfection-desktop@just-perfection': ('Just Perfection',
+                                                'Jade Shell already hides Activities and starts on the desktop'),
     'blur-my-shell@aunetx': ('Blur my Shell', 'Jade Shell draws the overview background'),
     'monitor@astraext.github.io': ('Astra Monitor', 'Jade Shell has its own system monitor'),
     'Vitals@CoreCoding.com': ('Vitals', 'Jade Shell has its own system monitor'),
@@ -139,6 +143,9 @@ def say(text):
     print(text, flush=True)
 
 
+HOME_FULL = 'Your home folder is full; free some space and run jade setup again.'
+
+
 class Report:
     """What setup or restore tells the person as it goes: each note is
     printed, and kept for the summary the installer asks for."""
@@ -146,10 +153,24 @@ class Report:
     def __init__(self):
         self.notes = []
         self.partial = []  # restore: what could not be put back
+        # setup: for the installer's closing card
+        self.login_needed = self.welcome = False
+        self.shortcut = None
+        self.turned_off = []
 
     def note(self, text):
         say(text)
         self.notes.append(text)
+
+    def write(self, **fields):
+        """The summary, as JSON, when the installer names a file for it in
+        JADE_SUMMARY_FILE: it shows the notes its own way, and needs no parsing
+        of what was printed."""
+        path = os.environ.get('JADE_SUMMARY_FILE')
+        if not path:
+            return
+        with contextlib.suppress(OSError):  # the installer falls back to what was printed
+            pathlib.Path(path).write_text(json.dumps({**fields, 'notes': self.notes}, indent=2) + '\n')
 
 
 def log_path():
@@ -500,6 +521,21 @@ def setup(ctx, theme_id=None, after_update=False):
     """Set up this desktop, or finish an update (`after_update`: run by the
     extension at the first login with a new version, without a terminal)."""
     report = Report()
+    try:
+        status = set_up_desktop(ctx, report, theme_id, after_update)
+    except OSError as error:
+        if error.errno == errno.ENOSPC:
+            report.notes.append(HOME_FULL)  # said by jade's main, which catches it
+        raise
+    finally:
+        report.write(login_needed=report.login_needed, welcome=report.welcome, shortcut=report.shortcut,
+                     turned_off=report.turned_off)
+    if report.login_needed:
+        offer_logout()
+    return status
+
+
+def set_up_desktop(ctx, report, theme_id, after_update):
     version = shelltheme.installed_shell_version()
     if version not in shelltheme.available_versions():
         report.note(unsupported(version))
@@ -536,6 +572,7 @@ def setup(ctx, theme_id=None, after_update=False):
     ctx.settings.write(changes)
     off = [out_of_the_way[uuid] for uuid in sorted(running_before - set(keep))]
     if off:
+        report.turned_off = [name for name, _why in off]
         report.note(turned_off(off))
 
     grant_flatpak(manifest)
@@ -650,12 +687,13 @@ def setup(ctx, theme_id=None, after_update=False):
             report.note(failure)
         say(f'Jade Shell {__version__} is set up.')
         return 0
-    shortcut = picker_shortcut(ctx)
-    say(f'Change theme with {shortcut or "the palette icon in the top bar"}. Undo everything with: jade restore')
-    if needs_login(UUID):
+    report.shortcut = picker_shortcut(ctx)
+    say(f'Change theme with {report.shortcut or "the palette icon in the top bar"}. Undo everything with: jade restore')
+    report.login_needed = needs_login(UUID)
+    if report.login_needed:
+        report.welcome = not welcomed()
         say(f'Done. Log out and back in to start {"the new version" if updating else "Jade Shell"}.'
-            + (' A welcome window then helps you pick your look.' if not welcomed() else ''))
-        offer_logout()
+            + (' A welcome window then helps you pick your look.' if report.welcome else ''))
     else:
         say('Done.')
     return 0
@@ -672,20 +710,17 @@ def make_previews(theme):
     """
     picture = theme.wallpaper(0) or theme.preview
     if not themes.thumbnail_path(theme.id).exists() and picture and picture.exists():
-        try:
+        with contextlib.suppress(Exception):  # a picture it can't read: the picker shows the theme's colors
             themes.make_thumbnail(theme)
-        except Exception:  # a picture it can't read: the picker shows the theme's colors
-            pass
     if all(themes.thumbnail_path(tid).exists() for tid in themes.ids()):
         return
     code = str(pathlib.Path(__file__).resolve().parent.parent)
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(filter(None, [code, os.environ.get('PYTHONPATH')])))
-    try:
-        # Its own session: it outlives setup, and the installer's Ctrl-C isn't meant for it.
+    # Its own session: it outlives setup, and the installer's Ctrl-C isn't
+    # meant for it. If it can't start, the picker fetches them when it opens.
+    with contextlib.suppress(OSError):
         subprocess.Popen([sys.executable, '-m', 'jade', 'theme', 'thumbs'], env=env, stdin=subprocess.DEVNULL,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-    except OSError:
-        pass  # the picker fetches them when it opens
 
 
 def picker_shortcut(ctx):
@@ -775,10 +810,19 @@ def restore(ctx, assume_yes=False, report=None):
     """Put back the desktop from before Jade Shell. What was said goes into
     `report` too: its notes, and in `partial` what could not be put back."""
     report = report or Report()
+    status = 1
+    try:
+        status = restore_desktop(ctx, assume_yes, report)
+    finally:
+        report.write(restored=status == 0, partial=report.partial)
+    return status
+
+
+def restore_desktop(ctx, assume_yes, report):
     manifest = load_manifest()
     history = engine.backups()
     if not history and not manifest['settings'] and not keys.applied() and not network.state_file().exists():
-        say('Nothing to restore: Jade Shell has not changed this desktop.')
+        report.note('Nothing to restore: Jade Shell has not changed this desktop.')
         return 0
     if not assume_yes:
         if not sys.stdin.isatty():

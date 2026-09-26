@@ -1091,6 +1091,35 @@ class Sandbox(unittest.TestCase):
         self.assertEqual(lines[-1], 'Applying Osaka Jade')
 
     @needs_compiler
+    def test_setup_and_restore_leave_a_summary_for_the_installer(self):
+        summary = pathlib.Path(self.tmp.name) / 'summary.json'
+        self.env['JADE_SUMMARY_FILE'] = str(summary)
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', "['Vitals@CoreCoding.com']")
+        out = self.jade('setup')
+        report = json.loads(summary.read_text())
+        self.assertEqual(report['turned_off'], ['Vitals'])
+        self.assertEqual(report['shortcut'], 'Super+Ctrl+Shift+Space')
+        self.assertIs(report['login_needed'], False)  # no GNOME Shell to ask in the sandbox
+        self.assertIs(report['welcome'], False)
+        self.assertIn('Turned off Vitals, since Jade Shell has its own system monitor. jade restore turns it back on.',
+                      report['notes'])
+        self.assertTrue(any(note.startswith('Osaka Jade is on: ') for note in report['notes']))
+        self.assertFalse(any(note.startswith(('Change theme with', 'Done')) for note in report['notes']))
+        self.assertTrue(set(report['notes']) <= set(out.splitlines()))  # said as well, word for word
+
+        btop_themes = self.home / '.config/btop/themes'
+        btop_themes.chmod(0o500)
+        self.addCleanup(btop_themes.chmod, 0o755)
+        self.assertEqual(self.run_jade('restore', '--yes').returncode, 1)
+        report = json.loads(summary.read_text())
+        self.assertIs(report['restored'], False)
+        self.assertTrue(report['partial'] and all(line.startswith("Couldn't put back ~/.config/btop/themes/")
+                                                  for line in report['partial']), report)
+        btop_themes.chmod(0o755)
+        self.jade('restore', '--yes')
+        self.assertEqual(json.loads(summary.read_text()), {'restored': True, 'partial': [], 'notes': []})
+
+    @needs_compiler
     def test_offline_setup_applies_the_theme_and_says_so_plainly(self):
         (self.home / '.local/share/jade-shell/backgrounds/osaka-jade' / themes.load('osaka-jade').backgrounds[0]).unlink()
         self.gsettings('set', 'org.gnome.desktop.background', 'picture-uri', "'file:///mine.png'")

@@ -1,7 +1,6 @@
 """Setup's speed and words: downloads, progress for the installer, its summary,
 and what it says. Runs in the same throwaway home as the other tests."""
 import http.server
-import json
 import os
 import pathlib
 import socket
