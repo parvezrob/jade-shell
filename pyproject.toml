@@ -1,7 +1,7 @@
 [project]
 name = "jade-shell"
 dynamic = ["version"]
-description = "Omarchy's look and theme switching for GNOME"
+description = "Omarchy's look and polish, on the GNOME you already run"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.11"
 

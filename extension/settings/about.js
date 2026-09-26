@@ -73,7 +73,7 @@ function showAbout(parent, version) {
         application_icon: 'preferences-desktop-appearance',
         developer_name: 'parvezrob',
         version: version ?? 'development copy',
-        comments: 'Omarchy’s look for the GNOME you already have.',
+        comments: 'Omarchy’s look and polish, on the GNOME you already run.',
         website: REPO,
         issue_url: `${REPO}/issues`,
         license_type: Gtk.License.GPL_3_0,

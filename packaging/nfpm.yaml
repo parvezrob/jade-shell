@@ -11,11 +11,10 @@ vendor: Jade Shell
 homepage: https://github.com/parvezrob/jade-shell
 license: GPL-3.0-or-later
 description: |
-  Omarchy's look and theme switching for GNOME.
-  A GNOME Shell extension and the `jade` command: a Shell theme built from
-  Omarchy's palettes, a theme picker that re-colors the desktop, terminals,
-  launcher, prompt and editor, workspaces, a light system monitor and
-  Claude/Codex usage in the top bar. Run `jade setup` after installing.
+  Omarchy's look and polish, on the GNOME you already run.
+  Omarchy's look and polish for GNOME 50: 22 themes that recolor the whole
+  desktop and your apps, a Mac-style dock, a redrawn top bar and frosted
+  glass. After installing, open a terminal and run: jade setup
 
 contents:
   - src: build/stage/lib/

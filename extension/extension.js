@@ -1,4 +1,4 @@
-// Jade Shell: Omarchy's look and theme switching for GNOME.
+// Jade Shell: Omarchy's look and polish, on the GNOME you already run.
 //
 // The Shell theme is loaded in every session mode, so the lock screen keeps
 // the theme's colors. Everything in the top bar exists only in the normal
