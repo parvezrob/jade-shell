@@ -62,13 +62,18 @@ class TahoeArchive(unittest.TestCase):
                                      'src/status/symbolic-budgie/b.svg': b'', 'colors/color-red/folder.svg': b''})
         self.copy = self.dir / 'usr/share/jade-shell/icons/MacTahoe.tar.xz'
         self.copy.parent.mkdir(parents=True)
-        self.trimmed = self.archive({'src/index.theme': b'[Icon Theme]\n'}, mode='w:xz')
-        for patcher in (mock.patch.dict(os.environ, XDG_CACHE_HOME=str(self.dir / 'cache')),
+        self.copy.write_bytes(self.archive({'src/index.theme': b'[Icon Theme]\n'}, mode='w:xz'))
+        self.icons_home = self.dir / 'data/icons'
+        for patcher in (mock.patch.dict(os.environ, XDG_CACHE_HOME=str(self.dir / 'cache'),
+                                        XDG_DATA_HOME=str(self.dir / 'data')),
                         mock.patch.object(icons, 'bundled', return_value=self.copy),
-                        mock.patch.object(icons, 'BUNDLED_SHA256', hashlib.sha256(self.trimmed).hexdigest()),
+                        mock.patch.object(icons, 'BUNDLED_SHA256', hashlib.sha256(self.copy.read_bytes()).hexdigest()),
                         mock.patch.object(icons, 'SHA256', hashlib.sha256(self.release).hexdigest())):
             patcher.start()
             self.addCleanup(patcher.stop)
+        self.icons_home.mkdir(parents=True)
+        self.work = self.dir / 'work'
+        self.work.mkdir()
 
     @staticmethod
     def archive(files, mode='w:gz'):
@@ -77,34 +82,99 @@ class TahoeArchive(unittest.TestCase):
             for name, data in files.items():
                 info = tarfile.TarInfo(f'MacTahoe-icon-theme-x/{name}')
                 info.size = len(data)
+                info.mode = 0o664
                 tar.addfile(info, io.BytesIO(data))
         return buffer.getvalue()
 
-    def test_the_package_copy_needs_no_download(self):
-        self.copy.write_bytes(self.trimmed)
+    def test_the_package_copy_is_read_where_it_is(self):
         with mock.patch('urllib.request.urlopen', side_effect=AssertionError('downloaded')):
-            folder = self.icons.download()
+            archive = self.icons.release(self.work)
+        self.assertEqual(archive, self.copy)  # checked, not copied
+        folder = self.icons.unpack(archive, self.work)
         self.assertEqual((folder / 'src/index.theme').read_text(), '[Icon Theme]\n')
+        self.assertEqual((folder / 'src/index.theme').stat().st_mode & 0o777, 0o644)
 
     def test_a_damaged_package_copy_falls_back_to_the_download(self):
         self.copy.write_bytes(b'damaged')
         with mock.patch('urllib.request.urlopen', return_value=io.BytesIO(self.release)) as urlopen:
-            folder = self.icons.download()
+            archive = self.icons.release(self.work)
         urlopen.assert_called_once()
+        folder = self.icons.unpack(archive, self.work)
+        self.assertTrue((folder / 'src/index.theme').exists())
         # Only what the build reads: the whole release has more.
         self.assertEqual(sorted(str(p.relative_to(folder)) for p in folder.rglob('*') if p.is_file()), ['src/index.theme'])
 
     def test_a_checkout_downloads_the_release(self):
-        self.copy.write_bytes(self.trimmed)
         with mock.patch.object(self.icons, 'BUNDLED_SHA256', None), \
                 mock.patch('urllib.request.urlopen', return_value=io.BytesIO(self.release)) as urlopen:
-            self.icons.download()
+            self.icons.release(self.work)
         urlopen.assert_called_once()
 
     def test_neither_one_says_so(self):
+        self.copy.write_bytes(b'damaged')
         with mock.patch('urllib.request.urlopen', return_value=io.BytesIO(b'not it')), \
-                self.assertRaises(self.icons.IconsUnavailable):
-            self.icons.download()
+                self.assertRaisesRegex(self.icons.IconsUnavailable, 'the download was damaged'):
+            self.icons.release(self.work)
+
+    def test_failures_in_plain_words(self):
+        import errno
+        import urllib.error
+        self.assertEqual(self.icons.reason(OSError(errno.ENOSPC, 'No space left on device')), 'your home folder is full')
+        self.assertEqual(self.icons.reason(urllib.error.URLError('name resolution')), 'no internet connection right now')
+        self.assertEqual(self.icons.reason(TimeoutError()), 'no internet connection right now')
+
+    def test_a_full_home_is_said_before_starting(self):
+        (self.icons_home / 'Jade-MacTahoe').mkdir()  # an older build in use stays
+        with mock.patch('shutil.disk_usage', return_value=shutil._ntuple_diskusage(1 << 40, 1 << 40, 100 << 20)), \
+                mock.patch.object(self.icons, 'build', side_effect=AssertionError('built')), \
+                self.assertRaisesRegex(self.icons.IconsUnavailable, '^your home folder is full$'):
+            self.icons.install()
+        self.assertEqual(sorted(p.name for p in self.icons_home.iterdir()), ['Jade-MacTahoe'])
+
+    def test_a_build_that_fails_leaves_nothing_half_built(self):
+        import errno
+
+        def half(src):
+            for folder in self.icons.theme_dirs():
+                (folder / 'apps').mkdir(parents=True)
+            raise OSError(errno.ENOSPC, 'No space left on device')
+        with mock.patch.object(self.icons, 'build', side_effect=half), \
+                self.assertRaisesRegex(self.icons.IconsUnavailable, '^your home folder is full$'):
+            self.icons.install()
+        self.assertEqual(list(self.icons_home.iterdir()), [])
+
+    def test_a_stopped_build_leaves_nothing_half_built(self):
+        def half(src):
+            (self.icons.theme_dirs()[0] / 'apps').mkdir(parents=True)
+            raise KeyboardInterrupt
+        with mock.patch.object(self.icons, 'build', side_effect=half), self.assertRaises(KeyboardInterrupt):
+            self.icons.install()
+        self.assertEqual(list(self.icons_home.iterdir()), [])
+
+    def test_a_build_leaves_only_the_themes(self):
+        def whole(src):
+            self.assertTrue((src / 'src/index.theme').exists())
+            self.assertEqual(src.parent.parent, self.icons_home)  # beside the themes: moved into them, not copied
+            for folder in self.icons.theme_dirs():
+                folder.mkdir()
+        with mock.patch.object(self.icons, 'build', side_effect=whole):
+            self.assertTrue(self.icons.install())
+        self.assertEqual(sorted(p.name for p in self.icons_home.iterdir()), ['Jade-MacTahoe', 'Jade-MacTahoe-dark'])
+
+    def test_what_a_stopped_build_left_is_cleaned_up(self):
+        gone = subprocess.Popen(['true'])
+        gone.wait()
+        cache = self.dir / 'cache/jade-shell'
+        cache.mkdir(parents=True)
+        name = '.MacTahoe-icon-theme-2026-09-10'
+        left = [self.icons_home / f'{name}.{gone.pid}', cache / f'{name}.{gone.pid}', cache / f'{name}.{gone.pid}.tar.gz']
+        running = self.icons_home / f'{name}.{os.getppid()}'
+        for path in [*left[:2], running]:
+            (path / 'src').mkdir(parents=True)
+        left[2].write_bytes(b'part')
+        self.icons.remove_orphans()
+        self.assertEqual([path for path in left if path.exists()], [])
+        self.assertTrue(running.exists())  # another build, still going
 
 
 class Palette(unittest.TestCase):

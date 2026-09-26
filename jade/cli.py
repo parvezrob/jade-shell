@@ -321,8 +321,8 @@ def apps_on(args, ctx):
     if 'icons' in args.names:
         try:
             icons.install(lambda text: text and print(text))
-        except (icons.IconsUnavailable, OSError) as error:
-            print(f'jade: no Mac-style icons: {error}', file=sys.stderr)
+        except icons.IconsUnavailable as error:
+            print(f"The Mac-style icons couldn't be set up ({error}).", file=sys.stderr)
             return 1
     state = engine.current()
     titles = join([engine.target_named(n).title for n in dict.fromkeys(args.names)])

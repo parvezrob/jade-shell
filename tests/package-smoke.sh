@@ -50,8 +50,13 @@ for listing in pathlib.Path('/usr/share/jade-shell/themes').glob('*/backgrounds.
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(png)
 EOF
-as_user jade setup
+# No download either for the Tahoe icons: the package's own copy, where it lies.
+as_user env https_proxy=http://127.0.0.1:9 jade setup
 as_user gsettings get org.gnome.shell enabled-extensions
+test -f /home/robin/.local/share/icons/Jade-MacTahoe/.jade-source
+test -f /home/robin/.local/share/icons/Jade-MacTahoe-dark/index.theme
+test -z "$(find /home/robin/.local/share/icons /home/robin/.cache -maxdepth 2 -name '.MacTahoe-*' -print -quit)" \
+    || { echo 'the icon build left files behind'; exit 1; }
 as_user jade theme current | grep -qx osaka-jade
 grep -q 'popup-menu-content.jade-frame' /home/robin/.local/state/jade-shell/gnome-shell.css
 as_user gsettings get org.gnome.desktop.background picture-uri \

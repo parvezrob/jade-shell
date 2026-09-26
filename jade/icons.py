@@ -17,6 +17,7 @@ The package's copy is about 3 MB; built, about 180 MB per person. Its
 Finder and App Store icons are never installed: Jade draws its own Files
 and Software.
 """
+import errno
 import hashlib
 import os
 import pathlib
@@ -24,6 +25,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import urllib.error
 import urllib.request
 
 from .store import data_home
@@ -47,10 +49,17 @@ STATUS_SIZES = ['16', '22', '24', '32', 'symbolic']
 # JPGs: all the package ships of it (scripts/build-packages.sh).
 PARTS = ('COPYING', 'AUTHORS', 'src/index.theme', *(f'src/{section}' for section in SECTIONS),
          *(f'src/status/{size}' for size in STATUS_SIZES), 'links', 'colors/color-blue')
+# Free space the build needs at its peak: the unpacked parts and both themes,
+# in small files that take more room on disk than their size.
+SPACE = 300 << 20
+FULL = 'your home folder is full'
+# What a build leaves while it runs, named with its process: .<source>.<pid>
+# and, when it downloads, .<source>.<pid>.tar.gz.
+PARTIAL = re.compile(r'\.MacTahoe-icon-theme-.+\.(\d+)(\.tar\.gz)?')
 
 
 class IconsUnavailable(Exception):
-    pass
+    """Why the icons could not be built, in plain words."""
 
 
 def cache_home():
@@ -76,6 +85,8 @@ def variant(colors):
 
 
 def source_dir():
+    """Where Jade Shell 0.9.0 unpacked the release, and kept it after a build
+    that failed."""
     return cache_home() / 'jade-shell' / f'MacTahoe-icon-theme-{TAG}'
 
 
@@ -90,52 +101,88 @@ def wanted(name):
     return not path.endswith(('.png', '.jpg')) and any(path == part or path.startswith(f'{part}/') for part in PARTS)
 
 
-def copy_checked(source, archive, sha256):
-    """Copy the stream into `archive`; whether it has this SHA-256."""
+def sha256(stream, out=None):
     digest = hashlib.sha256()
-    with archive.open('wb') as out:
-        while chunk := source.read(1 << 16):
-            digest.update(chunk)
+    while chunk := stream.read(1 << 20):
+        digest.update(chunk)
+        if out:
             out.write(chunk)
-    return digest.hexdigest() == sha256
+    return digest.hexdigest()
 
 
-def fetch(archive):
-    """The pinned release into `archive`: the package's copy, else downloaded
-    (a checkout, or a package copy that is damaged)."""
+def release(work):
+    """The pinned release's archive: the package's copy where it lies (checked,
+    not copied), else downloaded beside `work` (a checkout, or a package copy
+    that is damaged)."""
     try:
         with bundled().open('rb') as source:
-            if BUNDLED_SHA256 and copy_checked(source, archive, BUNDLED_SHA256):
-                return
+            if BUNDLED_SHA256 and sha256(source) == BUNDLED_SHA256:
+                return bundled()
     except OSError:
         pass
-    with urllib.request.urlopen(URL, timeout=30) as response:
-        if not copy_checked(response, archive, SHA256):
-            raise IconsUnavailable('the download did not match its checksum')
+    archive = work.with_name(f'{work.name}.tar.gz')
+    with urllib.request.urlopen(URL, timeout=30) as response, archive.open('wb') as out:
+        if sha256(response, out) != SHA256:
+            raise IconsUnavailable('the download was damaged')
+    return archive
 
 
-def download():
-    """The release, unpacked into the cache: its folder."""
-    folder = source_dir()
-    if (folder / 'src/index.theme').exists():
-        return folder
-    folder.parent.mkdir(parents=True, exist_ok=True)
-    archive = folder.with_name(f'.{folder.name}.{os.getpid()}.tar.gz')
+def only_wanted(member, _dest):
+    """tarfile's filter: the archive is the pinned release, checked against its
+    SHA-256, so the `data` filter's checks of where every path and link leads
+    (half the time unpacking takes) add nothing. This keeps the rest of what
+    it does, so the files come out the same."""
+    if not wanted(member.name) or member.name.startswith('/') or '..' in member.name.split('/'):
+        return None
+    mode = None
+    if member.isreg():
+        mode = member.mode & 0o755 | 0o600
+        if not mode & 0o100:
+            mode &= ~0o111
+    elif not (member.isdir() or member.issym()):
+        return None
+    return member.replace(mode=mode, linkname=os.path.normpath(member.linkname) if member.issym() else member.linkname,
+                          uid=None, gid=None, uname=None, gname=None, deep=False)
+
+
+def unpack(archive, work):
+    """The parts of the release build() reads, unpacked into `work`: its top folder."""
+    with tarfile.open(archive) as tar:
+        tar.extractall(work, filter=only_wanted)
+    return next(work.iterdir())
+
+
+def alive(pid):
     try:
-        fetch(archive)
-        unpacked = folder.with_name(f'.{folder.name}.{os.getpid()}')
-        shutil.rmtree(unpacked, ignore_errors=True)
-        with tarfile.open(archive) as tar:
-            tar.extractall(unpacked, members=[m for m in tar.getmembers() if wanted(m.name)], filter='data')
-        top = next(unpacked.iterdir())
-        shutil.rmtree(folder, ignore_errors=True)
-        top.rename(folder)
-        shutil.rmtree(unpacked, ignore_errors=True)
-    except OSError as error:
-        raise IconsUnavailable(f'could not download MacTahoe ({getattr(error, "reason", None) or error})') from None
-    finally:
-        archive.unlink(missing_ok=True)
-    return folder
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:  # someone else's
+        pass
+    return True
+
+
+def remove_orphans():
+    """What a build that was stopped (Ctrl-C, a closed window) left behind."""
+    for folder in (icons_home(), cache_home() / 'jade-shell'):  # 0.9.0 unpacked into the cache
+        for path in folder.glob('.MacTahoe-icon-theme-*'):
+            match = PARTIAL.fullmatch(path.name)
+            if match and not alive(int(match.group(1))):
+                if path.is_dir() and not path.is_symlink():
+                    shutil.rmtree(path, ignore_errors=True)
+                else:
+                    path.unlink(missing_ok=True)
+
+
+def reason(error):
+    """An error while building, in plain words."""
+    if error.errno in (errno.ENOSPC, errno.EDQUOT):
+        return FULL
+    if isinstance(error, urllib.error.HTTPError):
+        return "the download didn't work"
+    if isinstance(error, (urllib.error.URLError, TimeoutError)):
+        return 'no internet connection right now'
+    return (error.strerror or str(error)).lower()
 
 
 def merge(src, dst):
@@ -172,7 +219,9 @@ def svgs(folder, sizes):
 
 
 def build(src):
-    """Jade-MacTahoe and Jade-MacTahoe-dark from the unpacked release."""
+    """Jade-MacTahoe and Jade-MacTahoe-dark from the unpacked release (on the
+    same disk), which this uses up: the dark variant's own files are copied
+    first, then the light one's are moved into place, not copied again."""
     home = icons_home()
     base, dark = home / NAME, home / f'{NAME}-dark'
     for folder in (base, dark):
@@ -181,16 +230,8 @@ def build(src):
         for name in ('COPYING', 'AUTHORS'):
             shutil.copyfile(src / name, folder / name)
         (folder / 'index.theme').write_text((src / 'src/index.theme').read_text().replace('MacTahoe', folder.name))
-
-    for section in SECTIONS:
-        merge(src / 'src' / section, base / section)
-    for size in STATUS_SIZES:
-        merge(src / 'src/status' / size, base / 'status' / size)
-    for name in ('user-trash-dark.svg', 'user-trash-full-dark.svg'):
-        (base / 'places/scalable' / name).unlink(missing_ok=True)
-    for section in [*SECTIONS, 'status']:
-        if (src / 'links' / section).exists():
-            merge(src / 'links' / section, base / section)
+    # The outline of MacTahoe's app tiles, for Jade's Software icon.
+    plate = re.search(r'<path fill="url\(#d\)" d="([^"]+)"', (src / 'src/apps/scalable/softwarecenter.svg').read_text())
 
     # The dark variant: its own light symbolic and small icons, the rest shared.
     parts = {'actions': None, 'apps': ['16', '22', '32', 'symbolic'], 'categories': ['22', 'symbolic'],
@@ -228,15 +269,26 @@ def build(src):
         (dark / section).mkdir(exist_ok=True)
         (dark / section / size).symlink_to(f'../../{NAME}/{section}/{size}')
 
+    # The light variant: MacTahoe's own.
+    for section in SECTIONS:
+        (src / 'src' / section).rename(base / section)
+    (base / 'status').mkdir()
+    for size in STATUS_SIZES:
+        (src / 'src/status' / size).rename(base / 'status' / size)
+    for name in ('user-trash-dark.svg', 'user-trash-full-dark.svg'):
+        (base / 'places/scalable' / name).unlink(missing_ok=True)
+    for section in [*SECTIONS, 'status']:
+        if (src / 'links' / section).exists():
+            merge(src / 'links' / section, base / section)
+
     for folder in (base, dark):
         for section in [*SECTIONS, 'status']:
             link = folder / f'{section}@2x'
             if not link.exists():
                 link.symlink_to(section)
-    # The folders to repaint at each theme switch, kept with the theme (the
-    # download cache may be cleared), and the outline of MacTahoe's app tiles.
-    merge(src / 'colors/color-blue', base / '.jade-folders')
-    plate = re.search(r'<path fill="url\(#d\)" d="([^"]+)"', (src / 'src/apps/scalable/softwarecenter.svg').read_text())
+    # The folders to repaint at each theme switch, kept with the theme, and
+    # the outline of the app tiles.
+    (src / 'colors/color-blue').rename(base / '.jade-folders')
     if plate:
         (base / '.jade-folders/plate.txt').write_text(plate.group(1))
     (base / '.jade-source').write_text(TAG + '\n')
@@ -316,14 +368,35 @@ def update_cache(wait=True):
 
 
 def install(progress=lambda _text: None):
-    """Download and build, unless the pinned release is built already."""
+    """Build the icons, unless the pinned release is built already. One that
+    fails, or is stopped, leaves nothing half-built behind."""
     if installed():
         return False
-    progress('Downloading the Mac-style icons…')
-    src = download()
-    progress('Building the Mac-style icons…')
-    build(src)
-    shutil.rmtree(src, ignore_errors=True)  # everything later switches need is kept with the icons
+    progress('Preparing the Mac-style icons…')
+    home = icons_home()
+    work = home / f'.MacTahoe-icon-theme-{TAG}.{os.getpid()}'  # beside the themes: moved into them, not copied
+    building = False
+    try:
+        home.mkdir(parents=True, exist_ok=True)
+        remove_orphans()
+        shutil.rmtree(source_dir(), ignore_errors=True)
+        if shutil.disk_usage(home).free < SPACE:
+            raise IconsUnavailable(FULL)
+        shutil.rmtree(work, ignore_errors=True)
+        work.mkdir()
+        src = unpack(release(work), work)
+        building = True
+        build(src)
+    except BaseException as error:
+        if building:
+            for folder in theme_dirs():
+                shutil.rmtree(folder, ignore_errors=True)
+        if isinstance(error, OSError):
+            raise IconsUnavailable(reason(error)) from None
+        raise
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+        work.with_name(f'{work.name}.tar.gz').unlink(missing_ok=True)
     return True
 
 
@@ -331,3 +404,4 @@ def remove():
     for folder in theme_dirs():
         shutil.rmtree(folder, ignore_errors=True)
     shutil.rmtree(source_dir(), ignore_errors=True)
+    remove_orphans()
