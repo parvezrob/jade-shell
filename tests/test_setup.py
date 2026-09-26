@@ -3,7 +3,9 @@ and what it says. Runs in the same throwaway home as the other tests."""
 import http.server
 import os
 import pathlib
+import signal
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -235,6 +237,50 @@ class SetupPreviews(unittest.TestCase):
         with mock.patch('subprocess.Popen') as popen:
             setup.make_previews(self.theme)
         popen.assert_not_called()
+
+
+class Stopping(unittest.TestCase):
+    """Ctrl-C, TERM and a full disk end in a sentence, not a Python traceback."""
+
+    def run_main(self, error):
+        def handler(_args, _ctx):
+            raise error
+
+        err = []
+        with mock.patch.dict(cli.HANDLERS, {('doctor', None): handler}), \
+                mock.patch('builtins.print', lambda *a, **k: err.append(' '.join(map(str, a)))):
+            return cli.main(['doctor']), err
+
+    def test_ctrl_c(self):
+        status, said = self.run_main(KeyboardInterrupt())
+        self.assertEqual((status, said), (130, ['\nStopped.']))
+
+    def test_a_full_home_folder(self):
+        status, said = self.run_main(OSError(28, 'No space left on device'))
+        self.assertEqual((status, said), (1, ['Your home folder is full; free some space and try again.']))
+        with self.assertRaises(PermissionError):
+            self.run_main(PermissionError(13, 'Permission denied'))  # anything else is a bug worth its traceback
+
+    def test_term_unwinds_like_an_exception(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        done = pathlib.Path(tmp.name) / 'cleaned-up'
+        script = (f'import sys, time; sys.path.insert(0, {str(ROOT)!r}); from jade import cli\n'
+                  'def slow(args, ctx):\n'
+                  '    try:\n'
+                  '        print("started", flush=True); time.sleep(30)\n'
+                  '    finally:\n'
+                  f'        open({str(done)!r}, "w").close()\n'
+                  'cli.HANDLERS[("doctor", None)] = slow\n'
+                  'sys.exit(cli.main(["doctor"]))\n')
+        process = subprocess.Popen([sys.executable, '-c', script], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                   text=True)
+        self.assertEqual(process.stdout.readline().strip(), 'started')
+        process.send_signal(signal.SIGTERM)
+        _out, err = process.communicate(timeout=10)
+        self.assertEqual(process.returncode, 143)
+        self.assertTrue(done.exists())
+        self.assertNotIn('Traceback', err)
 
 
 if __name__ == '__main__':

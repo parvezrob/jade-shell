@@ -2,11 +2,14 @@
 import argparse
 import concurrent.futures
 import contextlib
+import errno
 import json
 import pathlib
 import re
+import signal
 import subprocess
 import sys
+import threading
 
 import gi
 
@@ -739,7 +742,15 @@ jade theme undo         the last change, undone
 jade theme --help       everything else'''
 
 
+def stop(signum, _frame):
+    """TERM (the installer stopped with Ctrl-C, a closed window, systemd):
+    unwind as Ctrl-C does, so partial files go and the lock is let go."""
+    raise SystemExit(128 + signum)
+
+
 def main(argv=None):
+    if threading.current_thread() is threading.main_thread():
+        signal.signal(signal.SIGTERM, stop)
     given = sys.argv[1:] if argv is None else argv
     if not given:
         print(START)
@@ -754,4 +765,13 @@ def main(argv=None):
             return HANDLERS[command](args, engine.Context(Settings()))
     except (engine.Busy, themes.WallpaperUnavailable) as error:  # a sentence, not a traceback
         print(f'jade: {error}', file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:  # Ctrl-C: what was half done is undone on the way out
+        print('\nStopped.', file=sys.stderr)
+        return 130
+    except OSError as error:
+        if error.errno != errno.ENOSPC:
+            raise
+        print(setup.HOME_FULL if args.command == 'setup' else 'Your home folder is full; free some space and try again.',
+              file=sys.stderr)
         return 1
