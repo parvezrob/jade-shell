@@ -1829,6 +1829,28 @@ elif 'show' in args and 'connection' in args:
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), "['old@me']")
 
     @needs_compiler
+    def test_restore_turns_jade_off_before_the_docks_come_back(self):
+        # In a running Shell, Ubuntu Dock toggled in the same moment as Jade Shell
+        # fails to start again: the docks come back only once Jade Shell is off.
+        extensions = self.home / '.local/share/gnome-shell/extensions'
+        (extensions / UBUNTU_DOCK).mkdir(parents=True)
+        (extensions / UBUNTU_DOCK / 'metadata.json').write_text('{}')
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', "['blur-my-shell@aunetx']")
+        self.gsettings('reset', 'org.gnome.shell', 'disabled-extensions')
+        self.jade('setup')
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), f"['{UBUNTU_DOCK}']")
+        script = ('import sys\nfrom unittest import mock\nfrom gi.repository import Gio\nfrom jade import cli, setup\n'
+                  'def seen(uuid):\n'
+                  '    shell = Gio.Settings.new("org.gnome.shell")\n'
+                  '    print("at the wait:", uuid, shell.get_strv("enabled-extensions"), shell.get_strv("disabled-extensions"))\n'
+                  'mock.patch.object(setup, "wait_until_off", seen).start()\n'
+                  'sys.exit(cli.main(sys.argv[1:]))\n')
+        result = subprocess.run([sys.executable, '-c', script, 'restore', '--yes'], env=self.env,
+                                capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(f"at the wait: {UUID} ['blur-my-shell@aunetx'] ['{UBUNTU_DOCK}']", result.stdout)
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), '@as []')
+
     def test_the_other_dock_stays_until_jades_can_start(self):
         extensions = self.home / '.local/share/gnome-shell/extensions'
         for uuid in (DASH_TO_DOCK, UBUNTU_DOCK):

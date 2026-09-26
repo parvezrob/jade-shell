@@ -285,6 +285,15 @@ def extension_info(uuid):
 STATES = {1: 'active', 2: 'inactive', 3: 'error', 4: 'out of date'}
 
 
+def wait_until_off(uuid, limit=5.0):
+    """Until the running Shell has turned `uuid` off (at most `limit`
+    seconds; at once without a Shell, or when it isn't running there)."""
+    deadline = time.monotonic() + limit
+    while extension_state(uuid) == 'active' and time.monotonic() < deadline:
+        time.sleep(0.2)
+    time.sleep(0.3 if extension_state(uuid) is not None else 0)  # its disable() has run; let the Shell settle
+
+
 def extension_state(uuid):
     """The running Shell's view: 'active', 'inactive', 'error', 'out of date',
     'unknown' (needs a new login) or None (no Shell)."""
@@ -954,17 +963,27 @@ def restore_desktop(ctx, assume_yes, report):
             unfinished = True
             break
 
-    rest = []
+    rest, lists = [], {}
     for entry in reversed(manifest['settings']):
         if entry['schema'] == SHELL and entry['key'] in ('enabled-extensions', 'disabled-extensions'):
-            value, is_default = merged_extensions(ctx, entry)
-            shell = ctx.settings.get(SHELL)
-            if is_default:
-                shell.reset(entry['key'])
-            else:
-                shell.set_strv(entry['key'], value)
+            lists[entry['key']] = merged_extensions(ctx, entry)
         else:
             rest.append(entry)
+    # Jade Shell out first, the docks it replaced back after: toggled within
+    # the same moment in a running Shell, Ubuntu Dock fails to start again and
+    # GNOME puts it back on the disabled list (seen on Ubuntu 26.04).
+    for key in ('enabled-extensions', 'disabled-extensions'):
+        if key not in lists:
+            continue
+        shell = ctx.settings.get(SHELL)
+        value, is_default = lists[key]
+        if is_default:
+            shell.reset(key)
+        else:
+            shell.set_strv(key, value)
+        if key == 'enabled-extensions' and 'disabled-extensions' in lists:
+            Gio.Settings.sync()
+            wait_until_off(UUID)
     # Jade Shell's own settings go with its package: not worth a line when they're gone.
     skipped += [item for item in ctx.settings.restore_all(rest) if not item.startswith(JADE_SCHEMA)]
     units = config_home() / 'systemd/user'
