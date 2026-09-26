@@ -217,6 +217,8 @@ def theme_thumbs(args, ctx):
             failed.append(error)
             return False
 
+    if args.after_setup:
+        setup.wait_for_installer()
     with concurrent.futures.ThreadPoolExecutor(4) as pool:
         downloads = {pool.submit(fetch, theme): theme for theme in wanted if not here(theme)}
         try:
@@ -639,8 +641,9 @@ def parser():
     fetch = theme.add_parser('fetch', help='download wallpapers')
     fetch.add_argument('theme', choices=[*themes.ids(), 'all'])
     fetch.add_argument('--every', action='store_true', help="all of a theme's wallpapers, not just the first")
-    theme.add_parser('thumbs', help='make the picker previews').add_argument(
-        '--refresh', action='store_true', help='rebuild previews that already exist')
+    p = theme.add_parser('thumbs', help='make the picker previews')
+    p.add_argument('--refresh', action='store_true', help='rebuild previews that already exist')
+    p.add_argument('--after-setup', action='store_true', help=argparse.SUPPRESS)  # setup's background job
 
     apps = commands.add_parser('apps', help='choose which apps Jade Shell themes').add_subparsers(
         dest='action', metavar='action')

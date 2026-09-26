@@ -8,6 +8,7 @@ import configparser
 import contextlib
 import datetime
 import errno
+import fcntl
 import json
 import os
 import pathlib
@@ -17,6 +18,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 
 import gi
 
@@ -769,9 +771,33 @@ def make_previews(theme):
     env['PYTHONPATH'] = os.pathsep.join(filter(None, [code, os.environ.get('PYTHONPATH')]))
     # Its own session: it outlives setup, and the installer's Ctrl-C isn't
     # meant for it. If it can't start, the picker fetches them when it opens.
+    # -P, as /usr/bin/jade has it: a jade/ folder where setup was started
+    # from must not be the code that runs.
     with contextlib.suppress(OSError):
-        subprocess.Popen([sys.executable, '-m', 'jade', 'theme', 'thumbs'], env=env, stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        subprocess.Popen([sys.executable, '-P', '-m', 'jade', 'theme', 'thumbs', '--after-setup'], env=env,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+
+
+def wait_for_installer(limit=20 * 60):
+    """Wait while the installer that ran setup is still at work (install.sh
+    holds install.lock until it ends): after setup it downloads more (the text
+    and QR code reading extras), and on a slow line the previews' four
+    downloads would take most of it. Never longer than `limit` seconds."""
+    try:
+        lock = open(engine.state_dir() / 'install.lock', 'rb')
+    except OSError:
+        return  # no installer ran here
+    with lock:
+        deadline = time.monotonic() + limit
+        while time.monotonic() < deadline:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                return
+            except BlockingIOError:
+                time.sleep(2)
+            except OSError:
+                return
 
 
 def picker_shortcut(ctx):

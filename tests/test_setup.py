@@ -236,9 +236,31 @@ class SetupPreviews(unittest.TestCase):
             setup.make_previews(self.theme)
         self.assertTrue(themes.thumbnail_path('osaka-jade').exists())
         argv = popen.call_args.args[0]
-        self.assertEqual(argv[-3:], ['-m', 'jade', 'theme', 'thumbs'][-3:])
+        # -P: not a jade/ folder in the current directory; and after the installer is done.
+        self.assertEqual(argv[1:], ['-P', '-m', 'jade', 'theme', 'thumbs', '--after-setup'])
         self.assertTrue(popen.call_args.kwargs['start_new_session'])
         self.assertIn(str(ROOT), popen.call_args.kwargs['env']['PYTHONPATH'].split(os.pathsep))
+
+    def test_the_background_job_waits_for_the_installer(self):
+        import fcntl
+        lock = themes.state_home() / 'jade-shell/install.lock'
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        waited = threading.Event()
+        with open(lock, 'a') as held:  # as install.sh holds it while it runs
+            fcntl.flock(held, fcntl.LOCK_EX)
+            waiter = threading.Thread(target=lambda: (setup.wait_for_installer(), waited.set()))
+            nap = time.sleep
+            with mock.patch.object(setup.time, 'sleep', lambda _s: nap(0.05)):
+                waiter.start()
+                self.assertFalse(waited.wait(0.3))
+                fcntl.flock(held, fcntl.LOCK_UN)
+                self.assertTrue(waited.wait(2))
+        # No installer, or one long gone: at once.
+        start = time.monotonic()
+        setup.wait_for_installer()
+        lock.unlink()
+        setup.wait_for_installer()
+        self.assertLess(time.monotonic() - start, 0.5)
 
     def test_nothing_in_the_background_when_all_are_there(self):
         for tid in themes.ids():
