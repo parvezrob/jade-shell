@@ -20,12 +20,12 @@ wget -qO- https://jadeshell.app/install | bash
 Run it in a terminal on your desktop, as yourself. It checks your system, downloads the latest `.rpm` or `.deb` release (a download that was cut off continues where it stopped the next time), checks it against the release checksums, asks for your password once and installs it with `dnf` or `apt`, waiting if the Software app or automatic updates are busy. Then it runs `jade setup`, and last adds text and QR code reading (Tesseract and ZBar, for the screenshot's **Copy Text** and the QR code reader; Jade Shell works without them). Run again, it only sets up your desktop; `--reinstall` installs the package again. `jade setup`:
 
 - turns off extensions that do the same jobs or would take over the top bar (Dash to Panel, OpenBar, User Themes, Blur my Shell, system monitors such as Vitals and a few more; `setup` names each one it turns off, and `jade restore` turns them back on),
-- hands the dock to Jade Shell's own (turning off Dash to Dock or Ubuntu Dock; `jade restore` turns them back on),
+- hands the dock to Jade Shell's own (turning off Dash to Dock or Ubuntu Dock; `jade restore` turns them back on). Jade Shell's dock starts at your next login, so until then the one you have stays,
 - builds the Tahoe icons from the copy that comes with the package (no download),
 - makes JetBrains Mono (installed with the package, as in Omarchy) the monospace font of GNOME and your terminals, unless you chose one before (`jade font set` changes it; `jade theme undo` or `jade restore` puts yours back),
 - starts the usage collector if you have Claude Code or Codex,
-- downloads the first wallpaper of each theme for the picker's previews (one full-size image per theme; other wallpapers are downloaded when you pick them),
-- applies Osaka Jade.
+- applies Osaka Jade, downloading only its wallpaper (offline, your current wallpaper stays until you pick a theme),
+- then makes the other themes' previews in the background (the picker fetches any still missing when it opens; other wallpapers are downloaded when you pick them).
 
 Running `jade setup` again keeps the settings and AI usage choice you made since; with AI usage turned off, the collector stays stopped.
 
