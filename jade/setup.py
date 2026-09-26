@@ -887,6 +887,23 @@ def app_of(path, owners):
     return title[0].upper() + title[1:] if title.startswith(('the ', 'your ')) else title
 
 
+def unrestored(item):
+    """What restore says about something it could not put back, in words
+    (schema names, connection ids and backup names are for the log); None
+    when there is nothing to do about it: a setting whose app is gone since
+    (Dash to Dock can go with Jade Shell's package), a connection deleted."""
+    if item.endswith(('(no longer installed)', '(no longer there)')):
+        return None
+    if item.startswith('network connection '):
+        return "Couldn't put back the DNS or Wi-Fi band of one of your network connections."
+    if item.endswith('(its type or allowed values changed)'):
+        return "Couldn't put back one of your desktop settings: it works differently since GNOME was updated."
+    if 'unreadable backup' in item:
+        return "Couldn't put back one theme change: its saved copy is damaged."
+    home = str(pathlib.Path.home())
+    return f"Couldn't put back {item.replace(home + '/', '~/')}."
+
+
 def restore(ctx, assume_yes=False, report=None):
     """Put back the desktop from before Jade Shell. What was said goes into
     `report` too: its notes, and in `partial` what could not be put back."""
@@ -976,18 +993,17 @@ def restore_desktop(ctx, assume_yes, report):
                               + [f'{app_of(path, owners)}: left your settings file as it is, because it changed since.'
                                  for path in kept]):
         report.note(line)
-    # A setting whose app (or key) is gone since, as Dash to Dock can go with
-    # Jade Shell's package: nothing to put back, and nothing to do about it.
-    home = str(pathlib.Path.home())
     for item in skipped:
-        if not item.endswith('(no longer installed)'):
-            log(f'restore: {item}')
-            line = f"Couldn't put back {item.replace(home + '/', '~/')}."
+        log(f'restore: {item}')
+        line = unrestored(item)
+        if line:
             say(line)
             report.partial.append(line)
     if unfinished:
-        report.note("Some things couldn't be put back (listed above), so Jade Shell keeps what it needs to try again. "
-                    'Fix what stopped them, then run jade restore again.')
+        # Said, not a note: the installer asks its own question about it,
+        # from `partial` (and 0.9.0's words, which this line keeps).
+        say("Not everything could be put back (listed above), so Jade Shell keeps what it needs to try again. "
+            'Fix what stopped it, then run jade restore again.')
         return 1
     say('Restored the desktop you had before Jade Shell. Log out and back in to finish.')
     return 0

@@ -496,8 +496,22 @@ class History(unittest.TestCase):
              mock.patch.object(setup, 'systemctl'), mock.patch.object(setup, 'say', side_effect=said.append):
             self.assertEqual(setup.restore(engine.Context(NoSettings()), assume_yes=True), 0)
         self.assertEqual(conf.read_text(), 'mine\n')
-        self.assertTrue(any('could not set it aside (Permission denied)' in line for line in said), said)
+        self.assertIn("Couldn't put back one theme change: its saved copy is damaged.", said)
+        self.assertIn('could not set it aside (Permission denied)', setup.log_path().read_text())  # the details
         self.assertTrue(broken.exists())
+
+    def test_what_restore_could_not_put_back_in_words(self):
+        home = str(pathlib.Path.home())
+        self.assertEqual(setup.unrestored(f'{home}/.config/btop/btop.conf: Permission denied'),
+                         "Couldn't put back ~/.config/btop/btop.conf: Permission denied.")
+        self.assertEqual(setup.unrestored('org.gnome.desktop.interface color-scheme (its type or allowed values '
+                                          'changed)'),
+                         "Couldn't put back one of your desktop settings: it works differently since GNOME was updated.")
+        self.assertEqual(setup.unrestored('network connection 5f0c-11 (Not authorized)'),
+                         "Couldn't put back the DNS or Wi-Fi band of one of your network connections.")
+        # Nothing to do about these: not worth a line.
+        self.assertIsNone(setup.unrestored('org.gnome.shell.extensions.dash-to-dock dock-fixed (no longer installed)'))
+        self.assertIsNone(setup.unrestored('network connection 5f0c-11 (no longer there)'))
 
     def test_names_keep_their_order_after_old_local_time_ones(self):
         folder = engine.state_dir() / 'backups'
@@ -1110,9 +1124,13 @@ class Sandbox(unittest.TestCase):
         btop_themes = self.home / '.config/btop/themes'
         btop_themes.chmod(0o500)
         self.addCleanup(btop_themes.chmod, 0o755)
-        self.assertEqual(self.run_jade('restore', '--yes').returncode, 1)
+        result = self.run_jade('restore', '--yes')
+        self.assertEqual(result.returncode, 1)
+        # The installer asks about it in its own words; 0.9.0's wording stays for one that looks for it.
+        self.assertIn('Not everything could be put back (listed above)', result.stdout)
         report = json.loads(summary.read_text())
         self.assertIs(report['restored'], False)
+        self.assertFalse(any('listed above' in note for note in report['notes']))
         self.assertTrue(report['partial'] and all(line.startswith("Couldn't put back ~/.config/btop/themes/")
                                                   for line in report['partial']), report)
         btop_themes.chmod(0o755)
