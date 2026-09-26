@@ -12,12 +12,12 @@ Everything Jade Shell does, in detail. The short version is the [README](../READ
 ## Install
 
 ```bash
-curl -fsSL https://jadeshell.app/install | bash
+wget -qO- https://jadeshell.app/install | bash
 ```
 
-`jadeshell.app/install` is [`install.sh`](../install.sh) in this repository (it forwards there); read it first if you like.
+(Or `curl -fsSL https://jadeshell.app/install | bash`: Ubuntu's desktop comes with `wget` only, Fedora's with both.) `jadeshell.app/install` is [`install.sh`](../install.sh) in this repository (it forwards there); read it first if you like.
 
-Run it as your desktop user. It downloads the latest `.rpm` or `.deb` release, checks it against the release checksums, installs it with `dnf` or `apt` (asking for your password), then runs `jade setup`, which:
+Run it in a terminal on your desktop, as yourself. It checks your system, downloads the latest `.rpm` or `.deb` release (a download that was cut off continues where it stopped the next time), checks it against the release checksums, asks for your password once and installs it with `dnf` or `apt`, waiting if the Software app or automatic updates are busy. Then it runs `jade setup`, and last adds text and QR code reading (Tesseract and ZBar, for the screenshot's **Copy Text** and the QR code reader; Jade Shell works without them). Run again, it only sets up your desktop; `--reinstall` installs the package again. `jade setup`:
 
 - turns off extensions that do the same jobs or would take over the top bar (Dash to Panel, OpenBar, User Themes, Blur my Shell, system monitors such as Vitals and a few more; `setup` names each one it turns off, and `jade restore` turns them back on),
 - hands the dock to Jade Shell's own (turning off Dash to Dock or Ubuntu Dock; `jade restore` turns them back on),
@@ -109,10 +109,10 @@ Modelled on Omarchy Quattro's bar: every icon on the right sits on the same rhyt
 ## Remove
 
 ```bash
-curl -fsSL https://jadeshell.app/install | bash -s -- --uninstall
+wget -qO- https://jadeshell.app/install | bash -s -- --uninstall
 ```
 
-This runs `jade restore`, which asks first, undoes the theme switches and the settings `jade setup` changed, then removes the package. Without a terminal to ask on (from a script, say), add `--yes`: `bash -s -- --uninstall --yes`. The extensions setup turned off come back; extensions you turned on or off yourself since stay as they are, and config files you edited after a switch keep your edits, the same way undo does. If an older or development copy is still in your home folder afterwards, the uninstaller prints the command to remove it. Downloaded wallpapers and previews stay in `~/.local/share/jade-shell`, `~/.local/state/jade-shell` and `~/.cache/jade-shell`; delete those folders to remove them too. The JetBrains Mono font stays installed too, since the terminal you ran this in is still drawing with it; your package manager removes it if you want.
+This asks first, then runs `jade restore`, which undoes the theme switches and the settings `jade setup` changed, then removes Jade Shell and the parts it added (sassc, text and QR code reading) that nothing else uses. Without a terminal to ask on (from a script, say), add `--yes`: `bash -s -- --uninstall --yes`. The extensions setup turned off come back; extensions you turned on or off yourself since stay as they are, and config files you edited after a switch keep your edits, the same way undo does. If an older or development copy is still in your home folder afterwards, the uninstaller prints the command to remove it. Once your desktop is back, Jade Shell's own files go too (the downloaded wallpapers and previews in `~/.local/share/jade-shell`, `~/.local/state/jade-shell` and `~/.cache/jade-shell`); the install log stays for a report. If the package was already removed another way, the uninstaller puts your desktop back with the copy of Jade Shell's code setup keeps (see below). The JetBrains Mono font stays installed, since the terminal you ran this in is still drawing with it; your package manager removes it if you want.
 
 Removing the package another way (`dnf`, `apt`, a software app) skips `jade restore`, so your desktop keeps Jade Shell's look for now. At your next login a notification asks whether to **Restore My Desktop** (the same restore, from a copy of Jade Shell's code that setup keeps in `~/.local/share/jade-shell/restore-kit`) or **Keep This Look**. Either way, that copy then removes itself; after a restore, so do Jade Shell's downloaded wallpapers and logs.
 

@@ -11,10 +11,10 @@ Jade Shell gives GNOME 22 of Omarchy's themes, a dock that feels like the Mac's 
 ## Install
 
 ```bash
-curl -fsSL https://jadeshell.app/install | bash
+wget -qO- https://jadeshell.app/install | bash
 ```
 
-Then log out and back in. A welcome window walks you through the rest.
+Open the Terminal app, paste this line and press Enter. It asks for your password once, takes a minute or two, and offers to log you out at the end; a welcome window then walks you through the rest. (`curl -fsSL https://jadeshell.app/install | bash` works too.)
 
 It needs GNOME 50: Fedora 44 or Ubuntu 26.04. On anything else (older GNOME, Fedora Atomic desktops) the installer tells you so and changes nothing. The script is [`install.sh`](install.sh) in this repository, if you'd like to read it first. Jade Shell is a beta (0.9).
 
@@ -38,10 +38,10 @@ jade restore       # your desktop from before Jade Shell
 ## Remove
 
 ```bash
-curl -fsSL https://jadeshell.app/install | bash -s -- --uninstall
+wget -qO- https://jadeshell.app/install | bash -s -- --uninstall
 ```
 
-It puts your desktop back first, then removes the package.
+It asks first, puts your desktop back, then removes Jade Shell.
 
 ## More
 
