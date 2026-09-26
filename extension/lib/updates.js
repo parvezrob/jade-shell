@@ -3,7 +3,7 @@ import GLib from 'gi://GLib';
 import * as SystemActions from 'resource:///org/gnome/shell/misc/systemActions.js';
 
 import {notify as show, openUri} from './notify.js';
-import {Debouncer, jadeCommand, run, stateDir} from './util.js';
+import {Debouncer, SPAWN, jadeCommand, run, stateDir} from './util.js';
 
 const RELEASES = 'https://github.com/parvezrob/jade-shell/releases';
 const HOUR = 60 * 60;
@@ -56,6 +56,9 @@ export class Updates {
             return;
         this._settings.disconnect(this._checksChanged);
         this._stopChecks();
+        if (this._starting)
+            GLib.source_remove(this._starting);
+        this._starting = 0;
         this._check.cancel();
         this._monitor.disconnect(this._monitorChanged);
         this._monitor.cancel();
@@ -123,23 +126,64 @@ export class Updates {
         if (!result?.available || !result.package || !this._timer)
             return;
         notify(`Jade Shell ${result.latest} is available`, `You have ${this._version}.`, [
-            ['Update', () => this._update().catch(e => console.error(`Jade Shell: update failed: ${e.message}`))],
+            ['Update', () => this._startUpdate(result.latest)],
             ["What's new", () => openUri(`${RELEASES}/tag/v${result.latest}`)],
         ]);
     }
 
-    // Once installed, the package's new metadata.json brings the "log out" notice.
-    async _update() {
+    // From a notification's button: GNOME closes that notification once the
+    // callback returns, so the update's own notice comes after.
+    _startUpdate(version) {
+        if (this._starting)
+            return;
+        this._starting = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            this._starting = 0;
+            this._update(version).catch(e => {
+                busy = false;
+                console.error(`Jade Shell: update failed: ${e.message}`);
+            });
+            return GLib.SOURCE_REMOVE;
+        });
+    }
+
+    // The download takes a while before GNOME's password dialog opens: the
+    // notice says what is happening from the click on, following the lines
+    // `jade update` prints, and ends with the result.
+    async _update(version) {
         const jade = jadeCommand();
         if (busy || !jade)
             return;
         busy = true;
-        const {ok, status, stdout, stderr} = await run([jade, 'update']);
+        const progress = notify(`Downloading Jade Shell ${version}…`, 'Your password is asked for next.');
+        const {ok, status, lines, errors} = await runLines([jade, 'update'], line => {
+            if (notice !== progress)  // closed meanwhile
+                return;
+            if (line.startsWith('Installing Jade Shell'))
+                progress.set({title: `Installing Jade Shell ${version}…`, body: 'Type your password in the window that opens.'});
+            else if (line.startsWith('Waiting for other updates'))
+                progress.set({body: 'Waiting for other updates on this computer to finish…'});
+        });
         busy = false;
-        const log = writeLog(`${stdout}${stderr}`);
-        if (!ok && status !== 2) {  // 2: the password dialog was closed
-            notify('Jade Shell could not update', 'Run "jade update" in a terminal to see why and try again.',
-                [['Show details', () => openUri(log.get_uri())]]);
+        // `jade update` keeps update.log itself; a crash doesn't get there.
+        if (errors.length)
+            writeLog(`${errors.join('\n')}\n`, true);
+        const log = stateDir().get_child('update.log');
+        const retry = ['Try again', () => this._startUpdate(version)];
+        if (ok) {
+            // The new metadata.json would say the same a second later.
+            this._told = version;
+            notify(`Jade Shell ${version} is installed`, 'Log out and back in to start the new version.', [
+                ['Log out', () => SystemActions.getDefault().activateLogout()],
+                ["What's new", () => openUri(`${RELEASES}/tag/v${version}`)],
+            ]);
+        } else if (status === 2) {
+            notify('Jade Shell was not updated', 'The password window was closed.', [retry]);
+        } else {
+            // Its last line says why, in plain words (none after a crash).
+            const why = lines.filter(line => line.trim()).at(-1);
+            const crashed = errors.some(line => line.startsWith('Traceback'));
+            notify("Jade Shell couldn't update", why && !crashed ? why : 'Something went wrong while updating.',
+                [retry, ['Show details', () => openUri(log.get_uri())]]);
         }
     }
 
@@ -156,13 +200,68 @@ export class Updates {
     }
 }
 
-function writeLog(text) {
+function writeLog(text, append = false) {
     const log = stateDir().get_child('update.log');
     try {
-        log.replace_contents(new TextEncoder().encode(text), null, false,
-            Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+        if (append) {
+            const stream = log.append_to(Gio.FileCreateFlags.PRIVATE, null);
+            stream.write_all(new TextEncoder().encode(text), null);
+            stream.close(null);
+        } else {
+            log.replace_contents(new TextEncoder().encode(text), null, false,
+                Gio.FileCreateFlags.PRIVATE | Gio.FileCreateFlags.REPLACE_DESTINATION, null);
+        }
     } catch {}
     return log;
+}
+
+// Run a command, calling onLine with each line it prints as it comes;
+// resolves as run() does, with the lines of stdout and stderr. The pipes
+// stay apart: STDERR_MERGE with SPAWN's INHERIT_FDS loses stdout (GLib 2.88).
+function runLines(argv, onLine) {
+    return new Promise(resolve => {
+        let proc;
+        try {
+            proc = Gio.Subprocess.new(argv, SPAWN | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE);
+        } catch (e) {
+            resolve({ok: false, status: null, lines: [], errors: [e.message]});
+            return;
+        }
+        const out = [], err = [];
+        let open = 2;
+        const read = (pipe, lines, callback) => {
+            const stream = new Gio.DataInputStream({base_stream: pipe, close_base_stream: true});
+            const next = () => stream.read_line_async(GLib.PRIORITY_DEFAULT, null, (s, result) => {
+                let line;
+                try {
+                    [line] = s.read_line_finish_utf8(result);
+                } catch {
+                    line = null;
+                }
+                if (line === null) {
+                    if (--open === 0)
+                        finish();
+                    return;
+                }
+                lines.push(line);
+                try {
+                    callback?.(line);
+                } catch (e) {
+                    console.error(`Jade Shell: ${e.message}`);
+                }
+                next();
+            });
+            next();
+        };
+        const finish = () => proc.wait_async(null, (p, result) => {
+            try {
+                p.wait_finish(result);
+            } catch {}
+            resolve({ok: p.get_successful(), status: p.get_if_exited() ? p.get_exit_status() : null, lines: out, errors: err});
+        });
+        read(proc.get_stdout_pipe(), out, onLine);
+        read(proc.get_stderr_pipe(), err, null);
+    });
 }
 
 function readJson(file) {
@@ -175,7 +274,7 @@ function readJson(file) {
 }
 
 // The one notice about updates on screen: a newer one replaces it.
-function notify(title, body, actions) {
+function notify(title, body, actions = []) {
     notice?.destroy();
     const notification = show(title, body, actions, 'software-update-available-symbolic');
     notice = notification;
@@ -183,4 +282,5 @@ function notify(title, body, actions) {
         if (notice === notification)
             notice = null;
     });
+    return notification;
 }
