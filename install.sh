@@ -39,8 +39,13 @@ done
 
 # On a terminal (without --verbose) each step is one line that redraws in
 # place: a spinner, a download bar, then a check mark. NO_COLOR turns colors off.
+# Narrower than 80 columns a step's line could wrap, and redrawing it would
+# garble it: plain lines then, as in a log.
 fancy=''
-if [[ -t 1 && -z $verbose ]]; then fancy=1; fi
+if [[ -t 1 && -z $verbose ]]; then
+    cols=$(stty size </dev/tty 2>/dev/null | cut -d' ' -f2) || true
+    if ((${cols:-80} >= 80)); then fancy=1; fi
+fi
 if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
     bold=$'\033[1m' dim=$'\033[2m' red=$'\033[31m' plain=$'\033[0m'
     if [[ ${COLORTERM:-} == truecolor || ${COLORTERM:-} == 24bit ]]; then
@@ -227,20 +232,40 @@ need_sudo() {
 
 # Setup in a session of its own: with no terminal it doesn't ask to log out,
 # and its progress lines stay quiet under the spinner. finish() then shows
-# what it said, and the card.
-quiet_setup() {
-    local rc=0
-    setsid -w /usr/bin/jade setup >"$tmp/setup.out" 2>&1 || rc=$?
-    cat "$tmp/setup.out"
+# what it said, and the card. Ctrl-C doesn't reach that session, so
+# on_interrupt() passes it on (the process id is kept for that).
+detached() {
+    local out=$1 rc=0
+    shift
+    setsid -w "$@" >"$out" 2>&1 &
+    echo $! >"$tmp/detached.pid"
+    wait $! || rc=$?
+    rm -f "$tmp/detached.pid"
+    cat "$out"
     return "$rc"
 }
-
+quiet_setup() { detached "$tmp/setup.out" /usr/bin/jade setup; }
 # The restore, the same way, once the installer has asked.
-quiet_restore() {
-    local rc=0
-    setsid -w "$jade" restore --yes >"$tmp/restore.out" 2>&1 || rc=$?
-    cat "$tmp/restore.out"
-    return "$rc"
+quiet_restore() { detached "$tmp/restore.out" "$jade" restore --yes; }
+
+# Ctrl-C, or the window closed: stop a detached setup or restore (and wait
+# until it has; what it said still reaches the log through run()), then stop.
+# TERM, as a command started in the background ignores SIGINT; KILL if it lingers.
+on_interrupt() {
+    trap '' INT TERM HUP
+    local pid tries=0
+    if [[ -s $tmp/detached.pid ]]; then
+        pid=$(<"$tmp/detached.pid")
+        kill -TERM -- "-$pid" 2>/dev/null || true
+        while kill -0 "$pid" 2>/dev/null; do
+            ((++tries != 50)) || kill -KILL -- "-$pid" 2>/dev/null || true
+            sleep 0.1
+        done
+    fi
+    log "== [$(date '+%F %T')] stopped"
+    printf '\n\n'
+    note 'Stopped. Running the installer again is safe.'
+    exit 130
 }
 
 # What a jade command said, under its step: dimmed, indented, wrapped to fit.
@@ -439,6 +464,7 @@ in_gnome_session() {
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+trap on_interrupt INT TERM HUP
 chmod 755 "$tmp"  # apt reads the package as its sandbox user, _apt
 
 # ------------------------------------------------------------------ uninstall
