@@ -657,9 +657,9 @@ def set_up_desktop(ctx, report, theme_id, after_update):
     # Only this theme's wallpaper is downloaded now; the other themes'
     # previews come after (see make_previews).
     wallpaper = theme.wallpaper(ctx.wallpaper_index)
-    if wallpaper and not wallpaper.exists():
+    if wallpaper and not wallpaper.exists() and 'gnome' not in engine.left_alone(ctx.settings):
         progress(f'Getting the {theme.name} wallpaper')
-        engine.fetch_wallpaper(theme, ctx, skip=engine.left_alone(ctx.settings))
+        engine.fetch_wallpaper(theme, ctx)
     progress(f'Applying {theme.name}')
     changes, _backup = engine.apply(theme, ctx)
     progress(None)
@@ -764,7 +764,9 @@ def make_previews(theme):
     if all(themes.thumbnail_path(tid).exists() for tid in themes.ids()):
         return
     code = str(pathlib.Path(__file__).resolve().parent.parent)
-    env = dict(os.environ, PYTHONPATH=os.pathsep.join(filter(None, [code, os.environ.get('PYTHONPATH')])))
+    env = {name: value for name, value in os.environ.items()
+           if name not in ('JADE_PROGRESS_FILE', 'JADE_SUMMARY_FILE')}  # the installer's, for setup alone
+    env['PYTHONPATH'] = os.pathsep.join(filter(None, [code, os.environ.get('PYTHONPATH')]))
     # Its own session: it outlives setup, and the installer's Ctrl-C isn't
     # meant for it. If it can't start, the picker fetches them when it opens.
     with contextlib.suppress(OSError):
