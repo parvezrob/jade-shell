@@ -377,7 +377,7 @@ def install(progress=lambda _text: None):
     fails, or is stopped, leaves nothing half-built behind."""
     if installed():
         return False
-    progress('Preparing the Mac-style icons…')
+    progress('Preparing the Mac-style icons')
     home = icons_home()
     work = home / f'.MacTahoe-icon-theme-{TAG}.{os.getpid()}'  # beside the themes: moved into them, not copied
     building = False

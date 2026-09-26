@@ -134,11 +134,22 @@ def say(text):
 
 
 def progress(text):
-    """One line that updates in place on a terminal; None clears it. Elsewhere
-    (a log, a pipe) it stays quiet: the line after it says how it went."""
-    if not sys.stdout.isatty():
-        return
-    print(f'\r\033[K{text}' if text else '\r\033[K', end='', flush=True)
+    """What setup is doing now, in a few words ('Applying Osaka Jade').
+
+    On a terminal, one line that updates in place (None clears it). The
+    installer runs setup without one: it names a file in JADE_PROGRESS_FILE,
+    gets a line there for each step, and shows the last. Elsewhere (a log, a
+    pipe) it stays quiet: the line after it says how it went.
+    """
+    steps = os.environ.get('JADE_PROGRESS_FILE')
+    if text and steps:
+        try:
+            with open(steps, 'a') as out:
+                out.write(text + '\n')
+        except OSError:
+            pass  # only the installer's display misses a step
+    if sys.stdout.isatty():
+        print(f'\r\033[K{text}…' if text else '\r\033[K', end='', flush=True)
 
 
 def join(names):
@@ -451,7 +462,7 @@ def setup(ctx, theme_id=None, after_update=False):
 
     missing = [tid for tid in themes.ids() if not themes.thumbnail_path(tid).exists()]
     for done, tid in enumerate(missing):
-        progress(f'Downloading theme previews {done + 1}/{len(missing)}…')
+        progress(f'Getting theme pictures {done + 1} of {len(missing)}')
         try:
             themes.make_thumbnail(themes.load(tid))
         except themes.WallpaperUnavailable as error:  # offline: the rest would fail the same way
@@ -512,7 +523,9 @@ def setup(ctx, theme_id=None, after_update=False):
             offer_font = False
         elif font_installed(DEFAULT_FONT):
             ctx.font = DEFAULT_FONT
+    progress(f'Applying {theme.name}')
     changes, _backup = engine.apply(theme, ctx)
+    progress(None)
     if offer_font and ctx.font and font_target.chosen() == DEFAULT_FONT:
         manifest['font-offered'] = True
         say(f'{DEFAULT_FONT} is now the monospace font of GNOME and your terminals (change it: jade font set).')

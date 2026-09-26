@@ -1082,6 +1082,16 @@ class Sandbox(unittest.TestCase):
         self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'show-usage'), 'true')
 
     @needs_compiler
+    def test_setup_tells_the_installer_each_step(self):
+        steps = pathlib.Path(self.tmp.name) / 'setup.progress'
+        self.env['JADE_PROGRESS_FILE'] = str(steps)
+        out = self.jade('setup')  # no terminal, as under the installer
+        self.assertNotIn('Applying', out)
+        lines = steps.read_text().splitlines()
+        self.assertIn('Preparing the Mac-style icons', lines)
+        self.assertEqual(lines[-1], 'Applying Osaka Jade')
+
+    @needs_compiler
     def test_setup_keeps_the_current_theme_unless_asked(self):
         self.jade('setup')
         self.assertIn('osaka-jade', self.jade('theme', 'current'))

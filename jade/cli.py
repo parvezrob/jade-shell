@@ -339,8 +339,8 @@ def apps_on(args, ctx):
         return 1
     if 'icons' in args.names:
         try:
-            icons.install(lambda text: text and print(text))
-        except icons.IconsUnavailable as error:
+            icons.install(lambda text: text and print(f'{text}…'))
+        except (icons.IconsUnavailable, OSError) as error:
             print(f"The Mac-style icons couldn't be set up ({error}).", file=sys.stderr)
             return 1
     state = engine.current()
