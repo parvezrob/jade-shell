@@ -388,16 +388,19 @@ apt_update() {
 
 # dnf also removes the dependencies nothing else needs. apt only suggests
 # autoremove, which would take every leftover on the system: remove just the
-# ones Jade Shell pulled in (sassc, its library, the font) if they are unneeded.
+# ones Jade Shell pulled in (sassc and its library) if they are unneeded.
+# JetBrains Mono stays: the terminal running this still draws with it, and
+# removing a font in use leaves that window blank.
 package_remove() {
     if [[ $kind == rpm ]]; then
+        if rpm -q jetbrains-mono-fonts >/dev/null 2>&1; then run sudo dnf mark user -y jetbrains-mono-fonts; fi
         run sudo dnf remove -y jade-shell
         return
     fi
     run sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_WAIT[@]}" remove -y jade-shell
     local -a unneeded
     mapfile -t unneeded < <(apt-get -s autoremove 2>/dev/null \
-        | awk '$1 == "Remv" && ($2 == "sassc" || $2 ~ /^libsass[0-9]/ || $2 == "fonts-jetbrains-mono") { print $2 }')
+        | awk '$1 == "Remv" && ($2 == "sassc" || $2 ~ /^libsass[0-9]/) { print $2 }')
     if (( ${#unneeded[@]} )); then run sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_WAIT[@]}" remove -y "${unneeded[@]}"; fi
 }
 
