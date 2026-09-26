@@ -36,7 +36,22 @@ jobs:
         with:
           name: packages
           path: dist
+      # VERSION is what `jade update` and every installed copy's daily check
+      # read from the latest release: a release without it hides itself.
+      - name: The packages match the tag
+        run: |
+          cd dist
+          [ "$(cat VERSION)" = "${GITHUB_REF_NAME#v}" ] || { echo "VERSION says $(cat VERSION), the tag $GITHUB_REF_NAME"; exit 1; }
+          for package in jade-shell.rpm jade-shell.deb; do
+            grep -q "  $package\$" SHA256SUMS || { echo "SHA256SUMS does not list $package"; exit 1; }
+          done
+          sha256sum --check --strict SHA256SUMS
       - name: GitHub release with the packages the installer downloads
-        run: gh release create "$GITHUB_REF_NAME" dist/jade-shell.rpm dist/jade-shell.deb dist/SHA256SUMS --title "Jade Shell $GITHUB_REF_NAME" --generate-notes
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/jade-shell.rpm dist/jade-shell.deb dist/SHA256SUMS dist/VERSION \
+            --title "Jade Shell $GITHUB_REF_NAME" --notes-file - --generate-notes <<'EOF'
+          Install with the one command on [jadeshell.app](https://jadeshell.app). Don't download these files by hand.
+
+          EOF
         env:
           GH_TOKEN: ${{ github.token }}
