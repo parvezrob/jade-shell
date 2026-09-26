@@ -27,6 +27,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import time
 import urllib.error
 import urllib.request
 
@@ -187,14 +188,11 @@ def remove_orphans():
 
 
 def reason(error):
-    """An error while building, in plain words."""
+    """An error while building, in plain words (the same words as the rest
+    of setup)."""
     if error.errno in (errno.ENOSPC, errno.EDQUOT):
         return FULL
-    if isinstance(error, (urllib.error.HTTPError, ConnectionError)):  # a server error, or cut off midway
-        return "the download didn't work"
-    if isinstance(error, (urllib.error.URLError, TimeoutError)):
-        return 'no internet connection right now'
-    return (error.strerror or str(error)).lower()
+    return reasons.plain(error)
 
 
 def merge(src, dst):
@@ -406,7 +404,7 @@ def install(progress=lambda _text: None):
         if isinstance(error, OSError):
             raise IconsUnavailable(reason(error)) from None
         if isinstance(error, http.client.HTTPException):  # a download cut short
-            raise IconsUnavailable("the download didn't work") from None
+            raise IconsUnavailable(reasons.plain(error)) from None
         raise
     finally:
         shutil.rmtree(work, ignore_errors=True)
@@ -415,7 +413,13 @@ def install(progress=lambda _text: None):
 
 
 def remove():
-    for folder in theme_dirs():
-        shutil.rmtree(folder, ignore_errors=True)
+    # A cache update started by the last switch (update_cache, in the
+    # background) may still be writing into a folder: gone only once it is.
+    for _attempt in range(10):
+        for folder in theme_dirs():
+            shutil.rmtree(folder, ignore_errors=True)
+        if not any(folder.exists() for folder in theme_dirs()):
+            break
+        time.sleep(0.3)
     shutil.rmtree(source_dir(), ignore_errors=True)
     remove_orphans()

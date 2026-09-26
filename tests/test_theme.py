@@ -120,16 +120,17 @@ class TahoeArchive(unittest.TestCase):
         import errno
         import urllib.error
         self.assertEqual(self.icons.reason(OSError(errno.ENOSPC, 'No space left on device')), 'your home folder is full')
-        self.assertEqual(self.icons.reason(urllib.error.URLError('name resolution')), 'no internet connection right now')
-        self.assertEqual(self.icons.reason(TimeoutError()), 'no internet connection right now')
-        self.assertEqual(self.icons.reason(ConnectionResetError(104, 'Connection reset by peer')),
-                         "the download didn't work")
+        import socket
+        self.assertEqual(self.icons.reason(urllib.error.URLError(socket.gaierror(-3, 'Temporary failure in name resolution'))),
+                         'no internet connection')
+        self.assertEqual(self.icons.reason(TimeoutError()), 'the connection dropped')
+        self.assertEqual(self.icons.reason(ConnectionResetError(104, 'Connection reset by peer')), 'the connection dropped')
 
     def test_a_download_cut_short_says_so(self):
         import http.client
         self.copy.write_bytes(b'damaged')
         with mock.patch('urllib.request.urlopen', side_effect=http.client.IncompleteRead(b'')), \
-                self.assertRaisesRegex(self.icons.IconsUnavailable, "^the download didn't work$"):
+                self.assertRaisesRegex(self.icons.IconsUnavailable, '^the connection dropped$'):
             self.icons.install()
         self.assertEqual(list(self.icons_home.iterdir()), [])
 
