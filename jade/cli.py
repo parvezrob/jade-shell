@@ -1,5 +1,6 @@
 """jade: Omarchy's look and theme switching for GNOME."""
 import argparse
+import concurrent.futures
 import contextlib
 import json
 import pathlib
@@ -185,23 +186,41 @@ def theme_thumbs(args, ctx):
     wanted = [themes.load(t) for t in themes.ids() if args.refresh or not themes.thumbnail_path(t).exists()]
     # A community theme with no pictures at all has nothing to preview: the picker shows its colors.
     wanted = [theme for theme in wanted if theme.backgrounds or theme.preview or not theme.community]
-    # Those whose wallpaper is here first; after one download fails (offline),
-    # the rest would only wait through the same retries.
     def here(theme):
         picture = theme.wallpaper(0) or theme.preview
         return bool(picture and picture.exists())
 
-    wanted.sort(key=lambda theme: not here(theme))
-    failed = None
-    for theme in wanted:
-        if failed and not here(theme):
-            continue
+    def make(theme):
         try:
-            print(themes.make_thumbnail(theme))
+            print(themes.make_thumbnail(theme), flush=True)
+        except Exception as error:  # a picture that can't be read: the picker shows its colors
+            print(f'jade: no preview for {theme.name}: {engine.first_line(error)}', file=sys.stderr)
+
+    # Those whose wallpaper is here first. The others download four at a
+    # time: one after another, 22 previews took as long as all the downloads
+    # added up. After one fails (offline), the rest are not started: they
+    # would only fail the same way.
+    for theme in [theme for theme in wanted if here(theme)]:
+        make(theme)
+    failed = []
+
+    def fetch(theme):
+        if failed:
+            return False
+        try:
+            theme.fetch_wallpaper(0)
+            return True
         except themes.WallpaperUnavailable as error:
-            failed = error
+            failed.append(error)
+            return False
+
+    with concurrent.futures.ThreadPoolExecutor(4) as pool:
+        downloads = {pool.submit(fetch, theme): theme for theme in wanted if not here(theme)}
+        for done in concurrent.futures.as_completed(downloads):
+            if done.result():
+                make(downloads[done])
     if failed:
-        print(f'jade: {failed}', file=sys.stderr)
+        print(f'jade: {failed[0]}', file=sys.stderr)
     return 1 if failed else 0
 
 

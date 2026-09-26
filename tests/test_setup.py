@@ -18,7 +18,7 @@ import sandbox  # noqa: F401  (first: a throwaway home for the whole process)
 
 sys.path.insert(0, str(ROOT))
 
-from jade import download, themes
+from jade import cli, download, themes
 
 
 class Server:
@@ -140,6 +140,65 @@ class Downloads(unittest.TestCase):
                 self.assertRaises(themes.WallpaperUnavailable) as caught:
             self.theme.fetch_wallpaper(0)
         self.assertEqual(str(caught.exception), "couldn't download the Osaka Jade wallpaper (no internet connection)")
+
+
+class Previews(unittest.TestCase):
+    """`jade theme thumbs`, which the picker runs for the previews setup leaves to it."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = pathlib.Path(tmp.name)
+        env = {'XDG_DATA_HOME': str(self.home / 'data'), 'XDG_STATE_HOME': str(self.home / 'state'),
+               'https_proxy': '', 'HTTPS_PROXY': '', 'http_proxy': '', 'HTTP_PROXY': ''}
+        patcher = mock.patch.dict(os.environ, env)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        import gi
+        gi.require_version('GdkPixbuf', '2.0')
+        from gi.repository import GdkPixbuf
+        picture = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, 64, 40)
+        picture.fill(0x336655ff)
+        picture.savev(str(self.home / 'wall.png'), 'png', [], [])
+        self.picture = (self.home / 'wall.png').read_bytes()
+        self.now = self.most = 0
+        self.lock = threading.Lock()
+
+    def serve(self, request):
+        with self.lock:
+            self.now += 1
+            self.most = max(self.most, self.now)
+        time.sleep(0.2)
+        request.send_response(200)
+        request.send_header('Content-Length', str(len(self.picture)))
+        request.end_headers()
+        request.wfile.write(self.picture)
+        with self.lock:
+            self.now -= 1
+
+    def thumbs(self, url):
+        ids = ['nord', 'gruvbox', 'kanagawa', 'everforest', 'solitude', 'hackerman']
+        out = []
+        with mock.patch.object(themes, 'WALLPAPER_URL', url + '/{theme}/{file}'), \
+                mock.patch.object(themes, 'ids', return_value=ids), \
+                mock.patch.object(themes, 'RETRY_DELAYS', (0, 0)), \
+                mock.patch('builtins.print', lambda *a, **k: out.append(a)):
+            status = cli.theme_thumbs(cli.parser().parse_args(['theme', 'thumbs']), None)
+        return status, ids, out
+
+    def test_downloads_run_four_at_a_time(self):
+        server = Server(self, self.serve)
+        status, ids, _out = self.thumbs(server.url)
+        self.assertEqual(status, 0)
+        self.assertEqual(self.most, 4)
+        self.assertTrue(all(themes.thumbnail_path(tid).exists() for tid in ids))
+
+    def test_offline_the_rest_are_not_started(self):
+        server = Server(self, lambda request: request.send_error(404))
+        status, ids, out = self.thumbs(server.url)
+        self.assertEqual(status, 1)
+        self.assertLess(server.requests, len(ids))
+        self.assertIn("couldn't download", str(out[-1]))
 
 
 if __name__ == '__main__':
