@@ -288,6 +288,20 @@ class StarshipPalette(unittest.TestCase):
         self.assertEqual(set(tomllib.loads(text)['palettes']['jade']), set(Starship.NAMES))
         self.assertEqual(Starship().revert(self.path, text, plain), plain)
 
+    def test_a_second_switch_copies_what_the_first_did(self):
+        # Palettes are defined but none is chosen: the first switch copies none, and so does the next.
+        unused = '[palettes.g]\ncolor_x = "#111111"\n\n[os]\nstyle = "bg:color_x"\n'
+        text, _ctx = self.switch(unused)
+        again, _ctx = self.switch(text, 'tokyo-night')
+        self.assertEqual(set(tomllib.loads(again)['palettes']['jade']), set(Starship.NAMES))
+        self.assertEqual(Starship().revert(self.path, again, unused), unused)
+        # A palette name with a quote in it is read back from the record whole.
+        quoted = 'palette = "a\\"b"\n\n[palettes."a\\"b"]\ncolor_x = "#111111"\n'
+        text, _ctx = self.switch(quoted)
+        again, ctx = self.switch(text, 'tokyo-night')
+        self.assertEqual((tomllib.loads(again)['palettes']['jade']['color_x'], ctx.skipped), ('#111111', {}))
+        self.assertEqual(Starship().revert(self.path, again, quoted), quoted)
+
     def test_a_jade_palette_of_their_own_or_a_broken_file_stays(self):
         own = 'palette = "jade"\n\n[palettes.jade]\nred = "#ff0000"\n'
         text, ctx = self.switch(own)

@@ -601,6 +601,8 @@ class Starship:
     }
     # Written in the block, so the next switch starts from the same palette.
     COPY = "# A copy of your palette {}, with the theme's colors on the names Jade Shell knows"
+    # Or, when the prompt had no palette to copy, this: the next switch copies none either.
+    PLAIN = "# The names Jade Shell knows, with the theme's colors"
 
     def config(self):
         return config_home() / 'starship.toml'
@@ -616,10 +618,15 @@ class Starship:
         name = data.get('palette')
         if name == 'jade':  # switched before: the palette it had then
             block = BLOCK.search(text)
-            recorded = re.search('^' + re.escape(self.COPY.split('{}')[0]) + r'(".*?")',
-                                 block.group(0) if block else '', re.M)
-            # Jade Shell 0.9.0 kept no record; a prompt it switched had its palette first, as a rule.
-            name = json.loads(recorded.group(1)) if recorded else next(iter(tables), None)
+            block = block.group(0) if block else ''
+            recorded = re.search('^' + re.escape(self.COPY.split('{}')[0]) + r'("(?:[^"\\]|\\.)*")', block, re.M)
+            try:
+                name = json.loads(recorded.group(1)) if recorded else None
+            except ValueError:  # the record was edited by hand
+                name = None
+            if not recorded and self.PLAIN not in block:
+                # Jade Shell 0.9.0 kept no record; a prompt it switched had its palette first, as a rule.
+                name = next(iter(tables), None)
         return name, tables.get(name) if isinstance(name, str) else None
 
     def changes(self, theme, ctx):
@@ -633,7 +640,7 @@ class Starship:
         name, table = self.own_palette(data, text)
         colors = {key: value for key, value in (table or {}).items() if isinstance(value, str)}
         colors.update({key: theme.colors[value] for key, value in self.NAMES.items()})
-        lines = ['[palettes.jade]'] + ([self.COPY.format(json.dumps(name))] if table is not None else [])
+        lines = ['[palettes.jade]', self.PLAIN if table is None else self.COPY.format(json.dumps(name))]
         lines += [f'{key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else json.dumps(key)} = {json.dumps(value)}'
                   for key, value in colors.items()]
         if 'palette' in data:  # a top-level key comes before any table, so the first such line is it
