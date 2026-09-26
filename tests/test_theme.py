@@ -540,6 +540,18 @@ class Update(unittest.TestCase):
         waited = lock.replace('E: Unable', 'Ignore: Unable') + (
             ' jade-shell : Depends: hello but it is not installable\nE: Unable to satisfy dependencies.\n')
         self.assertIn('needs other software', update.explain('deb', waited, '0.9.1'))
+        # dpkg's own lock (another dpkg running) and apt 3's "Error:" words.
+        self.assertEqual(update.explain('deb', 'Error: Could not get lock /var/lib/dpkg/lock. It is held by process 9\n'
+                                        'Error: Unable to lock the administration directory (/var/lib/dpkg/), '
+                                        'is another process using it?\n', '0.9.1'),
+                         'Your computer is installing other updates. Try again when they finish.')
+        # apt 3: a dependency the package lists have, but not new enough.
+        too_old = (' jade-shell : Depends: hello (>= 99) but it is not going to be installed\n'
+                   'E: Unable to satisfy dependencies. Reached two conflicting assignments:\n')
+        self.assertIn('needs other software', update.explain('deb', too_old, '0.9.1'))
+        self.assertIn('--fix-broken', update.explain(
+            'deb', "E: Unmet dependencies. Try 'apt --fix-broken install' with no packages (or specify a solution).",
+            '0.9.1'))
         self.assertIn('disk is full', update.explain('rpm', 'OSError: [Errno 28] No space left on device', '0.9.1'))
         self.assertEqual(update.explain('rpm', 'Transaction failed', '0.9.1'),
                          "Fedora's software installer couldn't install Jade Shell 0.9.1.")

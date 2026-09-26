@@ -63,10 +63,12 @@ case $1 in
             || { echo 'Not a Jade Shell package.' >&2; exit 65; }
         # Usually everything the new version needs is installed already, and
         # refreshing every source first can take minutes. Only when apt can't
-        # find a dependency are the package lists refreshed, and it tries again.
+        # find a dependency (or a new enough one) are the package lists
+        # refreshed, and it tries again.
         logged apt_install && exit 0
         case $(cat "$dir/output") in
-            *'Unable to locate'* | *'no installation candidate'* | *'not installable'* | *'Unable to fetch'* | *' 404 '*)
+            *'Unable to locate'* | *'no installation candidate'* | *'not installable'* | *'unmet dependencies'* \
+                | *'Unable to fetch'* | *' 404 '*)
                 apt_update
                 apt_install ;;
             *) exit 100 ;;

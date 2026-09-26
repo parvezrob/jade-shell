@@ -198,16 +198,23 @@ def install_command(path, elevate):
 def explain(kind, output, version):
     """Why dnf or apt failed, from what they printed (untranslated), in words
     for the person: the lock, a full disk, what's worth doing."""
-    errors = [line for line in output.splitlines() if line.startswith('E: ')]
+    # apt 3 writes "Error:" instead of "E:" when it thinks it has a terminal.
+    errors = [line for line in output.splitlines() if line.startswith(('E: ', 'Error: '))]
     if 'No space left on device' in output:
         return 'Your disk is full. Free some space, then try again.'
     if 'dpkg was interrupted' in output:
         return ('An earlier install on this computer was interrupted. Finish it first with: '
                 'sudo dpkg --configure -a')
-    # apt's last error when it gave up waiting for the lock (after 20 minutes).
-    if errors and ('Could not get lock' in errors[-1] or 'frontend lock' in errors[-1]):
+    # apt's last error when it gave up waiting for the lock (after 20 minutes):
+    # "Unable to acquire the dpkg frontend lock" or "Unable to lock the
+    # administration directory", both asking "is another process using it?"
+    if errors and any(text in errors[-1] for text in ('Could not get lock', 'another process using it')):
         return 'Your computer is installing other updates. Try again when they finish.'
+    if 'fix-broken' in output:
+        return ('Some software on this computer is only partly installed. Finish it first with: '
+                'sudo apt --fix-broken install')
     if any(text in output for text in ('not installable', 'Unable to locate', 'no installation candidate',
+                                       'unmet dependencies', 'Unable to satisfy dependencies',
                                        'Failed to fetch', 'Unable to fetch', 'Failed to download',
                                        'Cannot download', 'nothing provides')):
         return ("Jade Shell's new version needs other software that couldn't be downloaded. "
