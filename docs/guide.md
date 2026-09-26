@@ -25,7 +25,7 @@ Run it in a terminal on your desktop, as yourself. It checks your system, downlo
 - makes JetBrains Mono (installed with the package, as in Omarchy) the monospace font of GNOME and your terminals, unless you chose one before (`jade font set` changes it; `jade theme undo` or `jade restore` puts yours back),
 - starts the usage collector if you have Claude Code or Codex,
 - applies Osaka Jade, downloading only its wallpaper (offline, your current wallpaper stays until you pick a theme),
-- then makes the other themes' previews in the background (the picker fetches any still missing when it opens; other wallpapers are downloaded when you pick them).
+- then makes the other themes' previews in the background, once the installer is done (the picker fetches any still missing when it opens; other wallpapers are downloaded when you pick them).
 
 Running `jade setup` again keeps the settings and AI usage choice you made since; with AI usage turned off, the collector stays stopped.
 
