@@ -684,6 +684,29 @@ class Btop:
         signal('btop', 'USR2')
 
 
+def without_comments(text):
+    """`text` with its // and /* */ comments blanked out, the same length, so
+    a match in it is at the same place in `text`. Strings stay as they are:
+    a URL's // is no comment."""
+    out, i, quoted = list(text), 0, False
+    while i < len(text):
+        if quoted:
+            if text[i] == '\\':
+                i += 1
+            elif text[i] == '"':
+                quoted = False
+        elif text[i] == '"':
+            quoted = True
+        elif text.startswith(('//', '/*'), i):
+            end = text.find('\n', i) if text[i + 1] == '/' else text.find('*/', i + 2) + 2
+            end = len(text) if end < i + 2 else end
+            out[i:end] = [c if c == '\n' else ' ' for c in text[i:end]]
+            i = end
+            continue
+        i += 1
+    return ''.join(out)
+
+
 class VSCode:
     """VS Code and its siblings: Insiders, VSCodium, Code - OSS, and the
     Flatpak builds of VS Code and VSCodium. Every one that is set up gets the
@@ -694,6 +717,7 @@ class VSCode:
     ID = 'jade-shell.jade-themes'
     VERSION = '1.0.0'
     LABEL = 'Jade · '
+    THEME_KEY = r'"workbench\.colorTheme"\s*:\s*"[^"]*"'
 
     @staticmethod
     def variants():
@@ -784,11 +808,16 @@ class VSCode:
                 folder, files = self.extension(theme, base)
                 out += files + self.register(ctx, base, folder)
             settings = read_text(settings_path) or ''
+            # Looked for outside comments: a commented-out theme, or a { in a
+            # comment above the settings, is not the place to write.
+            code = without_comments(settings)
             line = f'"workbench.colorTheme": "{self.label_for(theme)}"'
-            if re.search(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', settings):
-                settings = re.sub(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', lambda _m, line=line: line, settings, count=1)
-            elif '{' in settings:
-                settings = settings.replace('{', '{\n    ' + line + ',', 1)
+            if found := re.search(self.THEME_KEY, code):
+                settings = settings[:found.start()] + line + settings[found.end():]
+            elif '{' in code:
+                at = code.index('{') + 1
+                empty = code[at:].lstrip().startswith('}')  # no comma before the closing brace
+                settings = settings[:at] + '\n    ' + line + ('\n' if empty else ',') + settings[at:]
             else:  # none yet (undo deletes the one made here), or only comments: kept above it
                 settings = (settings.rstrip() + '\n' if settings.strip() else '') + '{\n    ' + line + '\n}\n'
             out.append(File(settings_path, settings))
@@ -806,14 +835,16 @@ class VSCode:
         if path not in {settings for settings, _f in self.variants()}:
             return None
         ours = r'"workbench\.colorTheme"\s*:\s*"' + re.escape(self.LABEL) + r'[^"]*"'
-        if not re.search(ours, text):
+        code = without_comments(text)
+        now = re.search(ours, code)
+        if not now:
             return None  # a theme picked in VS Code since stays
-        before = re.search(r'"workbench\.colorTheme"\s*:\s*"[^"]*"', old or '')
+        before = re.search(self.THEME_KEY, without_comments(old or ''))
         if before:
-            return re.sub(ours, lambda _m: before.group(0), text, count=1)
+            return text[:now.start()] + old[before.start():before.end()] + text[now.end():]
         # The line changes() added after the opening brace (or, moved, with its comma).
         for pattern in (r'\n?[ \t]*' + ours + r'\s*,', r',\s*' + ours, r'\s*' + ours + r'\s*'):
-            found = re.search(pattern, text)
+            found = re.search(pattern, code)
             if found:
                 return text[:found.start()] + text[found.end():]
         return None

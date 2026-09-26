@@ -40,6 +40,7 @@ from jade.targets.apps import (
     revert_block,
     revert_line,
     set_theme_names,
+    without_comments,
 )
 from jade.targets.gnome import Gnome, nearest_accent
 
@@ -198,6 +199,20 @@ class TargetedRevert(unittest.TestCase):
         registry = json.dumps([other, {'identifier': {'id': VSCode.ID}}, {'identifier': {'id': 'new.one'}}])
         self.assertEqual(json.loads(vscode.revert(vscode.registry_path(), registry, json.dumps([other]))),
                          [other, {'identifier': {'id': 'new.one'}}])
+
+    def test_vscode_settings_are_edited_outside_comments(self):
+        vscode = VSCode()
+        settings = vscode.settings_path()
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(settings.unlink, missing_ok=True)
+        for old in ('// my {settings}\n{\n  "editor.fontSize": 14\n}\n',
+                    '{\n  // "workbench.colorTheme": "Monokai",\n  "workbench.colorTheme": "Dark Modern"\n}\n',
+                    '{\n  "http.proxy": "http://proxy//x", /* { */\n  "a": "b\\"//"\n}\n', '{}\n'):
+            settings.write_text(old)
+            changes = vscode.changes(themes.load('nord'), engine.Context(NoSettings()))
+            now = next(c.content for c in changes if c.path == settings)
+            self.assertEqual(json.loads(without_comments(now))['workbench.colorTheme'], 'Jade · Nord', old)
+            self.assertEqual(vscode.revert(settings, now, old), old)
 
     def test_alacritty_keeps_a_file_the_import_cannot_join(self):
         config = Alacritty().config()
