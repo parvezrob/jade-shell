@@ -695,10 +695,10 @@ class Btop:
         signal('btop', 'USR2')
 
 
-def without_comments(text):
-    """`text` with its // and /* */ comments blanked out, the same length, so
-    a match in it is at the same place in `text`. Strings stay as they are:
-    a URL's // is no comment."""
+def without_comments(text, fill=' '):
+    """`text` with its // and /* */ comments blanked out with `fill`, the same
+    length, so a match in it is at the same place in `text`. Strings stay as
+    they are: a URL's // is no comment."""
     out, i, quoted = list(text), 0, False
     while i < len(text):
         if quoted:
@@ -711,7 +711,7 @@ def without_comments(text):
         elif text.startswith(('//', '/*'), i):
             end = text.find('\n', i) if text[i + 1] == '/' else text.find('*/', i + 2) + 2
             end = len(text) if end < i + 2 else end
-            out[i:end] = [c if c == '\n' else ' ' for c in text[i:end]]
+            out[i:end] = [c if c == '\n' else fill for c in text[i:end]]
             i = end
             continue
         i += 1
@@ -846,15 +846,19 @@ class VSCode:
         if path not in {settings for settings, _f in self.variants()}:
             return None
         ours = r'"workbench\.colorTheme"\s*:\s*"' + re.escape(self.LABEL) + r'[^"]*"'
-        code = without_comments(text)
+        # Comments filled with a visible mark, so the \s* below never takes one out with our line.
+        code = without_comments(text, '#')
         now = re.search(ours, code)
         if not now:
             return None  # a theme picked in VS Code since stays
         before = re.search(self.THEME_KEY, without_comments(old or ''))
         if before:
             return text[:now.start()] + old[before.start():before.end()] + text[now.end():]
-        # The line changes() added after the opening brace (or, moved, with its comma).
-        for pattern in (r'\n?[ \t]*' + ours + r'\s*,', r',\s*' + ours, r'\s*' + ours + r'\s*'):
+        # The line changes() added after the opening brace, with its comma or on a line
+        # of its own (an empty object); moved, with the comma before it, or the line alone:
+        # the end of a line can close a // comment above it.
+        for pattern in (r'\n?[ \t]*' + ours + r'\s*,', r',\s*' + ours, r'(?<=\{)\n[ \t]*' + ours + r'[ \t]*\n',
+                        r'\n?[ \t]*' + ours + r'[ \t]*'):
             found = re.search(pattern, code)
             if found:
                 return text[:found.start()] + text[found.end():]

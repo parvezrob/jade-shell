@@ -207,12 +207,16 @@ class TargetedRevert(unittest.TestCase):
         self.addCleanup(settings.unlink, missing_ok=True)
         for old in ('// my {settings}\n{\n  "editor.fontSize": 14\n}\n',
                     '{\n  // "workbench.colorTheme": "Monokai",\n  "workbench.colorTheme": "Dark Modern"\n}\n',
-                    '{\n  "http.proxy": "http://proxy//x", /* { */\n  "a": "b\\"//"\n}\n', '{}\n'):
+                    '{\n  "http.proxy": "http://proxy//x", /* { */\n  "a": "b\\"//"\n}\n', '{}\n',
+                    '{ // mine {\n}\n', '{\n  "a": 1, // one\n  /* two */ "b": 2\n}\n'):
             settings.write_text(old)
             changes = vscode.changes(themes.load('nord'), engine.Context(NoSettings()))
             now = next(c.content for c in changes if c.path == settings)
             self.assertEqual(json.loads(without_comments(now))['workbench.colorTheme'], 'Jade · Nord', old)
             self.assertEqual(vscode.revert(settings, now, old), old)
+        # Moved to the end below a // comment: undo keeps the comment and the brace after it.
+        moved = '{\n  "a": 1, // one\n  "workbench.colorTheme": "Jade · Nord"\n}\n'
+        self.assertEqual(vscode.revert(settings, moved, '{\n  "a": 1 // one\n}\n'), '{\n  "a": 1, // one\n}\n')
 
     def test_alacritty_keeps_a_file_the_import_cannot_join(self):
         config = Alacritty().config()
