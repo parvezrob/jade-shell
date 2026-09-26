@@ -5,9 +5,11 @@
 so `restore` can return the desktop to exactly how it was.
 """
 import configparser
+import datetime
 import json
 import os
 import pathlib
+import platform
 import re
 import shlex
 import shutil
@@ -19,7 +21,7 @@ import gi
 gi.require_version('Gio', '2.0')
 from gi.repository import Gio, GLib
 
-from . import __version__, engine, hooks, icons, keys, migrations, network, restore_offer, shelltheme, themes
+from . import __version__, engine, hooks, icons, keys, migrations, network, reasons, restore_offer, shelltheme, themes
 from .store import File, Setting, config_home, data_home, write_text
 from .targets import font as font_target
 from .usage import collect
@@ -35,33 +37,37 @@ PREFERENCE_SCHEMAS = (DOCK_SCHEMA, JADE_SCHEMA)
 
 # Extensions whose job Jade Shell now does. Running both would fight over the
 # same part of the Shell (or just do the work twice).
-# Extensions setup turns off, by UUID: their name, and the job Jade Shell does
-# instead (or the top bar they would take over). `jade restore` turns them back on.
+# Extensions setup turns off, by UUID: their name, and why, as setup says it
+# ("Turned off Vitals, since Jade Shell has its own system monitor").
+# `jade restore` turns them back on.
 REPLACED = {
-    'openbar@neuromorph': ('Open Bar', 'top bar and menu styling'),
-    'transparent-top-bar@zhanghai.me': ('Transparent Top Bar', 'top bar styling'),
-    'dash-to-panel@jderose9.github.com': ('Dash to Panel', 'the top bar and the dock (it moves the top bar into a taskbar)'),
-    'bottom-dash-panel@fthx': ('Bottom Dash Panel', 'the dock'),
-    'user-theme@gnome-shell-extensions.gcampax.github.com': ('User Themes', 'the Shell theme'),
-    'simple-workspaces-bar@null-git': ('Simple Workspaces Bar', 'workspace buttons'),
-    'panel-date-format@keiii.github.com': ('Panel Date Format', 'the clock format'),
-    'app-grid-tuner@m-lab': ('App Grid Tuner', 'the app grid'),
-    'just-perfection-desktop@just-perfection': ('Just Perfection', 'hiding Activities and starting on the desktop'),
-    'blur-my-shell@aunetx': ('Blur my Shell', 'the overview background'),
-    'monitor@astraext.github.io': ('Astra Monitor', 'the system monitor'),
-    'Vitals@CoreCoding.com': ('Vitals', 'the system monitor'),
-    'tophat@fflewddur.github.io': ('TopHat', 'the system monitor'),
-    'system-monitor@gnome-shell-extensions.gcampax.github.com': ('System Monitor', 'the system monitor'),
-    'notification-position@drugo.dev': ('Notification Banner Position', 'where notifications pop up'),
-    'notification-banner-re-reloaded@chrhuang': ('Notification Banner Re-Reloaded', 'where notifications pop up'),
-    'osaka-ai-usage@local': ('Jade AI Usage', 'AI usage (Jade AI Usage is now part of Jade Shell)'),
+    'openbar@neuromorph': ('Open Bar', 'Jade Shell styles the top bar and menus itself'),
+    'transparent-top-bar@zhanghai.me': ('Transparent Top Bar', 'Jade Shell styles the top bar itself'),
+    'dash-to-panel@jderose9.github.com': ('Dash to Panel', 'it would move the top bar into a taskbar'),
+    'bottom-dash-panel@fthx': ('Bottom Dash Panel', 'Jade Shell has its own dock'),
+    'user-theme@gnome-shell-extensions.gcampax.github.com': ('User Themes', 'Jade Shell brings its own look for the top bar and menus'),
+    'simple-workspaces-bar@null-git': ('Simple Workspaces Bar', 'Jade Shell shows the workspaces in the top bar'),
+    'panel-date-format@keiii.github.com': ('Panel Date Format', 'Jade Shell sets the clock format'),
+    'app-grid-tuner@m-lab': ('App Grid Tuner', 'Jade Shell arranges the app grid'),
+    'just-perfection-desktop@just-perfection': ('Just Perfection', 'Jade Shell already hides Activities and starts on the desktop'),
+    'blur-my-shell@aunetx': ('Blur my Shell', 'Jade Shell draws the overview background'),
+    'monitor@astraext.github.io': ('Astra Monitor', 'Jade Shell has its own system monitor'),
+    'Vitals@CoreCoding.com': ('Vitals', 'Jade Shell has its own system monitor'),
+    'tophat@fflewddur.github.io': ('TopHat', 'Jade Shell has its own system monitor'),
+    'system-monitor@gnome-shell-extensions.gcampax.github.com': ('System Monitor', 'Jade Shell has its own system monitor'),
+    'notification-position@drugo.dev': ('Notification Banner Position', 'Jade Shell places the notifications'),
+    'notification-banner-re-reloaded@chrhuang': ('Notification Banner Re-Reloaded', 'Jade Shell places the notifications'),
+    'osaka-ai-usage@local': ('Jade AI Usage', 'it is now part of Jade Shell'),
 }
 # Docks Jade's own dock replaces while it is on (the show-dock setting).
 DOCKS = {
-    DASH_TO_DOCK: ('Dash to Dock', 'the dock'),
-    UBUNTU_DOCK: ('Ubuntu Dock', 'the dock'),
-    'dash2dock-lite@icedman.github.com': ('Dash2Dock Animated', 'the dock'),
+    DASH_TO_DOCK: ('Dash to Dock', 'Jade Shell has its own dock'),
+    UBUNTU_DOCK: ('Ubuntu Dock', 'Jade Shell has its own dock'),
+    'dash2dock-lite@icedman.github.com': ('Dash2Dock Animated', 'Jade Shell has its own dock'),
 }
+# The parts of the desktop, as setup names what it themed (other apps by their titles).
+DESKTOP_PARTS = {'shell': 'the top bar and menus', 'gtk': 'your apps', 'icons': 'icons', 'gnome': 'wallpaper',
+                 'ptyxis': 'terminal (Ptyxis)'}
 OLD_UNITS = ['osaka-ai-usage.timer']
 # Flatpak apps see the host's gtk.css (the GNOME apps target) only when allowed to.
 FLATPAK_PATHS = ['xdg-config/gtk-4.0:ro', 'xdg-config/gtk-3.0:ro']
@@ -131,6 +137,37 @@ def load_manifest():
 
 def say(text):
     print(text, flush=True)
+
+
+class Report:
+    """What setup or restore tells the person as it goes: each note is
+    printed, and kept for the summary the installer asks for."""
+
+    def __init__(self):
+        self.notes = []
+        self.partial = []  # restore: what could not be put back
+
+    def note(self, text):
+        say(text)
+        self.notes.append(text)
+
+
+def log_path():
+    return engine.state_dir() / 'setup.log'
+
+
+def log(text):
+    """The details behind a plain sentence (error numbers and the like), for
+    `jade debug` and whoever looks: people are shown only the sentence."""
+    try:
+        path = log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and path.stat().st_size > 200_000:  # the latest runs are enough
+            path.write_text(path.read_text(errors='replace')[-100_000:])
+        with path.open('a') as out:
+            out.write(f'{datetime.datetime.now():%Y-%m-%d %H:%M:%S} {text}\n')
+    except OSError:
+        pass
 
 
 def progress(text):
@@ -408,23 +445,75 @@ def welcomed():
         return False
 
 
+def unsupported(version):
+    """Why this computer's GNOME can't run Jade Shell, naming the system as
+    people know it rather than by its GNOME version."""
+    try:
+        system = platform.freedesktop_os_release()
+    except OSError:
+        system = {}
+    name = system.get('PRETTY_NAME') or 'This computer'
+    if version is None:
+        return "Jade Shell works only with the GNOME desktop, and this computer doesn't have it."
+    if version > max(shelltheme.available_versions()):
+        return (f'{name} has a newer GNOME desktop than this Jade Shell knows. '
+                'Run the install command again to get the latest Jade Shell.')
+    if system.get('ID') in ('ubuntu', 'fedora'):
+        return (f'Jade Shell needs Ubuntu 26.04 or Fedora 44. This computer runs {name}, which is too old for it. '
+                'Upgrade first, then run this again.')
+    return f"Jade Shell needs a newer GNOME desktop (the one in Ubuntu 26.04 and Fedora 44). {name} doesn't have it yet."
+
+
+def turned_off(names_and_why):
+    """One sentence for the extensions setup turned off."""
+    if len(names_and_why) == 1:
+        name, why = names_and_why[0]
+        return f'Turned off {name}, since {why}. jade restore turns it back on.'
+    whys = {why for _name, why in names_and_why}
+    why = whys.pop() if len(whys) == 1 else 'Jade Shell does the same job'
+    return f'Turned off {join([name for name, _why in names_and_why])}, since {why}. jade restore turns them back on.'
+
+
+def themed_sentence(theme, ctx):
+    """'Osaka Jade is on: the top bar and menus, your apps, icons, wallpaper and
+    terminal (Ptyxis), plus btop and VS Code.'"""
+    alone = engine.left_alone(ctx.settings)
+    themed = [t for t in engine.selected(skip=alone) if t.name not in ctx.absent and t.name not in ctx.skipped]
+    names = {t.name for t in themed}
+    desktop = [part for name, part in DESKTOP_PARTS.items()
+               if name in names and not (name == 'gnome' and ctx.wallpaper_error)]
+    # The fonts have a line of their own, and the dock target colors Dash to
+    # Dock, which is off while Jade Shell's own dock is on.
+    left_out = {*DESKTOP_PARTS, 'font', *(['dock'] if dock_shown(ctx) else [])}
+    others = [t.title for t in themed if t.name not in left_out]
+    if desktop:
+        return f'{theme.name} is on: {join(desktop)}' + (f', plus {join(others)}.' if others else '.')
+    return f'{theme.name} is on for {join(others)}.' if others else f'{theme.name} is on.'
+
+
+def part_name(name):
+    """What setup calls a target: a part of the desktop, or the app's title."""
+    return DESKTOP_PARTS.get(name) or engine.target_named(name).title
+
+
 def setup(ctx, theme_id=None, after_update=False):
     """Set up this desktop, or finish an update (`after_update`: run by the
     extension at the first login with a new version, without a terminal)."""
+    report = Report()
     version = shelltheme.installed_shell_version()
     if version not in shelltheme.available_versions():
-        supported = ', '.join(str(v) for v in shelltheme.available_versions())
-        say(f'Jade Shell supports GNOME {supported}; this is GNOME {version or "(not found)"}.')
+        report.note(unsupported(version))
         return 1
     if not shelltheme.compiler_available():
-        say('Jade Shell needs sassc to build the Shell theme. Install it with your package manager.')
+        report.note('A part Jade Shell needs to draw its top bar (sassc) is missing. '
+                    'Run the install command again to put it back.')
         return 1
 
     fresh = not manifest_path().exists()
     manifest = load_manifest()
     if fresh:
         migrations.mark_all()  # a first setup starts from how things are now
-    elif not migrations.run_pending(ctx, say):
+    elif not migrations.run_pending(ctx, report.note):
         return 1
     # An extension Jade Shell already replaced when setup last ran and that is
     # on again was turned back on by its owner: an update leaves it alone,
@@ -445,9 +534,9 @@ def setup(ctx, theme_id=None, after_update=False):
     manifest['defaulted'] += [[c.schema, c.path, c.key] for c in changes if c.schema in PREFERENCE_SCHEMAS and sticks(c)]
     write_text(manifest_path(), json.dumps(manifest, indent=2))
     ctx.settings.write(changes)
-    for uuid in sorted(running_before - set(keep)):
-        name, job = out_of_the_way[uuid]
-        say(f'Turned off {name}: Jade Shell does {job}.')
+    off = [out_of_the_way[uuid] for uuid in sorted(running_before - set(keep))]
+    if off:
+        report.note(turned_off(off))
 
     grant_flatpak(manifest)
     write_text(manifest_path(), json.dumps(manifest, indent=2))
@@ -458,7 +547,8 @@ def setup(ctx, theme_id=None, after_update=False):
         problem = install_usage_timer(manifest, enable=usage_shown(ctx))
         write_text(manifest_path(), json.dumps(manifest, indent=2))
         if problem:
-            say(f'AI usage collector not started: {problem}')
+            log(f'AI usage collector: {problem}')
+            report.note("AI usage in the top bar couldn't start updating in the background; setup tries again next time.")
     elif (config_home() / 'systemd/user/jade-usage.timer').exists():
         systemctl('disable', '--now', 'jade-usage.timer')  # neither Claude Code nor Codex is here any more
 
@@ -478,8 +568,10 @@ def setup(ctx, theme_id=None, after_update=False):
                 manifest['icons-offered'] = True
             except (icons.IconsUnavailable, OSError) as error:
                 progress(None)
-                say(f'No Tahoe icons ({engine.first_line(error)}); setup tries again next time, '
-                    'or turn them on in Jade Shell\'s settings, Dock.')
+                log(f'Mac-style icons: {getattr(error, "detail", None) or reasons.detail(error)}')
+                report.note(f"The Mac-style icons couldn't be set up "
+                            f"({getattr(error, 'reason', None) or reasons.plain(error)}). Setup tries again next "
+                            "time, or turn them on in Jade Shell's settings under Dock.")
         write_text(manifest_path(), json.dumps(manifest, indent=2))
 
     # The theme asked for, else the current one, else Osaka Jade, applied
@@ -488,16 +580,16 @@ def setup(ctx, theme_id=None, after_update=False):
     current = state.get('theme') if state.get('theme') in themes.ids() else None
     theme = themes.load(theme_id or current or 'osaka-jade')
     ctx.wallpaper_index = state.get('wallpaper') or 0
-    # Before touching them, name the configs of their own that people edit.
+    # Before touching them, name the apps whose own configs people edit.
     home = pathlib.Path.home()
-    edited = [(target, change.path) for target, change in engine.plan(theme, ctx, skip=['gnome', 'dock', 'shell'])
+    edited = [target for target, change in engine.plan(theme, ctx, skip=['gnome', 'dock', 'shell'])
               if isinstance(change, File) and change.path.exists() and change.path.is_relative_to(home)
               and not change.path.is_relative_to(engine.state_dir())
               and not change.path.is_relative_to(icons.icons_home())]
     if edited:
-        paths = join([f'~/{path.relative_to(home)}' for _t, path in edited])
-        say(f'Adding the theme to {paths}.')
-        say(f'Your settings in them stay, and a copy of each is kept. To leave an app alone: jade apps off {edited[0][0].name}')
+        apps = join(list(dict.fromkeys(re.sub(r'^(the|your) ', '', part_name(t.name)) for t in edited)))
+        report.note(f'Your {apps} settings now follow the theme too. Your own settings stay, and a copy of each '
+                    "was saved. To keep an app out of it, turn it off under Apps in Jade Shell's settings.")
     # JetBrains Mono (installed with the package) as the monospace font of
     # GNOME and the terminals, as in Omarchy: once, for someone who has not
     # chosen one. Done only when it took; otherwise tried at the next setup.
@@ -520,42 +612,49 @@ def setup(ctx, theme_id=None, after_update=False):
     make_previews(theme)
     if offer_font and ctx.font and font_target.chosen() == DEFAULT_FONT:
         manifest['font-offered'] = True
-        say(f'{DEFAULT_FONT} is now the monospace font of GNOME and your terminals (change it: jade font set).')
+        report.note(f"Terminals and code now use the {DEFAULT_FONT} font (change it in Jade Shell's settings).")
     write_text(manifest_path(), json.dumps(manifest, indent=2))
-    alone = engine.left_alone(ctx.settings)
-    themed = [t.title for t in engine.selected(skip=alone) if t.name not in ctx.absent and t.name not in ctx.skipped]
-    say(f'{theme.name} applied to {join(themed)}.')
+    report.note(themed_sentence(theme, ctx))
     for name, reason in ctx.skipped.items():
-        say(f'Not themed: {name} ({reason})')
+        if name == 'wallpaper':
+            problem = ctx.wallpaper_problem
+            log(f'{theme.name} wallpaper: {getattr(problem, "detail", None) or ctx.wallpaper_error}')
+            report.note("Kept your current wallpaper: the theme's wallpaper couldn't be downloaded right now "
+                        f"({getattr(problem, 'reason', None) or 'no internet connection'}). "
+                        'It downloads the next time you pick a theme.')
+        else:
+            report.note(f'Not themed: {part_name(name)} ({reason})')
     for failure in ctx.hook_failures:
-        say(failure)
+        report.note(failure)
 
     commands = leftover_commands(*leftovers())
     if commands:
         # Never removed here: it may be someone's development copy.
-        say('Your home folder still has files from an older or development copy of Jade Shell. '
-            'Remove them with:')
+        report.note('Your home folder still has files from an older or development copy of Jade Shell. '
+                    'Remove them with:')
         for command in commands:
-            say(f'    {command}')
+            report.note(f'    {command}')
 
     try:
         restore_offer.keep_kit()
     except OSError as error:  # only the offer after a removal is missing
-        say(f'Could not keep the restore kit ({error.strerror or error}); remove Jade Shell with: jade restore first')
+        log(f'restore kit: {reasons.detail(error)}')
+        report.note(f"Couldn't save the files that undo Jade Shell after it's removed ({reasons.plain(error)}). "
+                    'Before removing Jade Shell, run: jade restore')
     # Which version this desktop is set up for: the extension compares it with
     # its own at login, and finishes an update when they differ.
     manifest.update(version=__version__, replaced=sorted(out_of_the_way))
     write_text(manifest_path(), json.dumps(manifest, indent=2))
     if after_update:
         for failure in hooks.run('post-update', __version__, theme=theme):
-            say(failure)
+            report.note(failure)
         say(f'Jade Shell {__version__} is set up.')
         return 0
     shortcut = picker_shortcut(ctx)
     say(f'Change theme with {shortcut or "the palette icon in the top bar"}. Undo everything with: jade restore')
     if needs_login(UUID):
-        say('Done. Log out and back in once to start this version of Jade Shell.'
-            + (' It then opens its Welcome: pick your look there.' if not welcomed() else ''))
+        say(f'Done. Log out and back in to start {"the new version" if updating else "Jade Shell"}.'
+            + (' A welcome window then helps you pick your look.' if not welcomed() else ''))
         offer_logout()
     else:
         say('Done.')
@@ -607,23 +706,29 @@ def picker_shortcut(ctx):
 
 def offer_logout():
     """Ask on the terminal (stdin is the script itself when piped from curl),
-    then open GNOME's own log-out dialog: it confirms, and warns about apps with
-    unsaved work. Without a terminal or a GNOME session, the sentence is enough."""
+    then open GNOME's own log-out dialog: it lists apps with unsaved work, and
+    logs out by itself after a minute. Without a terminal or a GNOME session,
+    the sentence is enough. Ctrl-C here means no, not a failed setup."""
     if 'GNOME' not in os.environ.get('XDG_CURRENT_DESKTOP', '').split(':'):
         return
     try:
         # A terminal can't be opened for both in text mode: it isn't seekable.
         with open('/dev/tty', 'w') as out, open('/dev/tty') as tty:
-            out.write('Log out now? GNOME asks you to confirm first. [Y/n] ')
+            out.write('Log out now to finish? Save your work first: GNOME logs out by itself after a minute. '
+                      '(Press Enter for yes, or type n.) ')
             out.flush()
-            answer = tty.readline().strip().lower()
+            try:
+                answer = tty.readline().strip().lower()
+            except KeyboardInterrupt:
+                out.write('\n')
+                return
     except OSError:  # no terminal: run from a script or a service
         return
     if answer in ('', 'y', 'yes'):
         try:
             subprocess.run(['gnome-session-quit', '--logout'], check=False)
         except OSError:
-            say('Could not open the log-out dialog; log out from the top bar\'s menu.')
+            say("Couldn't open the log-out window; log out from the menu at the right end of the top bar.")
 
 
 # ------------------------------------------------------------------ restore
@@ -655,7 +760,21 @@ def merged_extensions(ctx, entry):
     return result, entry['old'] is None and result == list(default)
 
 
-def restore(ctx, assume_yes=False):
+def app_of(path, owners):
+    """Which app a config belongs to, as people call it ('VS Code'), from the
+    target that wrote it; its path (from ~) when older backups don't say."""
+    try:
+        title = engine.target_named(owners[path]).title
+    except (KeyError, StopIteration):
+        home = str(pathlib.Path.home())
+        return path.replace(home, '~', 1) if path.startswith(home + '/') else path
+    return title[0].upper() + title[1:] if title.startswith(('the ', 'your ')) else title
+
+
+def restore(ctx, assume_yes=False, report=None):
+    """Put back the desktop from before Jade Shell. What was said goes into
+    `report` too: its notes, and in `partial` what could not be put back."""
+    report = report or Report()
     manifest = load_manifest()
     history = engine.backups()
     if not history and not manifest['settings'] and not keys.applied() and not network.state_file().exists():
@@ -663,12 +782,18 @@ def restore(ctx, assume_yes=False):
         return 0
     if not assume_yes:
         if not sys.stdin.isatty():
-            say('Run with --yes to restore without a prompt.')
+            say('Run jade restore --yes to do it without asking.')
             return 1
-        answer = input(f'Undo {len(history)} theme switch(es) and Jade Shell setup? [y/N] ')
+        n = len(history)
+        undoes = (f"This undoes {n} theme change{'' if n == 1 else 's'} and Jade Shell's settings." if n
+                  else "This undoes Jade Shell's settings.")
+        try:
+            answer = input(f'Put your desktop back the way it was before Jade Shell? {undoes} (y/N) ')
+        except EOFError:
+            answer = ''
         if answer.strip().lower() not in ('y', 'yes'):
             return 1
-    kept, merged, skipped, stuck = [], [], [], []
+    kept, merged, skipped, stuck, owners = [], [], [], [], {}
     skipped += keys.revert(ctx) or []  # the Omarchy keymap: your shortcuts back first
     if network.state_file().exists():
         skipped += network.restore()  # DNS and Wi-Fi band as they were
@@ -681,6 +806,7 @@ def restore(ctx, assume_yes=False):
     while (undone := engine.undo(ctx, ignore=stuck)) is not None:
         kept += undone['kept']
         merged += undone.get('merged', [])
+        owners.update({entry['path']: entry.get('target') for entry in undone.get('files', []) if entry.get('target')})
         skipped += undone['skipped']
         if undone.get('stuck'):
             stuck.append(undone['stuck'])
@@ -720,24 +846,23 @@ def restore(ctx, assume_yes=False):
     if not unfinished:
         manifest_path().unlink(missing_ok=True)
         restore_offer.drop_kit()  # nothing left to offer after a removal
-    for path in dict.fromkeys(merged):
-        say(f'Took Jade Shell\'s part out of {path}; your edits since stay.')
-    for path in dict.fromkeys(kept):
-        say(f'Kept {path}: it changed after Jade Shell wrote it, so it was left as it is.')
-    # An app removed since (Dash to Dock can go with Jade Shell's package) is
-    # one line, not one per setting.
-    def app_gone(item):
-        return item.endswith('(no longer installed)') and not ctx.settings.has(item.split()[0])
-
-    gone = [item.split()[0] for item in skipped if app_gone(item)]
+    for line in dict.fromkeys([f"{app_of(path, owners)}: took out Jade Shell's colors; your own changes stay."
+                               for path in merged]
+                              + [f'{app_of(path, owners)}: left your settings file as it is, because it changed since.'
+                                 for path in kept]):
+        report.note(line)
+    # A setting whose app (or key) is gone since, as Dash to Dock can go with
+    # Jade Shell's package: nothing to put back, and nothing to do about it.
+    home = str(pathlib.Path.home())
     for item in skipped:
-        if not app_gone(item):
-            say(f'Skipped {item}')
-    for schema in dict.fromkeys(gone):
-        say(f'Skipped the settings of {schema}: no longer installed.')
+        if not item.endswith('(no longer installed)'):
+            log(f'restore: {item}')
+            line = f"Couldn't put back {item.replace(home + '/', '~/')}."
+            say(line)
+            report.partial.append(line)
     if unfinished:
-        say('Not everything could be put back (see Skipped above); what is left is kept. '
-            'Fix what stopped it and run jade restore again.')
+        report.note("Some things couldn't be put back (listed above), so Jade Shell keeps what it needs to try again. "
+                    'Fix what stopped them, then run jade restore again.')
         return 1
     say('Restored the desktop you had before Jade Shell. Log out and back in to finish.')
     return 0

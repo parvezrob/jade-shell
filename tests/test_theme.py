@@ -1063,9 +1063,8 @@ class Sandbox(unittest.TestCase):
                                         'key': 'dock-position', 'old': "'LEFT'"}], 'disabled_units': []}
         (self.home / '.local/state/jade-shell/setup.json').write_text(json.dumps(setup_manifest))
         out = self.jade('restore', '--yes')
-        self.assertIn('Skipped the settings of org.example.uninstalled: no longer installed.', out)
-        self.assertIn('Skipped the settings of org.gnome.shell.extensions.dash-to-dock: no longer installed.', out)
-        self.assertIn('Skipped org.gnome.desktop.interface no-such-key (no longer installed)', out)
+        # Nothing to do about an app (or a setting) that is gone: not worth a line.
+        self.assertEqual(out, 'Restored the desktop you had before Jade Shell. Log out and back in to finish.\n')
         kitty = self.home / '.config/kitty/kitty.conf'
         self.assertEqual(kitty.read_text(), self.originals[kitty])
         self.assertNotIn('accent-color', self.keyfile().get('org/gnome/desktop/interface', {}))
@@ -1092,6 +1091,42 @@ class Sandbox(unittest.TestCase):
         self.assertEqual(lines[-1], 'Applying Osaka Jade')
 
     @needs_compiler
+    def test_offline_setup_applies_the_theme_and_says_so_plainly(self):
+        (self.home / '.local/share/jade-shell/backgrounds/osaka-jade' / themes.load('osaka-jade').backgrounds[0]).unlink()
+        self.gsettings('set', 'org.gnome.desktop.background', 'picture-uri', "'file:///mine.png'")
+        out = self.jade('setup')
+        self.assertIn("Kept your current wallpaper: the theme's wallpaper couldn't be downloaded right now "
+                      "(couldn't reach GitHub). It downloads the next time you pick a theme.", out)
+        self.assertIn('Osaka Jade is on: the top bar and menus, your apps', out)
+        self.assertNotIn('wallpaper and', out)  # not listed as themed
+        self.assertIn('osaka-jade', self.jade('theme', 'current'))
+        self.assertEqual(self.gsettings('get', 'org.gnome.desktop.background', 'picture-uri'), "'file:///mine.png'")
+        for jargon in ('Errno', 'jade apps off', str(self.home), 'org.gnome.', 'quark', 'Not themed: wallpaper'):
+            self.assertNotIn(jargon, out)
+        # The details are in the log, for jade debug.
+        self.assertIn('Osaka Jade wallpaper: URLError', (self.home / '.local/state/jade-shell/setup.log').read_text())
+
+    def test_an_older_gnome_is_named_by_the_system(self):
+        shell = pathlib.Path(self.tmp.name) / 'bin/gnome-shell'
+        shell.write_text('#!/bin/sh\necho "GNOME Shell 46.0"\n')
+        result = self.run_jade('setup')
+        self.assertEqual(result.returncode, 1)
+        self.assertRegex(result.stdout, r"^Jade Shell needs (Ubuntu 26.04 or Fedora 44|a newer GNOME desktop)")
+        self.assertNotIn('GNOME 46', result.stdout)
+
+    @needs_compiler
+    def test_restore_names_apps_not_paths(self):
+        self.jade('setup')
+        config = self.home / '.config'
+        kitty, btop = config / 'kitty/kitty.conf', config / 'btop/btop.conf'
+        kitty.write_text(kitty.read_text() + 'font_family Iosevka\n')
+        btop.write_text(btop.read_text().replace('color_theme = "jade"', 'color_theme = "nord"'))
+        out = self.jade('restore', '--yes')
+        self.assertIn("Kitty: took out Jade Shell's colors; your own changes stay.", out)
+        self.assertIn('btop: left your settings file as it is, because it changed since.', out)
+        self.assertNotIn(str(self.home), out)
+
+    @needs_compiler
     def test_setup_keeps_the_current_theme_unless_asked(self):
         self.jade('setup')
         self.assertIn('osaka-jade', self.jade('theme', 'current'))
@@ -1106,7 +1141,8 @@ class Sandbox(unittest.TestCase):
         kitty = self.home / '.config/kitty/kitty.conf'
         starship = self.home / '.config/starship.toml'
         out = self.jade('setup')
-        self.assertIn('Adding the theme to ~/.config/kitty/kitty.conf', out)
+        self.assertIn('Your Kitty, Ghostty, Alacritty, Starship, btop and VS Code settings now follow the theme too.', out)
+        self.assertNotIn('/.config', out)  # apps by name, not config paths
         self.jade('theme', 'set', 'nord')
         # Edited since: the edit stays, Jade Shell's part goes.
         starship.write_text(starship.read_text() + 'command_timeout = 900\n')
@@ -1630,15 +1666,16 @@ elif 'show' in args and 'connection' in args:
 
     def test_setup_builds_the_tahoe_icons_until_it_works(self):
         out = self.jade('setup')  # offline, and a checkout has no package copy: said, and setup goes on
-        self.assertIn('No Tahoe icons', out)
+        self.assertIn("The Mac-style icons couldn't be set up", out)
         self.assertNotIn('icons-offered', self.manifest())
-        self.assertIn('No Tahoe icons', self.jade('setup'))  # tried again at the next setup (an update)
+        # Tried again at the next setup (an update).
+        self.assertIn("The Mac-style icons couldn't be set up (couldn't reach GitHub).", self.jade('setup'))
         # In use but gone from disk (deleted by hand, or by a cleanup tool): built again.
         self.gsettings('set', 'org.gnome.desktop.interface', 'icon-theme', 'Jade-MacTahoe-dark')
-        self.assertIn('No Tahoe icons', self.jade('setup'))
+        self.assertIn("Mac-style icons couldn't be set up", self.jade('setup'))
         self.assertEqual(self.gsettings('get', 'org.gnome.shell.extensions.jade-shell', 'dock-icon-style'), "'color'")
         self.jade('apps', 'off', 'icons')  # off stays off: no more tries
-        self.assertNotIn('No Tahoe icons', self.jade('setup'))
+        self.assertNotIn('Mac-style icons', self.jade('setup'))
         self.assertTrue(self.manifest()['icons-offered'])
 
     @needs_jetbrains
@@ -1655,9 +1692,9 @@ elif 'show' in args and 'connection' in args:
         self.assertNotIn('font-offered', self.manifest())
         fc_list.unlink()
         self.jade('apps', 'off', 'kitty')  # a terminal left alone keeps its own font
-        self.assertIn('JetBrains Mono is now the monospace font', self.jade('setup'))
+        self.assertIn('Terminals and code now use the JetBrains Mono font', self.jade('setup'))
         self.assertEqual(self.gsettings('get', *interface), "'JetBrains Mono 13'")  # the size stays
-        self.assertNotIn('monospace font', self.jade('setup'))  # said once
+        self.assertNotIn('JetBrains Mono font', self.jade('setup'))  # said once
         self.assertTrue(self.manifest()['font-offered'])
         self.assertEqual((config / 'ghostty/jade-font.conf').read_text(), 'font-family = ""\nfont-family = "JetBrains Mono"\n')
         self.assertFalse((config / 'kitty/jade-font.conf').exists())
@@ -1725,9 +1762,9 @@ elif 'show' in args and 'connection' in args:
         self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{DASH_TO_DOCK}']")
         self.gsettings('set', 'org.gnome.shell', 'disabled-extensions', "['old@me']")
         out = self.jade('setup')
-        self.assertIn('Turned off Dash to Dock: Jade Shell does the dock.', out)
         # Ubuntu Dock comes with the session: turned off by the disabled list.
-        self.assertIn('Turned off Ubuntu Dock: Jade Shell does the dock.', out)
+        self.assertIn('Turned off Dash to Dock and Ubuntu Dock, since Jade Shell has its own dock. '
+                      'jade restore turns them back on.', out)
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'), f"['{UUID}']")
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'),
                          f"['old@me', '{DASH_TO_DOCK}', '{UBUNTU_DOCK}']")
@@ -1759,10 +1796,11 @@ elif 'show' in args and 'connection' in args:
         before = self.keyfile()
 
         out = self.jade('setup')
-        self.assertIn('Turned off Dash to Panel: Jade Shell does the top bar and the dock', out)
+        self.assertIn('Turned off Dash to Panel, since it would move the top bar into a taskbar. '
+                      'jade restore turns it back on.', out)
         # Apps that aren't installed are not worth a line; what was themed is.
         self.assertNotIn('skipped', out)
-        self.assertIn('Osaka Jade applied to GNOME', out)
+        self.assertIn('Osaka Jade is on: the top bar and menus, your apps, wallpaper', out)
         # (With the package installed on this machine, the sandbox's own extension copy is named too.)
         self.assertTrue(any(line.strip().startswith('rm -rf ') and str(old_copy) in line for line in out.splitlines()), out)
         self.assertTrue(old_copy.exists())  # said, never deleted

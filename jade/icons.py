@@ -30,6 +30,7 @@ import tarfile
 import urllib.error
 import urllib.request
 
+from . import reasons
 from .store import data_home
 
 try:  # the package's trimmed copy, whose checksum is written when the package is built
@@ -61,7 +62,13 @@ PARTIAL = re.compile(r'\.MacTahoe-icon-theme-.+\.(\d+)(\.tar\.gz)?')
 
 
 class IconsUnavailable(Exception):
-    """Why the icons could not be built, in plain words."""
+    """Its text is for people, `reason` the why of it in a few words;
+    `detail`, the error behind it, is for the log."""
+
+    def __init__(self, text, reason=None, detail=None):
+        super().__init__(text)
+        self.reason = reason or text  # a short text is its own reason
+        self.detail = detail
 
 
 def cache_home():

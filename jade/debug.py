@@ -150,6 +150,7 @@ def report(ctx):
         ('Jade Shell settings changed from the defaults', jade_settings(ctx)),
         ('jade doctor', doctor_text(ctx)),
         ('install.log (end)', tail(state_home() / 'jade-shell/install.log')),
+        ('setup.log (end)', tail(state_home() / 'jade-shell/setup.log')),
         ('update.log', tail(state_home() / 'jade-shell/update.log')),
         ('GNOME Shell messages about Jade Shell (this boot)', shell_messages()),
     ]

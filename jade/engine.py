@@ -25,6 +25,7 @@ class Context:
     theme: object = None
     wallpaper_index: int = 0
     wallpaper_error: str | None = None  # set when the wallpaper could not be downloaded
+    wallpaper_problem: Exception | None = None  # the error itself (its reason and details, for setup)
     skipped: dict = field(default_factory=dict)  # targets that failed or were refused, by name: why
     absent: dict = field(default_factory=dict)  # targets whose app isn't here, by name: why
     hook_failures: list = field(default_factory=list)  # your hooks that failed after a switch
@@ -91,6 +92,7 @@ def fetch_wallpaper(theme, ctx, only=None, skip=None):
         theme.fetch_wallpaper(ctx.wallpaper_index)
     except themes.WallpaperUnavailable as error:
         ctx.wallpaper_error = str(error)
+        ctx.wallpaper_problem = error
         ctx.skipped['wallpaper'] = f'{error}; kept the current one'
 
 

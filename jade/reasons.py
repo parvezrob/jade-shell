@@ -28,7 +28,7 @@ def plain(error, server='GitHub'):
         return 'no internet connection'
     if isinstance(error, ssl.SSLCertVerificationError):
         return 'the network blocked the download; it may want you to sign in first'
-    if isinstance(error, download.Unreachable):
+    if isinstance(error, (download.Unreachable, ConnectionRefusedError)) or number == errno.EHOSTUNREACH:
         return f"couldn't reach {server}"
     if isinstance(error, (TimeoutError, ConnectionError, http.client.HTTPException)):
         return 'the connection dropped'

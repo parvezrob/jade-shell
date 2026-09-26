@@ -23,10 +23,12 @@ RETRY_DELAYS = (1, 2)  # seconds between download attempts
 
 class WallpaperUnavailable(Exception):
     """A wallpaper that is not on disk could not be downloaded. Its text is
-    for people; `detail`, the error behind it, is for the log."""
+    for people, `reason` the why of it in a few words; `detail`, the error
+    behind it, is for the log."""
 
-    def __init__(self, text, detail=None):
+    def __init__(self, text, reason=None, detail=None):
         super().__init__(text)
+        self.reason = reason
         self.detail = detail
 
 # Shades GNOME needs that Omarchy has no key for. A user override file can pin
@@ -65,7 +67,7 @@ class Theme:
         path = self.wallpaper(index)
         if path and not path.exists() and self.community:
             raise WallpaperUnavailable(f'the {self.name} wallpaper {path.name} is missing; get it again with: '
-                                       f'jade theme update {self.id}')
+                                       f'jade theme update {self.id}', 'its file is missing')
         if path and not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
             url = WALLPAPER_URL.format(theme=self.id, file=path.name)
@@ -83,9 +85,9 @@ class Theme:
                     if hasattr(error, 'close'):  # an HTTPError holds the reply open
                         error.close()
                     if attempt == len(RETRY_DELAYS) or not download.transient(error):
-                        raise WallpaperUnavailable(
-                            f"couldn't download the {self.name} wallpaper ({reasons.plain(error)})",
-                            reasons.detail(error)) from None
+                        reason = reasons.plain(error)
+                        raise WallpaperUnavailable(f"couldn't download the {self.name} wallpaper ({reason})",
+                                                   reason, reasons.detail(error)) from None
                     time.sleep(RETRY_DELAYS[attempt])
         return path
 

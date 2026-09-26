@@ -167,16 +167,17 @@ class Offer:
 
 
 def restore():
-    """`jade restore --yes` from the kit: its output lines, and whether it worked."""
+    """`jade restore --yes` from the kit: its output lines, whether it worked,
+    and its notes (the configs kept or merged)."""
     from . import engine, setup
     from .store import Settings
-    out = io.StringIO()
+    out, report = io.StringIO(), setup.Report()
     try:
         with contextlib.redirect_stdout(out):
-            status = setup.restore(engine.Context(Settings()), assume_yes=True)
+            status = setup.restore(engine.Context(Settings()), assume_yes=True, report=report)
     except Exception as error:  # shown in the notification; the kit stays for another try
-        return [f'{type(error).__name__}: {error}'], False
-    return out.getvalue().splitlines(), status == 0
+        return [f'{type(error).__name__}: {error}'], False, []
+    return out.getvalue().splitlines(), status == 0, report.notes
 
 
 def main():
@@ -197,14 +198,13 @@ def main():
             drop_kit()
             offer.loop.quit()
             return
-        lines, ok = restore()
+        lines, ok, notes = restore()
         if not ok:
             offer.notify('Could not restore your previous desktop', '\n'.join(lines[-3:]), [], done)
             return
         drop_kit()
         forget_jade()
-        # What was kept or merged is worth a line; settings of apps removed since are not.
-        notes = [line for line in lines if line.startswith(('Kept', 'Took'))]
+        # What was kept or merged is worth a line.
         offer.notify('Your previous desktop is back', '\n'.join(['Log out and back in to finish.', *notes[:3]]),
                      [('logout', 'Log Out…')], log_out)
 
