@@ -18,7 +18,7 @@ import sandbox  # noqa: F401  (first: a throwaway home for the whole process)
 
 sys.path.insert(0, str(ROOT))
 
-from jade import cli, download, themes
+from jade import cli, download, setup, themes
 
 
 class Server:
@@ -199,6 +199,43 @@ class Previews(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertLess(server.requests, len(ids))
         self.assertIn("couldn't download", str(out[-1]))
+
+
+class SetupPreviews(unittest.TestCase):
+    """Setup makes the applied theme's preview and leaves the others to a background job."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.home = pathlib.Path(tmp.name)
+        patcher = mock.patch.dict(os.environ, XDG_DATA_HOME=str(self.home / 'data'),
+                                  XDG_STATE_HOME=str(self.home / 'state'))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.theme = themes.load('osaka-jade')
+        wallpaper = self.theme.wallpaper(0)
+        wallpaper.parent.mkdir(parents=True)
+        import gi
+        gi.require_version('GdkPixbuf', '2.0')
+        from gi.repository import GdkPixbuf
+        GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, False, 8, 64, 40).savev(str(wallpaper), 'png', [], [])
+
+    def test_the_applied_theme_now_and_the_rest_in_the_background(self):
+        with mock.patch('subprocess.Popen') as popen:
+            setup.make_previews(self.theme)
+        self.assertTrue(themes.thumbnail_path('osaka-jade').exists())
+        argv = popen.call_args.args[0]
+        self.assertEqual(argv[-3:], ['-m', 'jade', 'theme', 'thumbs'][-3:])
+        self.assertTrue(popen.call_args.kwargs['start_new_session'])
+        self.assertIn(str(ROOT), popen.call_args.kwargs['env']['PYTHONPATH'].split(os.pathsep))
+
+    def test_nothing_in_the_background_when_all_are_there(self):
+        for tid in themes.ids():
+            themes.thumbnail_path(tid).parent.mkdir(parents=True, exist_ok=True)
+            themes.thumbnail_path(tid).write_bytes(b'png')
+        with mock.patch('subprocess.Popen') as popen:
+            setup.make_previews(self.theme)
+        popen.assert_not_called()
 
 
 if __name__ == '__main__':

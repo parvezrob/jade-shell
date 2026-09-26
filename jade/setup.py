@@ -460,23 +460,6 @@ def setup(ctx, theme_id=None, after_update=False):
     elif (config_home() / 'systemd/user/jade-usage.timer').exists():
         systemctl('disable', '--now', 'jade-usage.timer')  # neither Claude Code nor Codex is here any more
 
-    missing = [tid for tid in themes.ids() if not themes.thumbnail_path(tid).exists()]
-    for done, tid in enumerate(missing):
-        progress(f'Getting theme pictures {done + 1} of {len(missing)}')
-        try:
-            themes.make_thumbnail(themes.load(tid))
-        except themes.WallpaperUnavailable as error:  # offline: the rest would fail the same way
-            progress(None)
-            say(f'No theme previews ({error}); the picker shows colors until you run: jade theme thumbs')
-            break
-        except Exception as error:  # a preview is not worth failing setup over; the picker shows colors
-            progress(None)
-            say(f'No preview for {tid}: {str(error).splitlines()[0]}')
-    else:
-        if missing:
-            progress(None)
-            say(f'Downloaded {len(missing)} theme previews.')
-
     # The Tahoe icons are Jade Shell's default look: built once (the first
     # setup, or the first with a version that has them) from the package's
     # copy. Off stays off. A build that failed is tried again at the next
@@ -523,9 +506,16 @@ def setup(ctx, theme_id=None, after_update=False):
             offer_font = False
         elif font_installed(DEFAULT_FONT):
             ctx.font = DEFAULT_FONT
+    # Only this theme's wallpaper is downloaded now; the other themes'
+    # previews come after (see make_previews).
+    wallpaper = theme.wallpaper(ctx.wallpaper_index)
+    if wallpaper and not wallpaper.exists():
+        progress(f'Getting the {theme.name} wallpaper')
+        engine.fetch_wallpaper(theme, ctx, skip=engine.left_alone(ctx.settings))
     progress(f'Applying {theme.name}')
     changes, _backup = engine.apply(theme, ctx)
     progress(None)
+    make_previews(theme)
     if offer_font and ctx.font and font_target.chosen() == DEFAULT_FONT:
         manifest['font-offered'] = True
         say(f'{DEFAULT_FONT} is now the monospace font of GNOME and your terminals (change it: jade font set).')
@@ -568,6 +558,33 @@ def setup(ctx, theme_id=None, after_update=False):
     else:
         say('Done.')
     return 0
+
+
+def make_previews(theme):
+    """The theme pickers' pictures: the applied theme's from its wallpaper,
+    here now, and the others' in the background.
+
+    Making them all here downloaded every theme's full-size wallpaper (18 MB)
+    before setup could finish, for minutes on a slow line. `jade theme thumbs`
+    now fetches them after setup, and the picker runs it again for any still
+    missing (offline, say) when it opens.
+    """
+    picture = theme.wallpaper(0) or theme.preview
+    if not themes.thumbnail_path(theme.id).exists() and picture and picture.exists():
+        try:
+            themes.make_thumbnail(theme)
+        except Exception:  # a picture it can't read: the picker shows the theme's colors
+            pass
+    if all(themes.thumbnail_path(tid).exists() for tid in themes.ids()):
+        return
+    code = str(pathlib.Path(__file__).resolve().parent.parent)
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join(filter(None, [code, os.environ.get('PYTHONPATH')])))
+    try:
+        # Its own session: it outlives setup, and the installer's Ctrl-C isn't meant for it.
+        subprocess.Popen([sys.executable, '-m', 'jade', 'theme', 'thumbs'], env=env, stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass  # the picker fetches them when it opens
 
 
 def picker_shortcut(ctx):

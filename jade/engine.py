@@ -85,8 +85,8 @@ def first_line(error):
 
 def fetch_wallpaper(theme, ctx, only=None, skip=None):
     """Download the wallpaper before anything changes; offline, keep the current one."""
-    if ctx.wallpaper_index is None or not any(t.name == 'gnome' for t in selected(only, skip)):
-        return
+    if ctx.wallpaper_index is None or ctx.wallpaper_error or not any(t.name == 'gnome' for t in selected(only, skip)):
+        return  # not wanted, or tried already (setup fetches it first, to say so)
     try:
         theme.fetch_wallpaper(ctx.wallpaper_index)
     except themes.WallpaperUnavailable as error:
