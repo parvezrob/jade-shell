@@ -1811,6 +1811,15 @@ class CommandLine(unittest.TestCase):
     def test_bare_network_is_status(self):
         self.assertFalse(cli.parser().parse_args(['network']).json)
 
+    def test_jade_theme_alone_says_where_to_start(self):
+        with mock.patch('sys.stdout', new_callable=io.StringIO) as out:
+            self.assertEqual(cli.main(['theme']), 0)
+        self.assertNotIn('usage:', out.getvalue())
+        for line in cli.THEME_START.splitlines():
+            words = line.split('  ')[0].replace('<name>', themes.ids()[0]).split()[1:]
+            if words[-1] != '--help':
+                cli.parser().parse_args(words)
+
     def test_jade_alone_says_where_to_start(self):
         with mock.patch('sys.stdout', new_callable=io.StringIO) as out:
             self.assertEqual(cli.main([]), 0)

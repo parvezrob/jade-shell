@@ -713,9 +713,20 @@ jade restore            put your desktop back the way it was
 jade --help             everything else'''
 
 
+THEME_START = '''\
+jade theme list         see the themes
+jade theme set <name>   change the look
+jade theme undo         the last change, undone
+jade theme --help       everything else'''
+
+
 def main(argv=None):
-    if not (sys.argv[1:] if argv is None else argv):
+    given = sys.argv[1:] if argv is None else argv
+    if not given:
         print(START)
+        return 0
+    if given == ['theme']:  # where to start, not a usage error
+        print(THEME_START)
         return 0
     args = parser().parse_args(argv)
     command = args.command, getattr(args, 'action', None)
