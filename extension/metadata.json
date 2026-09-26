@@ -1,7 +1,7 @@
 {
   "uuid": "jade-shell@parvezrob.github.io",
   "name": "Jade Shell",
-  "description": "Omarchy's look for GNOME: a Shell theme built from Omarchy's palettes, a theme picker that re-colors the desktop and apps, workspaces, a light system monitor and Claude/Codex usage in the top bar.",
+  "description": "Omarchy's look and polish, on the GNOME you already run: 22 themes that recolor the whole desktop and your apps, a Mac-style dock, a redrawn top bar and frosted glass.",
   "shell-version": [
     "50"
   ],
