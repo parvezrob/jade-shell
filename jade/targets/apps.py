@@ -6,6 +6,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import tomllib
 from typing import ClassVar
 
 from .. import palette as pal
@@ -573,6 +574,9 @@ class ClaudeCode:
 
 
 class Starship:
+    """A `jade` palette, chosen with the palette line. It starts as a copy of
+    the palette the prompt already had, so every color name the prompt uses
+    stays defined; the theme's colors go on the names Jade Shell knows."""
     name = 'starship'
     title = 'Starship'
     label = 'Starship prompt'
@@ -582,21 +586,57 @@ class Starship:
         'yellow': 'yellow', 'green': 'green', 'teal': 'cyan', 'sapphire': 'accent', 'blue': 'blue',
         'overlay1': 'dark_foreground', 'overlay0': 'muted',
     }
+    # Written in the block, so the next switch starts from the same palette.
+    COPY = "# A copy of your palette {}, with the theme's colors on the names Jade Shell knows"
+
+    def config(self):
+        return config_home() / 'starship.toml'
 
     def available(self, ctx):
-        return None if (config_home() / 'starship.toml').exists() else Absent('Starship is not configured')
+        return None if self.config().exists() else Absent('Starship is not configured')
+
+    def own_palette(self, data, text):
+        """(name, table) of the palette the prompt is drawn with; the table is
+        None when there is none to copy."""
+        tables = data.get('palettes') if isinstance(data.get('palettes'), dict) else {}
+        tables = {key: table for key, table in tables.items() if isinstance(table, dict)}
+        name = data.get('palette')
+        if name == 'jade':  # switched before: the palette it had then
+            block = BLOCK.search(text)
+            recorded = re.search('^' + re.escape(self.COPY.split('{}')[0]) + r'(".*?")',
+                                 block.group(0) if block else '', re.M)
+            # Jade Shell 0.9.0 kept no record; a prompt it switched had its palette first, as a rule.
+            name = json.loads(recorded.group(1)) if recorded else next(iter(tables), None)
+        return name, tables.get(name) if isinstance(name, str) else None
 
     def changes(self, theme, ctx):
-        path = config_home() / 'starship.toml'
+        path = self.config()
         text = read_text(path)
-        text = re.sub(r'^palette\s*=.*$', 'palette = "jade"', text, count=1, flags=re.M)
-        if not re.search(r'^palette\s*=', text, re.M):
+        try:
+            data = tomllib.loads(BLOCK.sub('', text))
+        except tomllib.TOMLDecodeError:  # Starship can't read it either: not ours to fix
+            ctx.skipped[self.name] = "couldn't read its settings file, so it stays as it was"
+            return []
+        name, table = self.own_palette(data, text)
+        colors = {key: value for key, value in (table or {}).items() if isinstance(value, str)}
+        colors.update({key: theme.colors[value] for key, value in self.NAMES.items()})
+        lines = ['[palettes.jade]'] + ([self.COPY.format(json.dumps(name))] if table is not None else [])
+        lines += [f'{key if re.fullmatch(r"[A-Za-z0-9_-]+", key) else json.dumps(key)} = {json.dumps(value)}'
+                  for key, value in colors.items()]
+        if 'palette' in data:  # a top-level key comes before any table, so the first such line is it
+            text = re.sub(r'^palette\s*=.*$', 'palette = "jade"', text, count=1, flags=re.M)
+        else:
             text = 'palette = "jade"\n' + text
-        block = '[palettes.jade]\n' + '\n'.join(f'{k} = "{theme.colors[v]}"' for k, v in self.NAMES.items())
-        return [File(path, managed_block(text, block))]
+        text = managed_block(text, '\n'.join(lines))
+        try:
+            tomllib.loads(text)
+        except tomllib.TOMLDecodeError:  # a palette of their own called jade, or a layout ours can't join
+            ctx.skipped[self.name] = "kept your prompt's own colors"
+            return []
+        return [File(path, text)]
 
     def revert(self, path, text, old):
-        if path != config_home() / 'starship.toml':
+        if path != self.config():
             return None
         text = revert_block(text, old)
         if text is None:

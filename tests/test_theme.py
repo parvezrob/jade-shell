@@ -30,7 +30,16 @@ sys.path.insert(0, str(ROOT))
 
 from jade import __version__, cli, debug, engine, migrations, palette, restore_offer, setup, shelltheme, store, themes, update
 from jade.setup import DASH_TO_DOCK, REPLACED, UBUNTU_DOCK, UUID
-from jade.targets.apps import VSCode, jsonc, managed_block, restore_theme_names, revert_block, revert_line, set_theme_names
+from jade.targets.apps import (
+    Starship,
+    VSCode,
+    jsonc,
+    managed_block,
+    restore_theme_names,
+    revert_block,
+    revert_line,
+    set_theme_names,
+)
 from jade.targets.gnome import Gnome, nearest_accent
 
 needs_compiler = unittest.skipUnless(shelltheme.compiler_available(), 'sassc (or python libsass) is not installed')
@@ -197,6 +206,70 @@ class TargetedRevert(unittest.TestCase):
         now = set_theme_names(fresh, 'omarchy-nord')
         self.assertNotIn('theme', jsonc(restore_theme_names(now, fresh)))
         self.assertIsNone(restore_theme_names(set_theme_names(old, 'picked-in-vicinae'), old))
+
+
+class StarshipPalette(unittest.TestCase):
+    """The jade palette starts from the prompt's own, so no color goes missing."""
+    # As in Starship's gruvbox-rainbow preset: color names of its own palette.
+    GRUVBOX = ('"$schema" = \'https://starship.rs/config-schema.json\'\n\n'
+               'format = """[](color_orange)$os[](bg:color_yellow fg:color_orange)"""\n'
+               'palette = \'gruvbox_dark\'\n\n'
+               '[palettes.gruvbox_dark]\ncolor_fg0 = \'#fbf1c7\'\ncolor_orange = \'#d65d0e\'\n'
+               'color_yellow = \'#d79921\'\n"odd name" = \'#123456\'\n\n'
+               '[os]\nstyle = "bg:color_orange fg:color_fg0"\n')
+
+    def setUp(self):
+        self.path = Starship().config()
+        self.addCleanup(self.path.unlink, missing_ok=True)
+
+    def switch(self, text, theme_id='nord'):
+        self.path.write_text(text)
+        ctx = engine.Context(NoSettings())
+        changes = Starship().changes(themes.load(theme_id), ctx)
+        for change in changes:
+            change.path.write_text(change.content)
+        return self.path.read_text(), ctx
+
+    def test_a_palette_of_its_own_is_copied_with_every_name(self):
+        text, ctx = self.switch(self.GRUVBOX)
+        data = tomllib.loads(text)
+        self.assertEqual((data['palette'], ctx.skipped), ('jade', {}))
+        own, jade = data['palettes']['gruvbox_dark'], data['palettes']['jade']
+        self.assertEqual({key: jade[key] for key in own}, own)
+        self.assertEqual(jade['red'], themes.load('nord').colors['red'])
+        # Another theme later starts from the same palette, and undo gives back the original.
+        again, _ctx = self.switch(text, 'tokyo-night')
+        self.assertEqual({key: tomllib.loads(again)['palettes']['jade'][key] for key in own}, own)
+        self.assertEqual(Starship().revert(self.path, again, self.GRUVBOX), self.GRUVBOX)
+
+    def test_the_names_jade_knows_take_the_theme(self):
+        mocha = ('palette = "catppuccin_mocha"\n\n[palettes.catppuccin_mocha]\nred = "#f38ba8"\n'
+                 'surface0 = "#313244"\n\n[palettes.catppuccin_latte]\nred = "#d20f39"\nsurface0 = "#ccd0da"\n')
+        text, _ctx = self.switch(mocha)
+        jade = tomllib.loads(text)['palettes']['jade']
+        self.assertEqual((jade['red'], jade['surface0']), (themes.load('nord').colors['red'], '#313244'))
+        self.assertEqual(Starship().revert(self.path, text, mocha), mocha)
+
+    def test_a_prompt_switched_by_0_9_0_gets_its_colors_back(self):
+        broken = ('palette = "jade"\n' + self.GRUVBOX.replace("palette = 'gruvbox_dark'\n", '') +
+                  managed_block('', '[palettes.jade]\nred = "#bf616a"'))
+        text, _ctx = self.switch(broken)
+        self.assertEqual(tomllib.loads(text)['palettes']['jade']['color_orange'], '#d65d0e')
+
+    def test_a_prompt_without_a_palette_gets_the_names_jade_knows(self):
+        plain = 'add_newline = false\n\n[character]\nsuccess_symbol = "[>](bold green)"\n'
+        text, _ctx = self.switch(plain)
+        self.assertTrue(text.startswith('palette = "jade"\n'))
+        self.assertEqual(set(tomllib.loads(text)['palettes']['jade']), set(Starship.NAMES))
+        self.assertEqual(Starship().revert(self.path, text, plain), plain)
+
+    def test_a_jade_palette_of_their_own_or_a_broken_file_stays(self):
+        own = 'palette = "jade"\n\n[palettes.jade]\nred = "#ff0000"\n'
+        text, ctx = self.switch(own)
+        self.assertEqual((text, ctx.skipped), (own, {'starship': "kept your prompt's own colors"}))
+        text, ctx = self.switch('palette = \n')
+        self.assertEqual(text, 'palette = \n')
+        self.assertIn('starship', ctx.skipped)
 
 
 class NoSettings:
