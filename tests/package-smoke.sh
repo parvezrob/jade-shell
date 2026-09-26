@@ -85,4 +85,8 @@ case $ID in
     ubuntu) apt-get remove -y -qq jade-shell >/dev/null ;;
 esac
 test ! -e /usr/bin/jade && test ! -e /usr/share/jade-shell
+for folder in /usr/libexec/jade-shell /usr/share/doc/jade-shell /usr/share/licenses/jade-shell \
+    /usr/share/gnome-shell/extensions/jade-shell@parvezrob.github.io; do
+    test ! -e "$folder" || { echo "removal left $folder"; exit 1; }
+done
 echo 'PASS'

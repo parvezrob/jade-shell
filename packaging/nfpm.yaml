@@ -50,6 +50,17 @@ contents:
     packager: deb
   - src: THIRD_PARTY_LICENSES.md
     dst: /usr/share/doc/jade-shell/THIRD_PARTY_LICENSES.md
+  # rpm owns only the folders it is told to: without these, removal leaves
+  # them behind, empty (dpkg owns every folder it creates).
+  - dst: /usr/libexec/jade-shell
+    type: dir
+    packager: rpm
+  - dst: /usr/share/doc/jade-shell
+    type: dir
+    packager: rpm
+  - dst: /usr/share/licenses/jade-shell
+    type: dir
+    packager: rpm
 
 scripts:
   postinstall: packaging/postinstall.sh
@@ -64,6 +75,10 @@ deb:
 
 overrides:
   rpm:
+    # openjade, a documentation tool some developer tools pull in, also has a
+    # /usr/bin/jade: saying so up front lets dnf explain, not fail midway.
+    conflicts:
+      - openjade
     depends:
       - gnome-shell >= 50
       - python3 >= 3.11
