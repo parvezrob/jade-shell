@@ -875,6 +875,30 @@ missing_extras() {
     done
 }
 
+# The optional parts, offered once, before anything is installed (so the
+# rest runs without stopping to ask): only on a terminal, and only when one
+# of them is missing. Without a terminal (a script) they are left out; a run
+# again in a terminal offers them.
+want_extras=''
+offer_extras() {
+    local name size='about 14 MB'
+    local -a names=(tesseract-ocr zbar-tools python3-qrcode) missing=()
+    if [[ $kind == rpm ]]; then names=(tesseract zbar python3-qrcode) size='about 6 MB'; fi
+    for name in "${names[@]}"; do
+        if [[ $kind == rpm ]]; then
+            rpm -q --quiet "$name" 2>/dev/null || missing+=("$name")
+        elif [[ $(dpkg-query -W -f '${db:Status-Status}' "$name" 2>/dev/null) != installed ]]; then
+            missing+=("$name")
+        fi
+    done
+    ((${#missing[@]})) || return 0
+    (exec </dev/tty) 2>/dev/null || return 0
+    say ''
+    note "Optional: text and QR code reading lets you copy text from screenshots and share your Wi-Fi as a QR code ($size)."
+    if ask 'Add it too?' y; then want_extras=1; fi
+    say ''
+}
+
 # Text and QR code reading, after the desktop is ready: not worth failing
 # the install over (Jade Shell works without them, and says what's missing
 # when they're used). Those added are recorded, so removal takes them too.
@@ -1181,6 +1205,7 @@ if [[ $plan == setup ]]; then
     fi
     done_step
 else
+    offer_extras
     need_sudo 'to install it'
 
     if [[ -n $package ]]; then
@@ -1245,12 +1270,16 @@ done_step
 finish
 
 if [[ $plan == install ]]; then
-    add_extras "$tmp/jade-shell.$kind"
-elif [[ -n $(missing_extras installed) ]] && { sudo -n true 2>/dev/null || (exec </dev/tty) 2>/dev/null; }; then
-    # Added last time only if that worked: a run again adds what is missing.
-    desktop_done=1
-    need_sudo 'to add text and QR code reading'
-    add_extras installed
+    if [[ -n $want_extras ]]; then add_extras "$tmp/jade-shell.$kind"; fi
+elif [[ -n $(missing_extras installed) ]] && (exec </dev/tty) 2>/dev/null; then
+    # Declined, or not added last time: a run again offers them.
+    say ''
+    offer_extras
+    if [[ -n $want_extras ]]; then
+        desktop_done=1
+        need_sudo 'to add text and QR code reading'
+        add_extras installed
+    fi
 fi
 
 if ((${#finish_rows[@]})); then
