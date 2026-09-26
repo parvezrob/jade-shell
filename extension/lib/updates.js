@@ -26,7 +26,9 @@ let updating = false;
 //   offers to log out (the Shell loads extension code once per login);
 // - at the first login with a new version, it runs `jade setup
 //   --after-update` in the background (settings and migrations the new
-//   version needs, the theme rebuilt), then says so.
+//   version needs, the theme rebuilt), then says so;
+// - at the first login after setup, `jade setup --after-login` turns off the
+//   docks setup left on so that no one was without a dock until then.
 // - once a day (when turned on in the preferences) it asks the latest release
 //   for its version, and offers a newer one: "Update" runs `jade update`,
 //   which asks for the password in GNOME's own dialog.
@@ -71,14 +73,26 @@ export class Updates {
     async _finish() {
         if (finishStarted)
             return;
-        const setupFor = readJson(stateDir().get_child('setup.json'))?.version;
+        const setup = readJson(stateDir().get_child('setup.json'));
+        const setupFor = setup?.version;
         // Never set up (the installer's job), or set up by an older Jade Shell
         // that did not record its version and set things up the same way.
-        if (!setupFor || setupFor === this._version)
+        if (!setupFor)
             return;
         const jade = jadeCommand();
         if (!jade)
             return;
+        if (setupFor === this._version) {
+            // Set up before this login: the other docks were left on until
+            // Jade's could start (it steps aside while one runs). Now it can.
+            if (setup.after_login?.length) {
+                finishStarted = true;
+                const {ok, stdout, stderr} = await run([jade, 'setup', '--after-login']);
+                if (!ok)
+                    console.error(`Jade Shell: turning off the other dock failed: ${stdout}${stderr}`);
+            }
+            return;
+        }
         finishStarted = true;
         const {ok, stdout, stderr} = await run([jade, 'setup', '--after-update']);
         const log = writeLog(`${stdout}${stderr}`);

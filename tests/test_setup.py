@@ -239,6 +239,23 @@ class SetupPreviews(unittest.TestCase):
         popen.assert_not_called()
 
 
+class AfterLogin(unittest.TestCase):
+    def test_only_a_package_finishes_setup_at_login(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        home, system = pathlib.Path(tmp.name) / 'data', pathlib.Path(tmp.name) / 'system'
+        with mock.patch.dict(os.environ, XDG_DATA_HOME=str(home)), \
+                mock.patch.object(setup, 'SYSTEM_EXTENSIONS', system):
+            self.assertFalse(setup.finishes_at_login())
+            (system / setup.UUID).mkdir(parents=True)
+            (system / setup.UUID / 'metadata.json').write_text('{"version-name": "0.9.1"}')
+            self.assertTrue(setup.finishes_at_login())
+            # A checkout in the home folder comes first, and has no version.
+            (home / 'gnome-shell/extensions' / setup.UUID).mkdir(parents=True)
+            (home / 'gnome-shell/extensions' / setup.UUID / 'metadata.json').write_text('{}')
+            self.assertFalse(setup.finishes_at_login())
+
+
 class Stopping(unittest.TestCase):
     """Ctrl-C, TERM and a full disk end in a sentence, not a Python traceback."""
 

@@ -530,7 +530,7 @@ def setup(ctx, theme_id=None, after_update=False):
     finally:
         report.write(login_needed=report.login_needed, welcome=report.welcome, shortcut=report.shortcut,
                      turned_off=report.turned_off)
-    if report.login_needed:
+    if status == 0 and report.login_needed and not after_update:
         offer_logout()
     return status
 
@@ -556,9 +556,22 @@ def set_up_desktop(ctx, report, theme_id, after_update):
     # whether the extension finishes it at login or the installer is run
     # again. Only ones a new version learned about are turned off.
     updating = after_update or (not fresh and manifest.get('version') != __version__)
-    keep = set(manifest.get('replaced', REPLACED)) if updating else ()
+    # Docks left on until Jade Shell's own could start (see below) are not
+    # the owner's choice: they go now.
+    pending = set(manifest.pop('after_login', []))
+    keep = (set(manifest.get('replaced', REPLACED)) if updating else set()) - pending
     out_of_the_way = replaced(ctx)
     running_before = {uuid for uuid in out_of_the_way if running_extension(ctx, uuid)}
+    # Jade Shell's dock starts only once GNOME Shell loads the extension, at
+    # the next login: turning the other dock off now would leave no dock at
+    # all until then. It stays on (Jade's dock steps aside while it runs),
+    # and the extension has it turned off when it starts (`after_login`).
+    report.login_needed = needs_login(UUID)
+    later = {uuid for uuid in DOCKS if uuid in running_before and uuid not in keep} \
+        if report.login_needed and not after_update and finishes_at_login() else set()
+    if later:
+        manifest['after_login'] = sorted(later)
+    keep |= later
     planned = planned_settings(ctx, keep)
     if 'defaulted' not in manifest:
         # Set up by an older version, which has already applied these once.
@@ -570,10 +583,14 @@ def set_up_desktop(ctx, report, theme_id, after_update):
     manifest['defaulted'] += [[c.schema, c.path, c.key] for c in changes if c.schema in PREFERENCE_SCHEMAS and sticks(c)]
     write_text(manifest_path(), json.dumps(manifest, indent=2))
     ctx.settings.write(changes)
-    off = [out_of_the_way[uuid] for uuid in sorted(running_before - set(keep))]
+    off = [out_of_the_way[uuid] for uuid in sorted(running_before - keep)]
     if off:
         report.turned_off = [name for name, _why in off]
         report.note(turned_off(off))
+    if later:
+        docks = [DOCKS[uuid][0] for uuid in sorted(later)]
+        report.note(f'{join(docks)} {"stays" if len(docks) == 1 else "stay"} until you log out; '
+                    f"then Jade Shell's dock takes {'its' if len(docks) == 1 else 'their'} place.")
 
     grant_flatpak(manifest)
     write_text(manifest_path(), json.dumps(manifest, indent=2))
@@ -689,13 +706,45 @@ def set_up_desktop(ctx, report, theme_id, after_update):
         return 0
     report.shortcut = picker_shortcut(ctx)
     say(f'Change theme with {report.shortcut or "the palette icon in the top bar"}. Undo everything with: jade restore')
-    report.login_needed = needs_login(UUID)
     if report.login_needed:
         report.welcome = not welcomed()
         say(f'Done. Log out and back in to start {"the new version" if updating else "Jade Shell"}.'
             + (' A welcome window then helps you pick your look.' if report.welcome else ''))
     else:
         say('Done.')
+    return 0
+
+
+def finishes_at_login():
+    """Whether the installed extension finishes setup at login: packages
+    stamp their version into it, and only then does it run `jade setup
+    --after-login` (a checkout is left alone)."""
+    for base in (data_home() / 'gnome-shell/extensions', SYSTEM_EXTENSIONS):  # GNOME prefers the home copy
+        try:
+            return bool(json.loads((base / UUID / 'metadata.json').read_text()).get('version-name'))
+        except (OSError, ValueError, AttributeError):
+            continue
+    return False
+
+
+def after_login(ctx):
+    """Turn off the docks setup left on until Jade Shell's own dock could
+    start: run by the extension when it starts, at the first login after
+    setup. Recorded like setup's other changes, so restore turns them on again."""
+    if not manifest_path().exists():
+        return 0  # restored since
+    manifest = load_manifest()
+    later = set(manifest.pop('after_login', []))
+    # Only these: anything else was left as it is on purpose.
+    keep = set(replaced(ctx)) - later
+    off = [DOCKS[uuid] for uuid in sorted(later) if uuid in replaced(ctx) and running_extension(ctx, uuid)]
+    changes = [c for c in planned_settings(ctx, keep)
+               if c.schema == SHELL and c.key in ('enabled-extensions', 'disabled-extensions')]
+    record(ctx, manifest, changes)
+    write_text(manifest_path(), json.dumps(manifest, indent=2))
+    ctx.settings.write(changes)
+    if off:
+        say(turned_off(off))
     return 0
 
 
@@ -951,7 +1000,8 @@ def diagnose(ctx):
         check(set_for == __version__, f'Set up for this version of Jade Shell ({set_for})',
               'Run: jade setup (the extension also does it at your next login)')
     out_of_the_way = replaced(ctx)
-    clashing = [uuid for uuid in out_of_the_way if running_extension(ctx, uuid)]
+    later = load_manifest().get('after_login', [])  # turned off once Jade Shell's dock starts
+    clashing = [uuid for uuid in out_of_the_way if running_extension(ctx, uuid) and uuid not in later]
     check(not clashing, 'No extensions doing the same job or taking over the top bar',
           f'Run: jade setup (turns off {", ".join(out_of_the_way[uuid][0] for uuid in clashing)})')
     paths, units = leftovers()

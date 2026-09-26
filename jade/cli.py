@@ -559,6 +559,8 @@ def usage_collect(args, ctx):
 # ------------------------------------------------------------------ desktop
 
 def run_setup(args, ctx):
+    if args.after_login:
+        return setup.after_login(ctx)
     return setup.setup(ctx, theme_id=args.theme, after_update=args.after_update)
 
 
@@ -681,6 +683,7 @@ def parser():
                                           'top bar choices)')
     p.add_argument('--theme', choices=themes.ids(), help='theme to apply (default: keep the current one, or Osaka Jade)')
     p.add_argument('--after-update', action='store_true', help=argparse.SUPPRESS)  # run by the extension at login
+    p.add_argument('--after-login', action='store_true', help=argparse.SUPPRESS)  # the same, once it has started
     p = commands.add_parser('settings', help='open the Jade Shell app, its settings')
     p.add_argument('page', nargs='?', choices=SETTINGS_PAGES, help='the page to open')
     commands.add_parser('doctor', help='check that everything Jade Shell needs is in place').add_argument(

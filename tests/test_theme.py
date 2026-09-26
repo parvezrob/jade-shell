@@ -1803,6 +1803,70 @@ elif 'show' in args and 'connection' in args:
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), "['old@me']")
 
     @needs_compiler
+    def test_the_other_dock_stays_until_jades_can_start(self):
+        extensions = self.home / '.local/share/gnome-shell/extensions'
+        for uuid in (DASH_TO_DOCK, UBUNTU_DOCK):
+            (extensions / uuid).mkdir(parents=True)
+            (extensions / uuid / 'metadata.json').write_text('{}')
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{DASH_TO_DOCK}', 'Vitals@CoreCoding.com']")
+        self.gsettings('set', 'org.gnome.shell', 'disabled-extensions', "['old@me']")
+        # As on a desktop: GNOME Shell has yet to load Jade Shell (a login away), and the package's
+        # extension finishes setup when it starts.
+        script = ('import sys\nfrom unittest import mock\nfrom jade import cli, setup\n'
+                  'mock.patch.object(setup, "needs_login", return_value=True).start()\n'
+                  'mock.patch.object(setup, "finishes_at_login", return_value=True).start()\n'
+                  'sys.exit(cli.main(sys.argv[1:]))\n')
+        result = subprocess.run([sys.executable, '-c', script, 'setup'], env={**self.env, 'XDG_CURRENT_DESKTOP': ''},
+                                capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Dash to Dock and Ubuntu Dock stay until you log out; then Jade Shell's dock takes their place.",
+                      result.stdout)
+        self.assertIn('Turned off Vitals', result.stdout)  # the rest goes at once, as before
+        self.assertIn('Done. Log out and back in to start Jade Shell.', result.stdout)
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'), f"['{DASH_TO_DOCK}', '{UUID}']")
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), "['old@me']")
+        self.assertEqual(self.manifest()['after_login'], sorted([DASH_TO_DOCK, UBUNTU_DOCK]))
+        self.assertIn('✓ No extensions doing the same job', self.run_jade('doctor').stdout)
+        # An update finished at that login does the same.
+        manifest = self.manifest()
+        (self.home / '.local/state/jade-shell/setup.json').write_text(json.dumps({**manifest, 'version': '0.1.0'}))
+        self.assertIn('Turned off Dash to Dock and Ubuntu Dock', self.jade('setup', '--after-update'))
+        self.assertNotIn('after_login', self.manifest())
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{DASH_TO_DOCK}', '{UUID}']")
+        self.gsettings('set', 'org.gnome.shell', 'disabled-extensions', "['old@me']")
+        (self.home / '.local/state/jade-shell/setup.json').write_text(json.dumps(manifest))
+
+        # The first login: the extension starts, and has them turned off.
+        self.assertIn('Turned off Dash to Dock and Ubuntu Dock, since Jade Shell has its own dock.',
+                      self.jade('setup', '--after-login'))
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'), f"['{UUID}']")
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'),
+                         f"['old@me', '{DASH_TO_DOCK}', '{UBUNTU_DOCK}']")
+        self.assertNotIn('after_login', self.manifest())
+        self.assertEqual(self.jade('setup', '--after-login'), '')  # once
+        self.jade('restore', '--yes')
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'),
+                         f"['{DASH_TO_DOCK}', 'Vitals@CoreCoding.com']")
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), "['old@me']")
+
+    @needs_compiler
+    def test_restore_before_logging_in_leaves_the_dock_on(self):
+        extensions = self.home / '.local/share/gnome-shell/extensions'
+        (extensions / UBUNTU_DOCK).mkdir(parents=True)
+        (extensions / UBUNTU_DOCK / 'metadata.json').write_text('{}')
+        before = self.keyfile().get('org/gnome/shell', {})
+        script = ('import sys\nfrom unittest import mock\nfrom jade import cli, setup\n'
+                  'mock.patch.object(setup, "needs_login", return_value=True).start()\n'
+                  'mock.patch.object(setup, "finishes_at_login", return_value=True).start()\n'
+                  'sys.exit(cli.main(sys.argv[1:]))\n')
+        subprocess.run([sys.executable, '-c', script, 'setup'], env={**self.env, 'XDG_CURRENT_DESKTOP': ''},
+                       capture_output=True, text=True, cwd=ROOT, check=True)
+        self.jade('restore', '--yes')
+        self.assertEqual(self.keyfile().get('org/gnome/shell', {}), before)
+        self.assertEqual(self.jade('setup', '--after-login'), '')  # nothing left for the next login to do
+        self.assertNotIn(UBUNTU_DOCK, self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'))
+
+    @needs_compiler
     def test_with_the_jade_dock_off_setup_leaves_other_docks_alone(self):
         extensions = self.home / '.local/share/gnome-shell/extensions'
         (extensions / DASH_TO_DOCK).mkdir(parents=True)
