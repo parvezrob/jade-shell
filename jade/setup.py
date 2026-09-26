@@ -646,7 +646,8 @@ def set_up_desktop(ctx, report, theme_id, after_update):
               and not change.path.is_relative_to(engine.state_dir())
               and not change.path.is_relative_to(icons.icons_home())]
     if edited:
-        apps = join(list(dict.fromkeys(re.sub(r'^(the|your) ', '', part_name(t.name)) for t in edited)))
+        # By the app's title: "GNOME apps" for a gtk.css of one's own, not "apps".
+        apps = join(list(dict.fromkeys(re.sub(r'^(the|your) ', '', t.title) for t in edited)))
         report.note(f'Your {apps} settings now follow the theme too. Your own settings stay, and a copy of each '
                     "was saved. To keep an app out of it, turn it off under Apps in Jade Shell's settings.")
     # JetBrains Mono (installed with the package) as the monospace font of

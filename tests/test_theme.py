@@ -1166,6 +1166,13 @@ class Sandbox(unittest.TestCase):
         self.assertIn('solitude', self.jade('theme', 'current'))
 
     @needs_compiler
+    def test_a_gtk_css_of_ones_own_is_named_by_its_apps(self):
+        css = self.home / '.config/gtk-4.0/gtk.css'
+        css.parent.mkdir(parents=True)
+        css.write_text('window { border-radius: 0; }\n')
+        self.assertIn('Your GNOME apps, Kitty, Ghostty', self.jade('setup'))
+
+    @needs_compiler
     def test_an_app_left_alone_gets_its_config_back_and_stays_untouched(self):
         kitty = self.home / '.config/kitty/kitty.conf'
         starship = self.home / '.config/starship.toml'
