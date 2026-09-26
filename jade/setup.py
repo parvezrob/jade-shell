@@ -790,20 +790,14 @@ def wait_for_installer(limit=20 * 60):
     holds install.lock until it ends): after setup it downloads more (the text
     and QR code reading extras), and on a slow line the previews' four
     downloads would take most of it. Never longer than `limit` seconds."""
-    try:
-        lock = open(engine.state_dir() / 'install.lock', 'rb')
-    except OSError:
-        return  # no installer ran here
-    with lock:
-        deadline = time.monotonic() + limit
+    deadline = time.monotonic() + limit
+    with contextlib.suppress(OSError), open(engine.state_dir() / 'install.lock', 'rb') as lock:  # none: no installer
         while time.monotonic() < deadline:
             try:
                 fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
                 return
             except BlockingIOError:
                 time.sleep(2)
-            except OSError:
-                return
 
 
 def picker_shortcut(ctx):
