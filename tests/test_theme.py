@@ -1870,6 +1870,11 @@ elif 'show' in args and 'connection' in args:
                          f"['old@me', '{DASH_TO_DOCK}', '{UBUNTU_DOCK}']")
         self.assertNotIn('after_login', self.manifest())
         self.assertEqual(self.jade('setup', '--after-login'), '')  # once
+        # Run again later, it leaves the extensions as they are by then (Jade Shell turned off, say).
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', "['other@me']")
+        self.jade('setup', '--after-login')
+        self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'), "['other@me']")
+        self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{UUID}']")
         self.jade('restore', '--yes')
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'),
                          f"['{DASH_TO_DOCK}', 'Vitals@CoreCoding.com']")

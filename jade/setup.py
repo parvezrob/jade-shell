@@ -741,6 +741,8 @@ def after_login(ctx):
         return 0  # restored since
     manifest = load_manifest()
     later = set(manifest.pop('after_login', []))
+    if not later:
+        return 0  # done already: the extension list is left as the person has it now
     # Only these: anything else was left as it is on purpose.
     keep = set(replaced(ctx)) - later
     off = [DOCKS[uuid] for uuid in sorted(later) if uuid in replaced(ctx) and running_extension(ctx, uuid)]
