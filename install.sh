@@ -80,6 +80,18 @@ fail() {
         say "    ${tail//$'\n'/$'\n'    }"
         say ''
     fi
+    # What a desktop in daily use can already have going on.
+    case $tail in
+        *'dpkg was interrupted'*)
+            say "An earlier install on this computer was interrupted. Finish it first with:
+    sudo dpkg --configure -a" ;;
+        *'Unmet dependencies'* | *'held broken packages'* | *'fix-broken'*)
+            say "Some packages on this computer were left half-installed before Jade Shell. Repair them first with:
+    sudo apt --fix-broken install" ;;
+        *'Could not get lock'* | *'Waiting for a lock'*)
+            say 'Another program is still installing updates (GNOME Software or automatic updates). Let it finish, or restart the computer.' ;;
+        *) false ;;
+    esac && say ''
     say "${step_name} did not finish. The full log is in $LOG"
     say 'Running the installer again is safe: it picks up where this one stopped.'
     if command -v jade >/dev/null; then
@@ -88,6 +100,18 @@ fail() {
         say "Still stuck? Open an issue with the log: $ISSUES"
     fi
     exit 1
+}
+
+# On a desktop in use, GNOME Software (packagekitd) or automatic updates may be
+# installing something: apt and dnf wait for them, and the spinner says so.
+waiting_for() {
+    local last
+    last=$(tail -n 6 "$LOG" 2>/dev/null) || return 0
+    if [[ $last =~ Could\ not\ get\ lock.*held\ by\ process\ [0-9]+\ \(([^\)]+)\) ]]; then
+        printf 'waiting for %s to finish its updates' "${BASH_REMATCH[1]}"
+    elif [[ $last == *'Could not get lock'* || $last == *'Waiting for a lock'* || $last == *'currently accessing it'* ]]; then
+        printf 'waiting for another update to finish'
+    fi
 }
 
 # Run a command for the current step: output into the log (and on screen with
@@ -102,11 +126,13 @@ run() {
         # asked for, and fails rather than waits if that has run out.
         if [[ $1 == sudo ]]; then set -- sudo -n "${@:2}"; fi
         "$@" >>"$LOG" 2>&1 &
-        local pid=$! frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 took
+        local pid=$! frames='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏' i=0 took note=''
         while kill -0 "$pid" 2>/dev/null; do
             took=$((SECONDS - step_start))
-            printf '\0337%s%s %s%s\0338' "$dim" "${frames:i++ % 10:1}" \
-                "$( ((took >= 60)) && printf '%dm %02ds' $((took / 60)) $((took % 60)) || printf '%ds' "$took")" "$plain"
+            if ((i % 10 == 0)); then note=$(waiting_for); fi
+            printf '\0337%s%s %s%s%s\033[K\0338' "$dim" "${frames:i++ % 10:1}" \
+                "$( ((took >= 60)) && printf '%dm %02ds' $((took / 60)) $((took % 60)) || printf '%ds' "$took")" \
+                "${note:+ · $note}" "$plain"
             sleep 0.1
         done
         printf '\033[K'
@@ -166,16 +192,29 @@ package_install() {
         if [[ ${2:-} == reinstall ]]; then run sudo dnf reinstall -y "$1"; else run sudo dnf install -y "$1"; fi
         return
     fi
-    # A fresh or offline-installed system may have no package lists yet, and
-    # the package pulls in sassc and fonts-jetbrains-mono. An unrelated broken
-    # source or a busy apt lock fails this too, so only the install decides.
-    # (The log is the user's; sudo only runs apt-get.)
-    # shellcheck disable=SC2024
-    sudo env DEBIAN_FRONTEND=noninteractive apt-get update >>"$LOG" 2>&1 \
-        || log 'apt-get update reported problems; trying the install anyway.'
+    # Old or missing package lists would fail sassc and fonts-jetbrains-mono,
+    # which the package pulls in. An unrelated broken source fails this too,
+    # so only the install decides.
+    run apt_update
     # needrestart (Ubuntu) would print its report for every install.
     run sudo env DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
-        apt-get install -y ${2:+--reinstall} "$1"
+        apt-get "${APT_WAIT[@]}" install -y ${2:+--reinstall} "$1"
+}
+
+# apt gives up at once when another program holds its lock (GNOME Software's
+# packagekitd, unattended-upgrades): wait for it instead. The lists lock of
+# `apt-get update` ignores the timeout, so that one is retried.
+APT_WAIT=(-o DPkg::Lock::Timeout=1200)
+apt_update() {
+    local tries=0
+    until sudo -n env DEBIAN_FRONTEND=noninteractive apt-get update; do
+        if [[ $(tail -n 3 "$LOG") == *'Could not get lock'* ]] && ((tries++ < 60)); then
+            sleep 5
+            continue
+        fi
+        echo 'apt-get update reported problems; trying the install anyway.'
+        return 0
+    done
 }
 
 # dnf also removes the dependencies nothing else needs. apt only suggests
@@ -186,11 +225,11 @@ package_remove() {
         run sudo dnf remove -y jade-shell
         return
     fi
-    run sudo env DEBIAN_FRONTEND=noninteractive apt-get remove -y jade-shell
+    run sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_WAIT[@]}" remove -y jade-shell
     local -a unneeded
     mapfile -t unneeded < <(apt-get -s autoremove 2>/dev/null \
         | awk '$1 == "Remv" && ($2 == "sassc" || $2 ~ /^libsass[0-9]/ || $2 == "fonts-jetbrains-mono") { print $2 }')
-    if (( ${#unneeded[@]} )); then run sudo env DEBIAN_FRONTEND=noninteractive apt-get remove -y "${unneeded[@]}"; fi
+    if (( ${#unneeded[@]} )); then run sudo env DEBIAN_FRONTEND=noninteractive apt-get "${APT_WAIT[@]}" remove -y "${unneeded[@]}"; fi
 }
 
 # Copies in your home folder, from the installer before the packages or from
@@ -301,7 +340,7 @@ if [[ $kind == deb ]] && ! grep -rqsE '^(Components:.*\buniverse\b|deb .*\bunive
 fi
 free_mb=$(df -Pm /usr | awk 'NR == 2 { print $4 }')
 ((free_mb >= 200)) || fail "Jade Shell and what it needs take about 50 MB, and the package manager needs room to work; only ${free_mb} MB is free on /usr."
-if [[ -z $package ]] && ! curl -fsI --max-time 15 "$RELEASE/SHA256SUMS" >>"$LOG" 2>&1; then
+if [[ -z $package ]] && ! curl -fsI -o /dev/null --max-time 15 "$RELEASE/SHA256SUMS" 2>>"$LOG"; then
     fail "Could not reach the Jade Shell release ($RELEASE). Check your internet connection, then run this again."
 fi
 done_step
