@@ -469,18 +469,23 @@ class Update(unittest.TestCase):
 
     def test_a_garbled_or_missing_release_is_a_sentence(self):
         (self.release / 'VERSION').write_text('<html>')
-        with self.assertRaisesRegex(update.UpdateError, 'no usable version'):
+        with self.assertRaisesRegex(update.UpdateError, "can't be read right now"):
             update.latest()
         (self.release / 'VERSION').unlink()
-        with self.assertRaisesRegex(update.UpdateError, 'Could not reach'):
+        with self.assertRaisesRegex(update.UpdateError, "Couldn't reach GitHub"):
             update.latest()
         self.assertFalse(update.cache_path().exists())  # the extension asks again later
 
     def test_only_a_package_matching_the_checksum_is_kept(self):
         path = update.verified_download('rpm', str(self.dir))
         self.assertEqual(pathlib.Path(path).read_bytes(), b'package')
-        with self.assertRaisesRegex(update.UpdateError, 'does not match'):
+        with self.assertRaisesRegex(update.UpdateError, 'arrived damaged'):
             update.verified_download('deb', str(self.dir))
+
+    def test_one_release_for_all_its_files(self):
+        with mock.patch.object(update, 'RELEASE', 'https://github.com/o/r/releases/latest/download'):
+            self.assertEqual(update.pinned('0.9.1'), 'https://github.com/o/r/releases/download/v0.9.1')
+        self.assertEqual(update.pinned('0.9.1'), self.release.as_uri())  # a mirror has one release
 
     def test_check_as_json(self):
         with mock.patch.object(update, 'installed_kind', return_value='deb'), \
@@ -488,6 +493,87 @@ class Update(unittest.TestCase):
             self.assertEqual(update.update(as_json=True), 0)
         self.assertEqual(json.loads(out.getvalue()),
                          {'current': __version__, 'latest': '10.2.0', 'available': True, 'package': 'deb'})
+
+    def test_a_dropped_download_continues_where_it_stopped(self):
+        data = bytes(range(256)) * 1000
+        asked = []
+
+        class Response(io.BytesIO):
+            def __init__(self, body, status, length):
+                super().__init__(body)
+                self.status, self.headers = status, {'Content-Length': str(length)}
+
+            def read(self, size=-1):
+                chunk = super().read(size)
+                if not chunk and self.tell() < int(self.headers['Content-Length']):
+                    raise ConnectionResetError('dropped')
+                return chunk
+
+        def urlopen(req, timeout):
+            start = int(req.get_header('Range', 'bytes=0-')[6:-1])
+            asked.append(start)
+            if start == 0:  # the first try stops a third of the way
+                return Response(data[:len(data) // 3], 200, len(data))
+            return Response(data[start:], 206, len(data) - start)
+
+        target = self.dir / 'file'
+        seen = []
+        with mock.patch('urllib.request.urlopen', urlopen), mock.patch('time.sleep'):
+            update.download('https://example.org/file', target, lambda done, total: seen.append((done, total)))
+        self.assertEqual(target.read_bytes(), data)
+        self.assertEqual(asked, [0, len(data) // 3])
+        self.assertEqual(seen[-1], (len(data), len(data)))
+
+    def test_a_download_that_keeps_dropping_says_so(self):
+        with mock.patch('urllib.request.urlopen', side_effect=TimeoutError('timed out')), \
+                mock.patch('time.sleep'), \
+                self.assertRaisesRegex(update.UpdateError, 'connection dropped'):
+            update.download('https://example.org/file', self.dir / 'file')
+
+    def test_failures_in_plain_words(self):
+        lock = ('Waiting for cache lock: Could not get lock /var/lib/dpkg/lock-frontend. '
+                'It is held by process 87 (python3)...\n' * 3
+                + 'E: Unable to acquire the dpkg frontend lock (/var/lib/dpkg/lock-frontend), '
+                'is another process using it?\n')
+        self.assertEqual(update.explain('deb', lock, '0.9.1'),
+                         'Your computer is installing other updates. Try again when they finish.')
+        waited = lock.replace('E: Unable', 'Ignore: Unable') + (
+            ' jade-shell : Depends: hello but it is not installable\nE: Unable to satisfy dependencies.\n')
+        self.assertIn('needs other software', update.explain('deb', waited, '0.9.1'))
+        self.assertIn('disk is full', update.explain('rpm', 'OSError: [Errno 28] No space left on device', '0.9.1'))
+        self.assertEqual(update.explain('rpm', 'Transaction failed', '0.9.1'),
+                         "Fedora's software installer couldn't install Jade Shell 0.9.1.")
+
+    def run_update(self, helper_script):
+        helper = self.dir / 'install-update'
+        helper.write_text('#!/bin/sh\n' + helper_script)
+        helper.chmod(0o755)
+        with mock.patch.object(update, 'installed_kind', return_value='rpm'), \
+                mock.patch.object(update, 'HELPER', str(helper)), \
+                mock.patch.object(update, 'install_command', lambda path, elevate: [str(helper), path]), \
+                mock.patch('sys.stdin', io.StringIO()), \
+                mock.patch('sys.stdout', new_callable=io.StringIO) as out:
+            code = update.update()
+        return code, out.getvalue(), update.log_path().read_text()
+
+    def test_update_shows_steps_and_keeps_the_package_manager_in_the_log(self):
+        code, out, log = self.run_update(
+            'echo "Waiting for a lock on the system repository."; echo "Installing: jade-shell"; exit 0\n')
+        self.assertEqual(code, 0)
+        self.assertEqual(out.splitlines(), [
+            'Downloading Jade Shell 10.2.0…', 'Installing Jade Shell 10.2.0…', update.WAITING,
+            'Installed Jade Shell 10.2.0. Log out and back in to start the new version.'])
+        self.assertIn('Installing: jade-shell', log)
+
+    def test_a_failed_install_says_why_without_exit_codes(self):
+        code, out, log = self.run_update(
+            'echo "E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 9 (apt)"; exit 100\n')
+        self.assertEqual(code, 1)
+        self.assertEqual(out.splitlines()[-1], 'Your computer is installing other updates. Try again when they finish.')
+        self.assertNotIn('exit', out)
+        self.assertIn('Could not get lock', log)
+        code, out, _ = self.run_update('exit 126\n')  # the password window closed
+        self.assertEqual((code, out.splitlines()[-1]), (2, 'Not updated: the password window was closed.'))
 
 
 class RestoreKit(unittest.TestCase):
