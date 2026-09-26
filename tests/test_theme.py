@@ -20,6 +20,7 @@ import tempfile
 import time
 import tomllib
 import unittest
+import urllib.error
 from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -523,6 +524,16 @@ class Update(unittest.TestCase):
         self.assertEqual(target.read_bytes(), data)
         self.assertEqual(asked, [0, len(data) // 3])
         self.assertEqual(seen[-1], (len(data), len(data)))
+
+    def test_a_release_without_the_file_is_not_a_connection_problem(self):
+        missing = urllib.error.HTTPError('https://example.org/VERSION', 404, 'Not Found', {}, io.BytesIO())
+        self.addCleanup(missing.close)
+        with mock.patch('urllib.request.urlopen', side_effect=missing), \
+                self.assertRaisesRegex(update.UpdateError, "can't be read right now"):
+            update.latest()
+        with mock.patch('urllib.request.urlopen', side_effect=missing), \
+                self.assertRaisesRegex(update.UpdateError, "can't be read right now"):
+            update.download('https://example.org/jade-shell.deb', self.dir / 'file')
 
     def test_a_download_that_keeps_dropping_says_so(self):
         with mock.patch('urllib.request.urlopen', side_effect=TimeoutError('timed out')), \

@@ -77,10 +77,20 @@ def unreachable(error):
                        'Check your internet connection, then try again.')
 
 
+def unreadable(error=None):
+    """GitHub answered, but not with the file (a release still being
+    published, one without it): the connection is not the problem."""
+    if error:
+        note(f'({error})')
+    return UpdateError("The Jade Shell release can't be read right now. Try again later.")
+
+
 def fetch(name, timeout=20, base=None):
     try:
         with urllib.request.urlopen(request(f'{base or RELEASE}/{name}'), timeout=timeout) as response:
             return response.read()
+    except urllib.error.HTTPError as error:
+        raise (unreachable(error) if error.code >= 500 else unreadable(error)) from error
     except (urllib.error.URLError, OSError, ValueError, http.client.HTTPException) as error:
         raise unreachable(error) from error
 
@@ -98,7 +108,7 @@ def latest():
     text = fetch('VERSION', timeout=10).decode(errors='replace').strip()
     if not VERSION_RE.fullmatch(text):
         note(f'VERSION: {text[:40]!r}')
-        raise UpdateError("The Jade Shell release can't be read right now. Try again later.")
+        raise unreadable()
     return text
 
 
@@ -156,7 +166,7 @@ def download(url, path, progress=None, attempts=5):
             note(f'The download stopped at {done} of {total} bytes; continuing.')
         except urllib.error.HTTPError as error:
             if error.code < 500 and error.code not in (408, 429):  # not there: trying again won't help
-                raise unreachable(error) from error
+                raise unreadable(error) from error
             note(f'{url}: {error}; trying again.')
         except (urllib.error.URLError, OSError, http.client.HTTPException) as error:
             if isinstance(error, urllib.error.URLError) and not done and attempt == attempts - 1:
@@ -173,7 +183,7 @@ def verified_download(kind, directory, version=None, progress=None):
     wanted = next((line.split()[0] for line in sums.splitlines() if line.split()[1:] == [name]), None)
     if not wanted:
         note(f'SHA256SUMS has no line for {name}.')
-        raise UpdateError("The Jade Shell release can't be read right now. Try again later.")
+        raise unreadable()
     path = os.path.join(directory, name)
     download(f'{base}/{name}', path, progress)
     digest = hashlib.sha256()
