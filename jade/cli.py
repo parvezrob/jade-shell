@@ -219,12 +219,27 @@ def theme_thumbs(args, ctx):
 
     if args.after_setup:
         setup.wait_for_installer()
+    # The next download starts only once one has ended, from here: nothing is
+    # queued ahead, so after Ctrl-C or a stop no new one starts.
+    queue = iter([theme for theme in wanted if not here(theme)])
     with concurrent.futures.ThreadPoolExecutor(4) as pool:
-        downloads = {pool.submit(fetch, theme): theme for theme in wanted if not here(theme)}
+        running = {}
+
+        def start():
+            theme = next(queue, None)
+            if theme is not None and not failed:
+                running[pool.submit(fetch, theme)] = theme
+
+        for _ in range(4):
+            start()
         try:
-            for done in concurrent.futures.as_completed(downloads):
-                if done.result():
-                    make(downloads[done])
+            while running:
+                finished, _ = concurrent.futures.wait(running, return_when=concurrent.futures.FIRST_COMPLETED)
+                for done in finished:
+                    theme = running.pop(done)
+                    if done.result():
+                        make(theme)
+                    start()
         except BaseException:  # Ctrl-C or a stop: the downloads under way end, no new ones start
             pool.shutdown(wait=False, cancel_futures=True)
             raise
