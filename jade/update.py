@@ -233,9 +233,10 @@ def explain(kind, output, version):
     return f"{system} software installer couldn't install Jade Shell {version}."
 
 
-def run_helper(command, show):
+def run_helper(command, show, installing):
     """Run install-update, its output into update.log, and say when it waits
-    for other updates. Returns its exit status and output."""
+    for other updates (and when it goes on). Returns its exit status and
+    output."""
     output = []
     waiting = False
     with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as proc:
@@ -243,9 +244,9 @@ def run_helper(command, show):
             line = raw.decode(errors='replace')
             output.append(line)
             note(line)
-            if not waiting and any(wait in line for wait in LOCK_WAIT):
-                waiting = True
-                show(WAITING)
+            if any(wait in line for wait in LOCK_WAIT) != waiting:
+                waiting = not waiting
+                show(WAITING if waiting else installing)
     return proc.returncode, ''.join(output)
 
 
@@ -371,8 +372,10 @@ def install_latest():
         if terminal and not authorize():
             say("Nothing was changed: installing the update needs an administrator's password.")
             return 1
-        status.show(f'{INSTALLING} {newest}…')
-        returncode, output = run_helper(install_command(path, 'sudo' if terminal else 'pkexec'), status.show)
+        installing = f'{INSTALLING} {newest}…'
+        status.show(installing)
+        returncode, output = run_helper(install_command(path, 'sudo' if terminal else 'pkexec'), status.show,
+                                        installing)
         status.end()
     note(f'install-update: exit {returncode}')
     if returncode in (126, 127) and not terminal:  # pkexec: dialog dismissed, or not allowed

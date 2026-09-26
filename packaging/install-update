@@ -36,14 +36,16 @@ apt_update() {
             printf '%s\n' "$out"
             return 0
         fi
-        printf '%s\n' "$out"
         case $out in
+            # Only this line while waiting: `jade update` shows it waits
+            # until something else is printed.
             *'Could not get lock'*)
                 tries=$((tries + 1))
-                [ $tries -lt 240 ] || return 0
+                [ $tries -lt 240 ] || { printf '%s\n' "$out"; return 0; }
                 echo 'Waiting for cache lock: another program is updating the package lists.'
                 sleep 5 ;;
-            *) echo 'apt-get update reported problems; trying the install anyway.'; return 0 ;;
+            *) printf '%s\n' "$out"
+               echo 'apt-get update reported problems; trying the install anyway.'; return 0 ;;
         esac
     done
 }

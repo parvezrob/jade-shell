@@ -585,6 +585,7 @@ class Update(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(out.splitlines(), [
             'Downloading Jade Shell 10.2.0…', 'Installing Jade Shell 10.2.0…', update.WAITING,
+            'Installing Jade Shell 10.2.0…',  # the lock came free
             'Installed Jade Shell 10.2.0. Log out and back in to start the new version.'])
         self.assertIn('Installing: jade-shell', log)
 
