@@ -2,9 +2,10 @@
 
 Jade Shell's default look (`jade apps off icons`, or the switch in the
 settings, puts GNOME's back). MacTahoe (vinceliuice/MacTahoe-icon-theme,
-GPL-3.0) comes with the package: its release archive, unmodified, at a pinned
-release checked against its SHA-256 (a checkout without it downloads the
-same archive). Setup builds it into ~/.local/share/icons as
+GPL-3.0) comes with the package, at a pinned release checked against its
+SHA-256: only the parts of its release archive that the build reads
+(PARTS), repacked when the package is built (a checkout without it
+downloads the whole archive). Setup builds it into ~/.local/share/icons as
 Jade-MacTahoe (for light themes) and Jade-MacTahoe-dark (light symbolic
 icons, for dark ones). The build follows the theme's own install.sh (which
 leaves stray cursor-only folders behind when a color is chosen, so it is
@@ -12,8 +13,9 @@ not run). Every theme switch then repaints the 18 folder icons in the
 theme's exact accent: MacTahoe's blue folders are one flat color, with
 their shading and glyphs in black and white on top.
 
-The archive is 10 MB; built, about 180 MB per person. Its Finder and App
-Store icons are never installed: Jade draws its own Files and Software.
+The package's copy is about 3 MB; built, about 180 MB per person. Its
+Finder and App Store icons are never installed: Jade draws its own Files
+and Software.
 """
 import hashlib
 import os
@@ -26,13 +28,25 @@ import urllib.request
 
 from .store import data_home
 
+try:  # the package's trimmed copy, whose checksum is written when the package is built
+    from ._icons_sha import SHA256 as BUNDLED_SHA256
+except ImportError:  # a checkout
+    BUNDLED_SHA256 = None
+
 TAG = '2026-09-10'
+# The release as published: what a checkout downloads, and what the package's
+# copy is made from.
 URL = f'https://github.com/vinceliuice/MacTahoe-icon-theme/archive/refs/tags/{TAG}.tar.gz'
 SHA256 = '6330369e9e10a28cfc8da598ebf63a7204be705403519963ff84e1cb84719d35'
 NAME = 'Jade-MacTahoe'
 FOLDER_BLUE = '#006efd'  # the one color of colors/color-blue's folders
 SECTIONS = ['actions', 'animations', 'apps', 'categories', 'devices', 'emotes', 'emblems', 'mimes', 'places',
             'preferences']
+STATUS_SIZES = ['16', '22', '24', '32', 'symbolic']
+# What build() reads from the release, under its top folder, less its PNGs and
+# JPGs: all the package ships of it (scripts/build-packages.sh).
+PARTS = ('COPYING', 'AUTHORS', 'src/index.theme', *(f'src/{section}' for section in SECTIONS),
+         *(f'src/status/{size}' for size in STATUS_SIZES), 'links', 'colors/color-blue')
 
 
 class IconsUnavailable(Exception):
@@ -66,18 +80,24 @@ def source_dir():
 
 
 def bundled():
-    """The release archive the package ships beside the code (a checkout has none)."""
-    return pathlib.Path(__file__).resolve().parent.parent / 'icons' / f'MacTahoe-icon-theme-{TAG}.tar.gz'
+    """The package's copy of the release, beside the code (a checkout has none)."""
+    return pathlib.Path(__file__).resolve().parent.parent / 'icons' / f'MacTahoe-jade-{TAG}.tar.xz'
 
 
-def copy_checked(source, archive):
-    """Copy the stream into `archive`; whether it is the pinned release."""
+def wanted(name):
+    """Whether build() reads this member of the release archive."""
+    path = name.partition('/')[2]
+    return not path.endswith(('.png', '.jpg')) and any(path == part or path.startswith(f'{part}/') for part in PARTS)
+
+
+def copy_checked(source, archive, sha256):
+    """Copy the stream into `archive`; whether it has this SHA-256."""
     digest = hashlib.sha256()
     with archive.open('wb') as out:
         while chunk := source.read(1 << 16):
             digest.update(chunk)
             out.write(chunk)
-    return digest.hexdigest() == SHA256
+    return digest.hexdigest() == sha256
 
 
 def fetch(archive):
@@ -85,12 +105,12 @@ def fetch(archive):
     (a checkout, or a package copy that is damaged)."""
     try:
         with bundled().open('rb') as source:
-            if copy_checked(source, archive):
+            if BUNDLED_SHA256 and copy_checked(source, archive, BUNDLED_SHA256):
                 return
     except OSError:
         pass
     with urllib.request.urlopen(URL, timeout=30) as response:
-        if not copy_checked(response, archive):
+        if not copy_checked(response, archive, SHA256):
             raise IconsUnavailable('the download did not match its checksum')
 
 
@@ -106,9 +126,7 @@ def download():
         unpacked = folder.with_name(f'.{folder.name}.{os.getpid()}')
         shutil.rmtree(unpacked, ignore_errors=True)
         with tarfile.open(archive) as tar:
-            members = [m for m in tar.getmembers() if not re.match(r'[^/]+/(cursors|bold|bolder|release)(/|$)', m.name)
-                       and not m.name.endswith(('.png', '.jpg'))]
-            tar.extractall(unpacked, members=members, filter='data')
+            tar.extractall(unpacked, members=[m for m in tar.getmembers() if wanted(m.name)], filter='data')
         top = next(unpacked.iterdir())
         shutil.rmtree(folder, ignore_errors=True)
         top.rename(folder)
@@ -166,7 +184,7 @@ def build(src):
 
     for section in SECTIONS:
         merge(src / 'src' / section, base / section)
-    for size in ('16', '22', '24', '32', 'symbolic'):
+    for size in STATUS_SIZES:
         merge(src / 'src/status' / size, base / 'status' / size)
     for name in ('user-trash-dark.svg', 'user-trash-full-dark.svg'):
         (base / 'places/scalable' / name).unlink(missing_ok=True)

@@ -55,6 +55,13 @@ scripts:
   postinstall: packaging/postinstall.sh
   preremove: packaging/preremove.sh
 
+# Most of the package is already-compressed icons (a .tar.xz); xz packs the
+# rest smaller than the default gzip.
+rpm:
+  compression: xz
+deb:
+  compression: xz
+
 overrides:
   rpm:
     depends:

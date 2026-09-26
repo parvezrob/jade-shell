@@ -58,23 +58,30 @@ class TahoeArchive(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.dir = pathlib.Path(tmp.name)
-        buffer = io.BytesIO()
-        with tarfile.open(fileobj=buffer, mode='w:gz') as tar:
-            data = b'[Icon Theme]\n'
-            info = tarfile.TarInfo('MacTahoe-icon-theme-x/src/index.theme')
-            info.size = len(data)
-            tar.addfile(info, io.BytesIO(data))
-        self.release = buffer.getvalue()
-        self.copy = self.dir / 'usr/share/jade-shell/icons/MacTahoe.tar.gz'
+        self.release = self.archive({'src/index.theme': b'[Icon Theme]\n', 'cursors/x.svg': b'', 'src/apps/16/a.png': b'',
+                                     'src/status/symbolic-budgie/b.svg': b'', 'colors/color-red/folder.svg': b''})
+        self.copy = self.dir / 'usr/share/jade-shell/icons/MacTahoe.tar.xz'
         self.copy.parent.mkdir(parents=True)
+        self.trimmed = self.archive({'src/index.theme': b'[Icon Theme]\n'}, mode='w:xz')
         for patcher in (mock.patch.dict(os.environ, XDG_CACHE_HOME=str(self.dir / 'cache')),
                         mock.patch.object(icons, 'bundled', return_value=self.copy),
+                        mock.patch.object(icons, 'BUNDLED_SHA256', hashlib.sha256(self.trimmed).hexdigest()),
                         mock.patch.object(icons, 'SHA256', hashlib.sha256(self.release).hexdigest())):
             patcher.start()
             self.addCleanup(patcher.stop)
 
+    @staticmethod
+    def archive(files, mode='w:gz'):
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode=mode) as tar:
+            for name, data in files.items():
+                info = tarfile.TarInfo(f'MacTahoe-icon-theme-x/{name}')
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        return buffer.getvalue()
+
     def test_the_package_copy_needs_no_download(self):
-        self.copy.write_bytes(self.release)
+        self.copy.write_bytes(self.trimmed)
         with mock.patch('urllib.request.urlopen', side_effect=AssertionError('downloaded')):
             folder = self.icons.download()
         self.assertEqual((folder / 'src/index.theme').read_text(), '[Icon Theme]\n')
@@ -84,7 +91,15 @@ class TahoeArchive(unittest.TestCase):
         with mock.patch('urllib.request.urlopen', return_value=io.BytesIO(self.release)) as urlopen:
             folder = self.icons.download()
         urlopen.assert_called_once()
-        self.assertTrue((folder / 'src/index.theme').exists())
+        # Only what the build reads: the whole release has more.
+        self.assertEqual(sorted(str(p.relative_to(folder)) for p in folder.rglob('*') if p.is_file()), ['src/index.theme'])
+
+    def test_a_checkout_downloads_the_release(self):
+        self.copy.write_bytes(self.trimmed)
+        with mock.patch.object(self.icons, 'BUNDLED_SHA256', None), \
+                mock.patch('urllib.request.urlopen', return_value=io.BytesIO(self.release)) as urlopen:
+            self.icons.download()
+        urlopen.assert_called_once()
 
     def test_neither_one_says_so(self):
         with mock.patch('urllib.request.urlopen', return_value=io.BytesIO(b'not it')), \
