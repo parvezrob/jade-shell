@@ -302,6 +302,12 @@ class StarshipPalette(unittest.TestCase):
         self.assertEqual((tomllib.loads(again)['palettes']['jade']['color_x'], ctx.skipped), ('#111111', {}))
         self.assertEqual(Starship().revert(self.path, again, quoted), quoted)
 
+    def test_a_palette_line_ours_cannot_find_stays(self):
+        # Valid TOML, but not the `palette = ` line at the start of a line that the switch rewrites.
+        for own in ('"palette" = "g"\n\n[palettes.g]\nred = "#ff0000"\n', '  palette = "g"\n\n[palettes.g]\nred = "#ff0000"\n'):
+            text, ctx = self.switch(own)
+            self.assertEqual((text, ctx.skipped), (own, {'starship': "kept your prompt's own colors"}))
+
     def test_a_jade_palette_of_their_own_or_a_broken_file_stays(self):
         own = 'palette = "jade"\n\n[palettes.jade]\nred = "#ff0000"\n'
         text, ctx = self.switch(own)

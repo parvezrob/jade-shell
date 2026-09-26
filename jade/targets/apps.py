@@ -648,7 +648,11 @@ class Starship:
         else:
             text = 'palette = "jade"\n' + text
         text = managed_block(text, '\n'.join(lines))
-        if not valid_toml(text):  # a palette of their own called jade, or a layout ours can't join
+        try:
+            switched = tomllib.loads(text).get('palette') == 'jade'
+        except tomllib.TOMLDecodeError:  # a palette of their own called jade, or a layout ours can't join
+            switched = False
+        if not switched:  # or a palette line written in a way ours can't find ("palette" = ..., indented)
             ctx.skipped[self.name] = "kept your prompt's own colors"
             return []
         return [File(path, text)]
