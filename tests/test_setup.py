@@ -194,6 +194,16 @@ class Previews(unittest.TestCase):
         self.assertEqual(self.most, 4)
         self.assertTrue(all(themes.thumbnail_path(tid).exists() for tid in ids))
 
+    def test_stopped_the_rest_are_not_started(self):
+        server = Server(self, self.serve)
+
+        def stop(_theme):
+            raise KeyboardInterrupt  # Ctrl-C, or TERM (jade's main raises SystemExit for it)
+
+        with mock.patch.object(themes, 'make_thumbnail', stop), self.assertRaises(KeyboardInterrupt):
+            self.thumbs(server.url)
+        self.assertLessEqual(server.requests, 5)  # the four under way, at most one more; not all six
+
     def test_offline_the_rest_are_not_started(self):
         server = Server(self, lambda request: request.send_error(404))
         status, ids, out = self.thumbs(server.url)

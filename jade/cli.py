@@ -219,9 +219,13 @@ def theme_thumbs(args, ctx):
 
     with concurrent.futures.ThreadPoolExecutor(4) as pool:
         downloads = {pool.submit(fetch, theme): theme for theme in wanted if not here(theme)}
-        for done in concurrent.futures.as_completed(downloads):
-            if done.result():
-                make(downloads[done])
+        try:
+            for done in concurrent.futures.as_completed(downloads):
+                if done.result():
+                    make(downloads[done])
+        except BaseException:  # Ctrl-C or a stop: the downloads under way end, no new ones start
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
     if failed:
         print(f'jade: {failed[0]}', file=sys.stderr)
     return 1 if failed else 0
