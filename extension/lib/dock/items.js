@@ -15,8 +15,10 @@ import {TintEffect, shadedIcon} from './tint.js';
 import {openSettings} from '../util.js';
 
 // Icons are rendered this many times larger than they sit in the dock, so a
-// magnified icon is as sharp as a resting one.
-const OVERSAMPLE = 3;
+// magnified icon is as sharp as a resting one. A power of two: a resting icon
+// is then drawn from one of its mipmaps exactly; 3 blended in one smaller
+// than the icon, and every resting icon looked soft.
+const OVERSAMPLE = 2;
 // Icons grow from their bottom edge, as on a Mac.
 const PIVOT = new Graphene.Point({x: 0.5, y: 1});
 // Pressed, an icon darkens this much, as a Mac's does.
