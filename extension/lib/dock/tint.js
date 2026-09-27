@@ -128,7 +128,8 @@ function paint(pixbuf, accent, dark) {
 
 // A copy of `gicon` at `pixels` pixels, tinted in `accent`'s tones and/or
 // darkened (a pressed icon) or as it is, as an St.ImageContent (which St.Icon
-// takes as its gicon); null when the icon can't be loaded.
+// takes as its gicon); null when the icon can't be loaded, and for a
+// symbolic icon as it is (St colors those from the theme).
 export function shadedIcon(gicon, pixels, {accent = null, dark = 0} = {}) {
     const themeName = St.Settings.get().gtk_icon_theme;
     const key = `${gicon.to_string()}|${pixels}|${accent}|${dark}|${themeName}`;
@@ -137,7 +138,8 @@ export function shadedIcon(gicon, pixels, {accent = null, dark = 0} = {}) {
     let content = null;
     try {
         iconTheme ??= new St.IconTheme();
-        const pixbuf = iconTheme.lookup_by_gicon_for_scale(gicon, pixels, 1, St.IconLookupFlags.FORCE_SIZE)?.load_icon();
+        const info = iconTheme.lookup_by_gicon_for_scale(gicon, pixels, 1, St.IconLookupFlags.FORCE_SIZE);
+        const pixbuf = info && (accent || dark || !info.is_symbolic()) ? info.load_icon() : null;
         if (pixbuf)
             content = paint(pixbuf, accent, dark);
     } catch (e) {

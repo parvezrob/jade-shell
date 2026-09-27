@@ -198,6 +198,7 @@ export class Bar {
         for (const item of this._apps.values())
             item.setRest(new Mtk.Rectangle({x: 0, y: 0, width: 0, height: 0}));
         setTint(null);
+        forgetTinted();
         this._glass.destroy();
     }
 
