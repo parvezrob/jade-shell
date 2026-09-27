@@ -14,10 +14,10 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {TintEffect, shadedIcon} from './tint.js';
 import {openSettings} from '../util.js';
 
-// Icons are rendered this many times larger than they sit in the dock, so a
-// magnified icon is as sharp as a resting one. A power of two: a resting icon
-// is then drawn from one of its mipmaps exactly; 3 blended in one smaller
-// than the icon, and every resting icon looked soft.
+// Icons are drawn from pixels this many times the size they take on screen,
+// so a magnified icon is as sharp as a resting one. A power of two: a resting
+// icon is then drawn from one of its mipmaps exactly (at 3 the GPU blended in
+// one smaller than the icon, and every resting icon looked soft).
 const OVERSAMPLE = 2;
 // Icons grow from their bottom edge, as on a Mac.
 const PIVOT = new Graphene.Point({x: 0.5, y: 1});
@@ -66,6 +66,14 @@ export function setTint(palette) {
     tint = palette;
 }
 
+// Screen pixels per logical pixel on the dock's monitor: 1.25, 1.5 and so on
+// with fractional scaling, which the Shell's own icon loading rounds up.
+let pixelScale = 1;
+
+export function setPixelScale(scale) {
+    pixelScale = scale;
+}
+
 function tintTexture(texture) {
     texture.remove_effect_by_name('jade-tint');
     if (tint)
@@ -80,23 +88,25 @@ export function retint(icon) {
 }
 
 // A dock icon: `logical` pixels in the dock, drawn from OVERSAMPLE times as
-// many; tinted beforehand when the dock is (see tintedIcon), so it stays sharp
-// when magnified.
+// many screen pixels; tinted beforehand when the dock is (see shadedIcon), so
+// it stays sharp when magnified.
 function dockIcon(gicon, logical) {
     const icon = new St.Icon({icon_size: logical * OVERSAMPLE});
     icon._jadeSource = gicon;
+    icon._jadeLogical = logical;
     setDockGicon(icon);
     return smooth(icon);
 }
 
-// Tinted and pressed looks are copies of the icon's pixels, not effects: an
-// effect draws through an offscreen buffer the size of the icon at rest,
-// blocky once the icon is magnified.
+// The icon's pixels are loaded here, at OVERSAMPLE times its size on screen
+// (St.Icon would load them for a whole scale, 2 at 150%). Tinted and pressed
+// looks are copies of those pixels, not effects: an effect draws through an
+// offscreen buffer the size of the icon at rest, blocky once the icon is
+// magnified. An icon the theme can't load is left to St.Icon.
 function setDockGicon(icon) {
-    const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
     const dark = icon._jadePressed ? PRESSED_DARK : 0;
-    const shaded = tint || dark
-        ? shadedIcon(icon._jadeSource, icon.icon_size * scaleFactor, {accent: tint?.accent, dark}) : null;
+    const pixels = Math.round(icon._jadeLogical * pixelScale * OVERSAMPLE);
+    const shaded = shadedIcon(icon._jadeSource, pixels, {accent: tint?.accent, dark});
     icon._jadePretinted = Boolean(shaded) || !tint;  // else the shader, as the app grid has it
     icon.gicon = shaded ?? icon._jadeSource;
     icon.get_children().forEach(child => (icon._jadePretinted ? child.remove_effect_by_name('jade-tint') : tintTexture(child)));

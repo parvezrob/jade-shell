@@ -12,7 +12,7 @@ import * as Layout from 'resource:///org/gnome/shell/ui/layout.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 
 import {Glass, hexToRgb} from './glass.js';
-import {AppItem, Separator, ShowAppsItem, TrashItem, setTint} from './items.js';
+import {AppItem, Separator, ShowAppsItem, TrashItem, setPixelScale, setTint} from './items.js';
 import {Badges} from './badges.js';
 import {forgetTinted} from './tint.js';
 
@@ -245,6 +245,7 @@ export class Bar {
 
     _setMetrics(logical) {
         const {scaleFactor} = St.ThemeContext.get_for_stage(global.stage);
+        setPixelScale(global.display.get_monitor_scale(this._monitor.index));
         const k = logical / 48;
         const s = scaleFactor;
         this.metrics = {

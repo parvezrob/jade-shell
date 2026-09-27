@@ -103,7 +103,7 @@ function paint(pixbuf, accent, dark) {
     const pixels = pixbuf.get_pixels().slice();
     const lut = accent ? table(accent) : null;
     const keep = 1 - dark;
-    for (let y = 0; y < h; y++) {
+    for (let y = 0; (lut || dark) && y < h; y++) {
         for (let i = y * stride, end = i + w * 4; i < end; i += 4) {
             if (!pixels[i + 3])
                 continue;
@@ -127,8 +127,8 @@ function paint(pixbuf, accent, dark) {
 }
 
 // A copy of `gicon` at `pixels` pixels, tinted in `accent`'s tones and/or
-// darkened (a pressed icon), as an St.ImageContent (which St.Icon takes as
-// its gicon); null when the icon can't be loaded.
+// darkened (a pressed icon) or as it is, as an St.ImageContent (which St.Icon
+// takes as its gicon); null when the icon can't be loaded.
 export function shadedIcon(gicon, pixels, {accent = null, dark = 0} = {}) {
     const themeName = St.Settings.get().gtk_icon_theme;
     const key = `${gicon.to_string()}|${pixels}|${accent}|${dark}|${themeName}`;
