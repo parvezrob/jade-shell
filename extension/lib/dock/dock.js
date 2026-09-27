@@ -72,9 +72,21 @@ export class Dock {
             this._bar.onRestyle = () => this._retintGrid();
             this._patchGrid();
             this._retintGrid();
-            Main.overview.dash.hide();
+            this._hideDash();
         }
         this._syncGenie();
+    }
+
+    // GNOME's dash stays hidden while this dock is on, also when something
+    // shows it again: a dock extension turned off at the same time puts it
+    // back as it goes, and two docks would show in the overview.
+    _hideDash() {
+        this._dash = Main.overview.dash;
+        this._dash.hide();
+        this._dash.connectObject('notify::visible', () => {
+            if (this._dash?.visible)
+                this._dash.hide();
+        }, this);
     }
 
     // The genie needs the dock's icons to aim at.
@@ -148,6 +160,8 @@ export class Dock {
         this._unpatchGrid();
         this._retintGrid();  // the tint is off with the dock
         this._syncGenie();
+        this._dash?.disconnectObject(this);
+        this._dash = null;
         // Another dock may have taken the overview's dash over meanwhile.
         if (!this._otherDock())
             Main.overview.dash.show();
