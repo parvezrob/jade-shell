@@ -260,8 +260,10 @@ def add_login_step():
         return  # the extension still does it once it starts
     write_text(login_unit_path(), LOGIN_SERVICE.format(jade=jade, environment=restore_offer.environment()))
     # Loaded now: logging straight back in can find the user's systemd still running.
-    systemctl('daemon-reload')
-    systemctl('enable', LOGIN_UNIT)
+    for step in (('daemon-reload',), ('enable', LOGIN_UNIT)):
+        result = systemctl(*step)
+        if result.returncode != 0:  # the extension still does it once it starts
+            log(f'Login step: systemctl {" ".join(step)}: {result.stderr.strip()}')
 
 
 def remove_login_step():
@@ -290,18 +292,35 @@ def write_turning_off(ctx, changes, going):
     both in one go can have Ubuntu Dock build its dock and lose it again a
     moment later, which on a busy desktop can leave a second dock on screen.
     So with a Shell running, Ubuntu Dock goes first, on its own, then each
-    other dock, each once the one before is off; then everything else.
+    other dock, each once the one before is off; then everything else. A
+    dock that doesn't stop in time holds back the ones after it: they stay
+    on (still one dock on screen), for the next login to turn off.
     """
     lists = [c for c in changes if c.schema == SHELL and c.key == 'disabled-extensions']
-    if going and lists and shell_running():
-        final = lists[0]
-        order = sorted(going, key=lambda uuid: uuid != UBUNTU_DOCK)
-        for i, uuid in enumerate(order):
-            still_on = set(order[i + 1:])
-            ctx.settings.write([dataclasses.replace(final, value=[u for u in final.value if u not in still_on])])
-            wait_until_off(uuid)
-        changes = [c for c in changes if c is not final]
-    ctx.settings.write(changes)
+    if not (going and lists and shell_running()):
+        ctx.settings.write(changes)
+        return
+    final = lists[0]
+    shell = ctx.settings.get(SHELL)
+    # Only ever adding: a run cut short before left some off already.
+    already = set(shell.get_strv('disabled-extensions'))
+    enabled = shell.get_strv('enabled-extensions')
+    order = sorted(going, key=lambda uuid: uuid != UBUNTU_DOCK)
+    held = []
+    for i, uuid in enumerate(order):
+        still_on = set(order[i + 1:]) - already
+        ctx.settings.write([dataclasses.replace(final, value=[u for u in final.value if u not in still_on])])
+        if not wait_until_off(uuid):
+            held = [u for u in order[i + 1:] if u not in already]
+            break
+    rest = []
+    for change in changes:
+        if change is final:
+            continue
+        if held and change.schema == SHELL and change.key == 'enabled-extensions':
+            change = dataclasses.replace(change, value=[*change.value, *(u for u in enabled if u in held)])
+        rest.append(change)
+    ctx.settings.write(rest)
 
 
 def jade_command():
@@ -370,11 +389,14 @@ ON = ('active', 'turning off', 'starting')
 
 def wait_until_off(uuid, limit=5.0):
     """Until the running Shell has turned `uuid` off (at most `limit`
-    seconds; at once without a Shell, or when it isn't running there)."""
+    seconds; at once without a Shell, or when it isn't running there).
+    Whether it is off."""
     deadline = time.monotonic() + limit
     while extension_state(uuid) in ON and time.monotonic() < deadline:
         time.sleep(0.2)
-    time.sleep(0.3 if extension_state(uuid) is not None else 0)  # its disable() has run; let the Shell settle
+    state = extension_state(uuid)
+    time.sleep(0.3 if state is not None else 0)  # its disable() has run; let the Shell settle
+    return state not in ON
 
 
 def extension_state(uuid):
@@ -652,7 +674,7 @@ def set_up_desktop(ctx, report, theme_id, after_update):
     updating = after_update or (not fresh and manifest.get('version') != __version__)
     # Docks left on until Jade Shell's own could start (see below) are not
     # the owner's choice: they go now.
-    pending = set(manifest.pop('after_login', []))
+    pending = set(manifest.get('after_login', []))  # recorded until the lists below are written
     keep = (set(manifest.get('replaced', REPLACED)) if updating else set()) - pending
     out_of_the_way = replaced(ctx)
     running_before = {uuid for uuid in out_of_the_way if running_extension(ctx, uuid)}
@@ -666,8 +688,8 @@ def set_up_desktop(ctx, report, theme_id, after_update):
     later = {uuid for uuid in DOCKS if uuid in running_before and uuid not in keep
              and extension_state(uuid) == 'active'} \
         if report.login_needed and not after_update and finishes_at_login() else set()
-    if later:
-        manifest['after_login'] = sorted(later)
+    if later | pending:
+        manifest['after_login'] = sorted(later | pending)
     keep |= later
     planned = planned_settings(ctx, keep)
     if 'defaulted' not in manifest:
@@ -680,11 +702,19 @@ def set_up_desktop(ctx, report, theme_id, after_update):
     manifest['defaulted'] += [[c.schema, c.path, c.key] for c in changes if c.schema in PREFERENCE_SCHEMAS and sticks(c)]
     write_text(manifest_path(), json.dumps(manifest, indent=2))
     write_turning_off(ctx, changes, sorted(uuid for uuid in running_before - keep if uuid in DOCKS))
+    # A dock still on now (it didn't stop in time, or the lists weren't
+    # written) goes at the next login, like the ones left on on purpose.
+    left_on = {uuid for uuid in (pending | running_before) - keep
+               if uuid in DOCKS and uuid in out_of_the_way and running_extension(ctx, uuid)}
+    later |= left_on
     if later:
+        manifest['after_login'] = sorted(later)
         add_login_step()
     else:
+        manifest.pop('after_login', None)
         remove_login_step()  # left by a setup before this one, with nothing for the login to do now
-    off = [out_of_the_way[uuid] for uuid in sorted(running_before - keep)]
+    write_text(manifest_path(), json.dumps(manifest, indent=2))
+    off = [out_of_the_way[uuid] for uuid in sorted(running_before - keep - left_on)]
     if off:
         report.turned_off = [name for name, _why in off]
         report.note(turned_off(off))
@@ -852,6 +882,8 @@ def after_login(ctx):
     # (or the extension, once it starts) tries again.
     still_on = [DOCKS[uuid][0] for uuid in going if running_extension(ctx, uuid)]
     if still_on:
+        if not login_unit_path().exists():
+            add_login_step()  # then before GNOME Shell starts
         say(f"Couldn't turn off {join(still_on)}: Jade Shell tries again at the next login.")
         return 1
     manifest.pop('after_login')

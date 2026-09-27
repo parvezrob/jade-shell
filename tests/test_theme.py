@@ -1955,6 +1955,26 @@ elif 'show' in args and 'connection' in args:
         self.assertFalse(unit.exists())
 
     @needs_compiler
+    def test_setup_again_before_the_login_keeps_the_dock_to_do_until_it_is_off(self):
+        unit = self.setup_before_login()
+        # Run again (no Shell to ask here, so no login is waited for): the dock goes now, but the
+        # lists never got written: still to do, at the next login.
+        script = ('import sys\nfrom unittest import mock\nfrom jade import cli, setup\n'
+                  'mock.patch.object(setup, "write_turning_off").start()\n'
+                  'sys.exit(cli.main(sys.argv[1:]))\n')
+        result = subprocess.run([sys.executable, '-c', script, 'setup'], env=self.env,
+                                capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('Ubuntu Dock stays until you log out', result.stdout)
+        self.assertEqual(self.manifest()['after_login'], [UBUNTU_DOCK])
+        self.assertTrue(unit.exists())
+        # Written this time: done, and the login step goes.
+        self.assertIn('Turned off Ubuntu Dock', self.jade('setup'))
+        self.assertNotIn('after_login', self.manifest())
+        self.assertFalse(unit.exists())
+        self.assertIn(UBUNTU_DOCK, self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'))
+
+    @needs_compiler
     def test_restore_before_the_login_takes_the_login_step_away(self):
         unit = self.setup_before_login()
         self.jade('restore', '--yes')
@@ -2069,12 +2089,14 @@ class TurningOff(unittest.TestCase):
                store.Setting(setup.SHELL, 'disabled-extensions', [DASH_TO_DOCK, UBUNTU_DOCK]),
                store.Setting(setup.JADE_SCHEMA, 'show-usage', True))
 
-    def write(self, shell):
+    def write(self, shell, disabled=(), off=lambda uuid: True):
         written = []
         ctx = mock.Mock()
         ctx.settings.write = lambda changes: written.append([(change.key, change.value) for change in changes])
+        lists = {'enabled-extensions': [DASH_TO_DOCK, 'other@me'], 'disabled-extensions': list(disabled)}
+        ctx.settings.get.return_value.get_strv.side_effect = lists.get
         with mock.patch.object(setup, 'shell_running', return_value=shell), \
-                mock.patch.object(setup, 'wait_until_off') as wait:
+                mock.patch.object(setup, 'wait_until_off', side_effect=off) as wait:
             setup.write_turning_off(ctx, self.CHANGES, [DASH_TO_DOCK, UBUNTU_DOCK])
         return written, wait
 
@@ -2086,6 +2108,30 @@ class TurningOff(unittest.TestCase):
                                    [('disable-user-extensions', False), ('enabled-extensions', [UUID]),
                                     ('show-usage', True)]])
         self.assertEqual(wait.call_args_list, [mock.call(UBUNTU_DOCK), mock.call(DASH_TO_DOCK)])
+
+    def test_a_retry_never_turns_a_dock_back_on(self):
+        # A run cut short left Dash to Dock off already: Ubuntu Dock's step keeps it off.
+        written, _wait = self.write(shell=True, disabled=[DASH_TO_DOCK])
+        self.assertEqual(written[0], [('disabled-extensions', [DASH_TO_DOCK, UBUNTU_DOCK])])
+
+    def test_a_dock_that_wont_stop_holds_back_the_ones_after_it(self):
+        written, wait = self.write(shell=True, off=lambda uuid: uuid != UBUNTU_DOCK)
+        self.assertEqual(wait.call_args_list, [mock.call(UBUNTU_DOCK)])
+        # Dash to Dock stays on (one dock on screen), for the next login.
+        self.assertEqual(written, [[('disabled-extensions', [UBUNTU_DOCK])],
+                                   [('disable-user-extensions', False), ('enabled-extensions', [UUID, DASH_TO_DOCK]),
+                                    ('show-usage', True)]])
+
+    def test_a_login_step_systemd_refuses_is_logged(self):
+        refused = mock.Mock(returncode=1, stderr='Failed to connect to bus\n')
+        with mock.patch.object(setup, 'systemctl', return_value=refused), \
+                mock.patch.object(setup, 'jade_command', return_value='/usr/bin/jade'), \
+                mock.patch.object(setup, 'log') as log:
+            setup.add_login_step()
+        self.addCleanup(setup.login_unit_path().unlink, missing_ok=True)
+        self.assertEqual(log.call_args_list, [
+            mock.call('Login step: systemctl daemon-reload: Failed to connect to bus'),
+            mock.call('Login step: systemctl enable jade-shell-login.service: Failed to connect to bus')])
 
     def test_before_the_shell_starts_everything_goes_at_once(self):
         written, wait = self.write(shell=False)
