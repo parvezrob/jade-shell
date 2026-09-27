@@ -28,6 +28,7 @@ from .store import config_home, data_home, state_home, write_text
 UUID = 'jade-shell@parvezrob.github.io'
 PACKAGE_ROOT = pathlib.Path('/usr/share/jade-shell')
 UNIT = 'jade-restore-offer.service'
+LOGIN_UNIT = 'jade-shell-login.service'  # setup's (see setup.LOGIN_SERVICE)
 UNIT_TEXT = '''[Unit]
 Description=Offer to restore the desktop from before Jade Shell once it is removed
 # Nothing to do while Jade Shell is installed: no Python starts.
@@ -84,22 +85,28 @@ def keep_kit():
     systemctl('enable', UNIT)
 
 
-def unit_text(kit):
-    """The service, with the folders this setup used (XDG_STATE_HOME moved
-    elsewhere included: systemd's own environment may not have it)."""
+def environment(*extra):
+    """An Environment= line's value with the folders this setup used
+    (XDG_STATE_HOME moved elsewhere included: systemd's own environment may
+    not have it), after any `extra` (name, value) pairs."""
     def quoted(text):  # one Environment= assignment, as systemd reads it
         return '"' + text.replace('%', '%%').replace('\\', '\\\\').replace('"', '\\"') + '"'
-    environment = ' '.join(quoted(f'{name}={value}') for name, value in (
-        ('PYTHONPATH', kit), ('XDG_STATE_HOME', state_home()), ('XDG_DATA_HOME', data_home()),
-        ('XDG_CONFIG_HOME', config_home())))
+    return ' '.join(quoted(f'{name}={value}') for name, value in (
+        *extra, ('XDG_STATE_HOME', state_home()), ('XDG_DATA_HOME', data_home()), ('XDG_CONFIG_HOME', config_home())))
+
+
+def unit_text(kit):
+    """The service, with the folders this setup used."""
     manifest = str(state_home() / 'jade-shell/setup.json').replace('%', '%%')
-    return UNIT_TEXT.format(manifest=manifest, environment=environment)
+    return UNIT_TEXT.format(manifest=manifest, environment=environment(('PYTHONPATH', kit)))
 
 
 def drop_kit():
-    """The kit and its service, gone: after a restore, or once answered."""
-    systemctl('disable', UNIT)
-    unit_path().unlink(missing_ok=True)
+    """The kit and its service, gone: after a restore, or once answered.
+    Setup's login step too, left by a package removed before that login."""
+    for unit in (UNIT, LOGIN_UNIT):
+        systemctl('disable', unit)
+        (unit_path().parent / unit).unlink(missing_ok=True)
     systemctl('daemon-reload')
     shutil.rmtree(kit_path(), ignore_errors=True)
 

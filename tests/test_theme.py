@@ -1876,12 +1876,19 @@ elif 'show' in args and 'connection' in args:
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'), f"['{DASH_TO_DOCK}', '{UUID}']")
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), "['old@me']")
         self.assertEqual(self.manifest()['after_login'], sorted([DASH_TO_DOCK, UBUNTU_DOCK]))
+        # The next login turns them off before GNOME Shell starts: they never load.
+        unit = (self.home / '.config/systemd/user/jade-shell-login.service').read_text()
+        self.assertIn('ExecStart=/usr/bin/jade setup --after-login', unit)
+        self.assertIn('Before=gnome-session-pre.target', unit)
+        self.assertIn('WantedBy=gnome-session-pre.target', unit)
+        self.assertIn('--user enable jade-shell-login.service', self.systemctl_log.read_text().splitlines())
         self.assertIn('✓ No extensions doing the same job', self.run_jade('doctor').stdout)
         # An update finished at that login does the same.
         manifest = self.manifest()
         (self.home / '.local/state/jade-shell/setup.json').write_text(json.dumps({**manifest, 'version': '0.1.0'}))
         self.assertIn('Turned off Dash to Dock and Ubuntu Dock', self.jade('setup', '--after-update'))
         self.assertNotIn('after_login', self.manifest())
+        self.assertFalse((self.home / '.config/systemd/user/jade-shell-login.service').exists())
         self.gsettings('set', 'org.gnome.shell', 'enabled-extensions', f"['{DASH_TO_DOCK}', '{UUID}']")
         self.gsettings('set', 'org.gnome.shell', 'disabled-extensions', "['old@me']")
         (self.home / '.local/state/jade-shell/setup.json').write_text(json.dumps(manifest))
@@ -1903,6 +1910,56 @@ elif 'show' in args and 'connection' in args:
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'enabled-extensions'),
                          f"['{DASH_TO_DOCK}', 'Vitals@CoreCoding.com']")
         self.assertEqual(self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'), "['old@me']")
+
+    def setup_before_login(self):
+        extensions = self.home / '.local/share/gnome-shell/extensions'
+        (extensions / UBUNTU_DOCK).mkdir(parents=True)
+        (extensions / UBUNTU_DOCK / 'metadata.json').write_text('{}')
+        script = ('import sys\nfrom unittest import mock\nfrom jade import cli, setup\n'
+                  'mock.patch.object(setup, "needs_login", return_value=True).start()\n'
+                  'mock.patch.object(setup, "finishes_at_login", return_value=True).start()\n'
+                  'mock.patch.object(setup, "extension_state", return_value="active").start()\n'
+                  'sys.exit(cli.main(sys.argv[1:]))\n')
+        subprocess.run([sys.executable, '-c', script, 'setup'], env={**self.env, 'XDG_CURRENT_DESKTOP': ''},
+                       capture_output=True, text=True, cwd=ROOT, check=True)
+        unit = self.home / '.config/systemd/user/jade-shell-login.service'
+        self.assertTrue(unit.exists())
+        return unit
+
+    @needs_compiler
+    def test_the_login_step_runs_once_and_goes(self):
+        unit = self.setup_before_login()
+        self.assertIn('Turned off Ubuntu Dock', self.jade('setup', '--after-login'))
+        self.assertIn(UBUNTU_DOCK, self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'))
+        self.assertFalse(unit.exists())
+        self.assertIn('--user disable jade-shell-login.service', self.systemctl_log.read_text().splitlines())
+        # Setup again with nothing left for a login: no unit comes back.
+        self.jade('setup')
+        self.assertFalse(unit.exists())
+
+    @needs_compiler
+    def test_a_login_step_cut_short_is_tried_again(self):
+        unit = self.setup_before_login()
+        # The lists never got written (stopped at the time limit, say): still to do, unit kept.
+        script = ('import sys\nfrom unittest import mock\nfrom jade import cli, setup\n'
+                  'mock.patch.object(setup, "write_turning_off").start()\n'
+                  'sys.exit(cli.main(sys.argv[1:]))\n')
+        result = subprocess.run([sys.executable, '-c', script, 'setup', '--after-login'], env=self.env,
+                                capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("Couldn't turn off Ubuntu Dock: Jade Shell tries again at the next login.", result.stdout)
+        self.assertEqual(self.manifest()['after_login'], [UBUNTU_DOCK])
+        self.assertTrue(unit.exists())
+        self.assertIn('Turned off Ubuntu Dock', self.jade('setup', '--after-login'))
+        self.assertNotIn('after_login', self.manifest())
+        self.assertFalse(unit.exists())
+
+    @needs_compiler
+    def test_restore_before_the_login_takes_the_login_step_away(self):
+        unit = self.setup_before_login()
+        self.jade('restore', '--yes')
+        self.assertFalse(unit.exists())
+        self.assertNotIn(UBUNTU_DOCK, self.gsettings('get', 'org.gnome.shell', 'disabled-extensions'))
 
     @needs_compiler
     def test_a_dock_not_on_screen_goes_at_once(self):
@@ -2004,6 +2061,47 @@ elif 'show' in args and 'connection' in args:
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TurningOff(unittest.TestCase):
+    CHANGES = (store.Setting(setup.SHELL, 'disable-user-extensions', False),
+               store.Setting(setup.SHELL, 'enabled-extensions', [UUID]),
+               store.Setting(setup.SHELL, 'disabled-extensions', [DASH_TO_DOCK, UBUNTU_DOCK]),
+               store.Setting(setup.JADE_SCHEMA, 'show-usage', True))
+
+    def write(self, shell):
+        written = []
+        ctx = mock.Mock()
+        ctx.settings.write = lambda changes: written.append([(change.key, change.value) for change in changes])
+        with mock.patch.object(setup, 'shell_running', return_value=shell), \
+                mock.patch.object(setup, 'wait_until_off') as wait:
+            setup.write_turning_off(ctx, self.CHANGES, [DASH_TO_DOCK, UBUNTU_DOCK])
+        return written, wait
+
+    def test_with_the_shell_running_ubuntu_dock_goes_first_on_its_own(self):
+        # Dash to Dock stopping first would start Ubuntu Dock's own dock.
+        written, wait = self.write(shell=True)
+        self.assertEqual(written, [[('disabled-extensions', [UBUNTU_DOCK])],
+                                   [('disabled-extensions', [DASH_TO_DOCK, UBUNTU_DOCK])],
+                                   [('disable-user-extensions', False), ('enabled-extensions', [UUID]),
+                                    ('show-usage', True)]])
+        self.assertEqual(wait.call_args_list, [mock.call(UBUNTU_DOCK), mock.call(DASH_TO_DOCK)])
+
+    def test_before_the_shell_starts_everything_goes_at_once(self):
+        written, wait = self.write(shell=False)
+        self.assertEqual([[key for key, _value in batch] for batch in written],
+                         [['disable-user-extensions', 'enabled-extensions', 'disabled-extensions', 'show-usage']])
+        wait.assert_not_called()
+
+    def test_waiting_counts_starting_and_stopping_as_on(self):
+        states = iter([{'state': 7}, {'state': 8}, {'state': 2}, {'state': 2}])
+        with mock.patch.object(setup, 'extension_info', side_effect=lambda uuid: next(states)), \
+                mock.patch.object(setup.time, 'sleep') as sleep:
+            setup.wait_until_off(UBUNTU_DOCK)
+        self.assertEqual(sleep.call_count, 3)  # twice while it turned off, then the settle
+
+    def test_no_shell_on_the_bus_here(self):
+        self.assertFalse(setup.shell_running())  # the sandbox's bus address leads nowhere
 
 
 class SettingsCommand(unittest.TestCase):

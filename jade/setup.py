@@ -6,6 +6,7 @@ so `restore` can return the desktop to exactly how it was.
 """
 import configparser
 import contextlib
+import dataclasses
 import datetime
 import errno
 import fcntl
@@ -128,6 +129,31 @@ RandomizedDelaySec=15
 [Install]
 WantedBy=timers.target
 '''
+# The docks setup leaves on until the next login go before GNOME Shell starts
+# at that login, so they never load and no one sees two docks while one hands
+# over to the other (GNOME's own org.gnome.Shell-disable-extensions.service
+# works the same way). The unit removes itself once it has run.
+LOGIN_UNIT = restore_offer.LOGIN_UNIT
+LOGIN_SERVICE = '''[Unit]
+Description=Turn off the dock Jade Shell replaces, before GNOME Shell starts
+DefaultDependencies=no
+Before=gnome-session-pre.target
+# Removed with dnf or apt before `jade restore`: skip quietly.
+ConditionFileIsExecutable={jade}
+
+[Service]
+Type=oneshot
+ExecStart={jade} setup --after-login
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment={environment}
+# It takes about a second. Never holds up a login for long: stopped after
+# ten, the extension finishes it once it starts.
+TimeoutStartSec=10
+TimeoutStopSec=3
+
+[Install]
+WantedBy=gnome-session-pre.target
+'''
 
 
 def manifest_path():
@@ -223,6 +249,61 @@ def systemctl(*args):
     return subprocess.run(['systemctl', '--user', *args], capture_output=True, text=True)
 
 
+def login_unit_path():
+    return config_home() / 'systemd/user' / LOGIN_UNIT
+
+
+def add_login_step():
+    """Have the next login turn the docks off before GNOME Shell starts (LOGIN_SERVICE)."""
+    jade = jade_command()
+    if not jade:
+        return  # the extension still does it once it starts
+    write_text(login_unit_path(), LOGIN_SERVICE.format(jade=jade, environment=restore_offer.environment()))
+    # Loaded now: logging straight back in can find the user's systemd still running.
+    systemctl('daemon-reload')
+    systemctl('enable', LOGIN_UNIT)
+
+
+def remove_login_step():
+    if not login_unit_path().exists():
+        return
+    systemctl('disable', LOGIN_UNIT)
+    login_unit_path().unlink(missing_ok=True)
+
+
+def shell_running():
+    """Whether GNOME Shell is on the session bus (asked without starting anything)."""
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION)
+        return bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner',
+                             GLib.Variant('(s)', ('org.gnome.Shell',)), None, Gio.DBusCallFlags.NONE, 2000,
+                             None).unpack()[0]
+    except GLib.Error:
+        return False
+
+
+def write_turning_off(ctx, changes, going):
+    """Write `changes`, with the docks in `going` turned off one at a time first.
+
+    Ubuntu Dock starts its own dock the moment Dash to Dock stops, and GNOME
+    Shell turns extensions off in the reverse of the order it loaded them:
+    both in one go can have Ubuntu Dock build its dock and lose it again a
+    moment later, which on a busy desktop can leave a second dock on screen.
+    So with a Shell running, Ubuntu Dock goes first, on its own, then each
+    other dock, each once the one before is off; then everything else.
+    """
+    lists = [c for c in changes if c.schema == SHELL and c.key == 'disabled-extensions']
+    if going and lists and shell_running():
+        final = lists[0]
+        order = sorted(going, key=lambda uuid: uuid != UBUNTU_DOCK)
+        for i, uuid in enumerate(order):
+            still_on = set(order[i + 1:])
+            ctx.settings.write([dataclasses.replace(final, value=[u for u in final.value if u not in still_on])])
+            wait_until_off(uuid)
+        changes = [c for c in changes if c is not final]
+    ctx.settings.write(changes)
+
+
 def jade_command():
     found = os.environ.get('JADE_BIN') or shutil.which('jade')
     return str(pathlib.Path(found).resolve()) if found else None
@@ -282,14 +363,16 @@ def extension_info(uuid):
 
 
 # GNOME Shell's ExtensionState values (js/misc/extensionUtils.js).
-STATES = {1: 'active', 2: 'inactive', 3: 'error', 4: 'out of date'}
+STATES = {1: 'active', 2: 'inactive', 3: 'error', 4: 'out of date', 5: 'downloading', 6: 'initialized',
+          7: 'turning off', 8: 'starting'}
+ON = ('active', 'turning off', 'starting')
 
 
 def wait_until_off(uuid, limit=5.0):
     """Until the running Shell has turned `uuid` off (at most `limit`
     seconds; at once without a Shell, or when it isn't running there)."""
     deadline = time.monotonic() + limit
-    while extension_state(uuid) == 'active' and time.monotonic() < deadline:
+    while extension_state(uuid) in ON and time.monotonic() < deadline:
         time.sleep(0.2)
     time.sleep(0.3 if extension_state(uuid) is not None else 0)  # its disable() has run; let the Shell settle
 
@@ -596,7 +679,11 @@ def set_up_desktop(ctx, report, theme_id, after_update):
     record(ctx, manifest, changes)
     manifest['defaulted'] += [[c.schema, c.path, c.key] for c in changes if c.schema in PREFERENCE_SCHEMAS and sticks(c)]
     write_text(manifest_path(), json.dumps(manifest, indent=2))
-    ctx.settings.write(changes)
+    write_turning_off(ctx, changes, sorted(uuid for uuid in running_before - keep if uuid in DOCKS))
+    if later:
+        add_login_step()
+    else:
+        remove_login_step()  # left by a setup before this one, with nothing for the login to do now
     off = [out_of_the_way[uuid] for uuid in sorted(running_before - keep)]
     if off:
         report.turned_off = [name for name, _why in off]
@@ -744,22 +831,32 @@ def finishes_at_login():
 
 def after_login(ctx):
     """Turn off the docks setup left on until Jade Shell's own dock could
-    start: run by the extension when it starts, at the first login after
-    setup. Recorded like setup's other changes, so restore turns them on again."""
-    if not manifest_path().exists():
-        return 0  # restored since
-    manifest = load_manifest()
-    later = set(manifest.pop('after_login', []))
+    start, at the first login after setup: before GNOME Shell starts (the
+    login unit), or else by the extension once it has started. Recorded like
+    setup's other changes, so restore turns them on again."""
+    manifest = load_manifest() if manifest_path().exists() else {}  # none: restored since
+    later = set(manifest.get('after_login', []))
     if not later:
-        return 0  # done already: the extension list is left as the person has it now
+        remove_login_step()  # done already: the extension list is left as the person has it now
+        return 0
     # Only these: anything else was left as it is on purpose.
     keep = set(replaced(ctx)) - later
-    off = [DOCKS[uuid] for uuid in sorted(later) if uuid in replaced(ctx) and running_extension(ctx, uuid)]
+    going = sorted(later & set(replaced(ctx)))  # not Jade's dock's job any more (turned off since): left on
+    off = [DOCKS[uuid] for uuid in going if running_extension(ctx, uuid)]
     changes = [c for c in planned_settings(ctx, keep)
                if c.schema == SHELL and c.key in ('enabled-extensions', 'disabled-extensions')]
     record(ctx, manifest, changes)
+    write_text(manifest_path(), json.dumps(manifest, indent=2))  # what they were, before they change
+    write_turning_off(ctx, changes, going)
+    # Done once the lists say so: cut short or not written, the next login
+    # (or the extension, once it starts) tries again.
+    still_on = [DOCKS[uuid][0] for uuid in going if running_extension(ctx, uuid)]
+    if still_on:
+        say(f"Couldn't turn off {join(still_on)}: Jade Shell tries again at the next login.")
+        return 1
+    manifest.pop('after_login')
     write_text(manifest_path(), json.dumps(manifest, indent=2))
-    ctx.settings.write(changes)
+    remove_login_step()
     if off:
         say(turned_off(off))
     return 0
@@ -987,6 +1084,7 @@ def restore_desktop(ctx, assume_yes, report):
     # Jade Shell's own settings go with its package: not worth a line when they're gone.
     skipped += [item for item in ctx.settings.restore_all(rest) if not item.startswith(JADE_SCHEMA)]
     units = config_home() / 'systemd/user'
+    remove_login_step()
     systemctl('disable', '--now', 'jade-usage.timer')
     for name in ('jade-usage.service', 'jade-usage.timer'):
         (units / name).unlink(missing_ok=True)

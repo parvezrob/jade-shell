@@ -28,7 +28,8 @@ let updating = false;
 //   --after-update` in the background (settings and migrations the new
 //   version needs, the theme rebuilt), then says so;
 // - at the first login after setup, `jade setup --after-login` turns off the
-//   docks setup left on so that no one was without a dock until then.
+//   docks setup left on so that no one was without a dock until then (a
+//   login unit does it before the Shell starts; this is for when it didn't).
 // - once a day (when turned on in the preferences) it asks the latest release
 //   for its version, and offers a newer one: "Update" runs `jade update`,
 //   which asks for the password in GNOME's own dialog.
