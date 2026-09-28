@@ -106,8 +106,13 @@ class Shell:
 class Gtk:
     """GNOME's own apps (Files, Settings, Text Editor…) in the theme's colors:
     libadwaita's named colors in the user's gtk.css, which GTK 4 apps and GTK 3
-    apps with adw-gtk3 read at start. Both the CSS variables of libadwaita
-    1.6+ and the older @define-color names, plus GTK 3 Adwaita's own names."""
+    apps with adw-gtk3 read at start. GTK 4 gets libadwaita's CSS variables
+    for the theme's own light or dark style only, so an app that is open
+    through a switch to the other style follows it at once, in GNOME's own
+    colors, and takes the theme's colors when it next starts. No
+    @define-color for GTK 4: it can't be limited to a style, so a dark
+    theme's colors would stay in an app gone light. GTK 3 has no such query
+    and gets @define-color names, with GTK 3 Adwaita's own."""
     name = 'gtk'
     title = 'GNOME apps'
     label = 'GNOME apps (GTK 4, and GTK 3 with adw-gtk3)'
@@ -145,16 +150,17 @@ class Gtk:
     def css(self, theme, gtk3=False):
         named = self.named_colors(theme)
         lines = [f'/* {theme.name}, from Jade Shell. Apps read this when they start. */']
-        lines += [f'@define-color {key} {value};' for key, value in named.items()]
         if gtk3:  # stock Adwaita for GTK 3 names a few of them its own way
+            lines += [f'@define-color {key} {value};' for key, value in named.items()]
             lines += [f'@define-color {old} {named[new]};' for old, new in (
                 ('theme_bg_color', 'window_bg_color'), ('theme_fg_color', 'window_fg_color'),
                 ('theme_base_color', 'view_bg_color'), ('theme_text_color', 'view_fg_color'),
                 ('theme_selected_bg_color', 'accent_bg_color'), ('theme_selected_fg_color', 'accent_fg_color'))]
         else:
+            style = 'light' if theme.colors.get('mode') == 'light' else 'dark'
             variables = ' '.join(f'--{key.removesuffix("_color").replace("_", "-")}-color: {value};'
                                  for key, value in named.items())
-            lines.append(f':root {{ {variables} }}')
+            lines.append(f'@media (prefers-color-scheme: {style}) {{ :root {{ {variables} }} }}')
         return '\n'.join(lines)
 
     def changes(self, theme, ctx):

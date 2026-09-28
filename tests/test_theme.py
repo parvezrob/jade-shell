@@ -1255,8 +1255,11 @@ class Sandbox(unittest.TestCase):
         self.assertEqual((self.home / '.local/state/jade-shell/gnome-shell.css').read_text(), css)
         gtk4 = own.read_text()
         self.assertTrue(gtk4.startswith('window { font-size: 11pt; }'))
-        self.assertIn('@define-color window_bg_color #eff1f5;', gtk4)
+        # Only for the theme's own style, so an open app follows a switch to the
+        # other style at once (in GNOME's colors) instead of keeping these.
+        self.assertIn('@media (prefers-color-scheme: light) { :root {', gtk4)
         self.assertIn('--window-bg-color: #eff1f5;', gtk4)
+        self.assertNotIn('@define-color', gtk4)
         self.assertIn('@define-color theme_bg_color #eff1f5;', (self.home / '.config/gtk-3.0/gtk.css').read_text())
         for _ in range(4):
             self.jade('theme', 'undo')

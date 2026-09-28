@@ -77,7 +77,7 @@ Log out and back in once to start the extension. At that first login the **Jade 
 | Dock (`dock`) | Dash to Dock or Ubuntu Dock colors, if you use one instead of Jade Shell's dock (which follows the theme by itself) |
 | Icons (`icons`) | the Tahoe icons' folders in the accent, and their light or dark variant (built at setup from the package's copy; `jade apps off icons` puts GNOME's back) |
 | Ptyxis (`ptyxis`) | an Omarchy palette file, selected in every profile |
-| GNOME apps (`gtk`) | the theme's colors in a marked block of `~/.config/gtk-4.0/gtk.css` and `gtk-3.0/gtk.css` (libadwaita's named colors and CSS variables), so Files, Settings, Text Editor and other GNOME apps follow the theme when they next start; GTK 3 apps follow with the adw-gtk3 theme. Setup lets Flatpak apps read those files; restore takes that back |
+| GNOME apps (`gtk`) | the theme's colors in a marked block of `~/.config/gtk-4.0/gtk.css` and `gtk-3.0/gtk.css` (libadwaita's named colors and CSS variables), so Files, Settings, Text Editor and other GNOME apps follow the theme when they next start (one that is open follows a switch between a dark and a light theme at once, in GNOME's own colors); GTK 3 apps follow with the adw-gtk3 theme. Setup lets Flatpak apps read those files; restore takes that back |
 | Kitty (`kitty`) | `jade-theme.conf`, included at the end of `kitty.conf` (your own colors stay, overridden); kitty reloads |
 | Ghostty (`ghostty`) | `jade-theme.conf`, loaded last from Ghostty's config (`config-file`); Ghostty reloads |
 | Alacritty (`alacritty`) | `jade-theme.toml`, imported first in `alacritty.toml` (colors you set there yourself still win); Alacritty reloads by itself |
