@@ -2034,6 +2034,13 @@ class DockScene {
         this.move(this.centerOf(1), this.iconY);
         await wait(800);
         await this.shootDock('dock-badges-magnified');
+        // The badge sits on the item, not the icon: it must follow a bounce.
+        const files = bar._apps.get('org.gnome.Nautilus.desktop');
+        const badgeY = files._badge.y;
+        files.icon.translation_y = -20;
+        await wait(100);
+        log(`DOCK badge follows the icon: up ${badgeY - files._badge.y} px with the icon's 20`);
+        files.icon.translation_y = 0;
         this.move(this.monitor.width / 2, 200);
         calendarSource.destroy();
         Gio.DBus.session.emit_signal(null, '/com/canonical/unity/launcherentry/1', 'com.canonical.Unity.LauncherEntry',

@@ -250,18 +250,16 @@ class JadeDockAppItem extends Item {
         this.add_child(this.icon);
         this._dot = new St.Widget({style_class: 'jade-dock-dot'});
         this.add_child(this._dot);
-        // On the icon itself, so they grow with it: the count badge at its top
-        // right, the progress bar across its foot. The badge's text is laid out
-        // at the size it shows and the icon's scale undone on it (around its top
-        // right corner), or a magnified icon would stretch small text: blurry.
-        this._badge = new St.Label({
-            visible: false, x_expand: true, y_expand: true,
-            x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START,
-            pivot_point: new Graphene.Point({x: 1, y: 0}),
-        });
-        this._badgeScale = 1;
+        // The count badge sits at the icon's top corner, following its scale and
+        // bounce (_placeBadge), but on the item, not the icon: laid out at the
+        // size it shows, as a label stretched with a magnified icon is blurry.
+        this._badge = new St.Label({visible: false});
         this._badge.clutter_text.x_align = Clutter.ActorAlign.CENTER;
-        this.icon._iconContainer.add_child(this._badge);
+        this._badgeScale = 1;
+        this.add_child(this._badge);
+        this.icon.connect('notify::translation-y', () => this._placeBadge());
+        this.icon.connect('notify::allocation', () => this._placeBadge());
+        // The progress bar is on the icon itself, so it grows with it.
         this._progress = new St.Widget({
             visible: false, x_expand: true, y_expand: true,
             x_align: Clutter.ActorAlign.CENTER, y_align: Clutter.ActorAlign.END,
@@ -294,8 +292,6 @@ class JadeDockAppItem extends Item {
         this._dot.set_position(Math.round((size - dot) / 2), size + metrics.dotOffset);
         const badge = Math.round(size * 0.4);
         this._badgeSize = badge;
-        this._badge.translation_x = Math.round(badge * 0.3);
-        this._badge.translation_y = -Math.round(badge * 0.25);
         this._progress.set_size(Math.round(size * 0.72), Math.max(3, Math.round(size * 0.09)));
         this._progress.translation_y = -Math.round(size * 0.05);
         this._styleBadge();
@@ -303,15 +299,15 @@ class JadeDockAppItem extends Item {
     }
 
     // `h` is the badge's height on screen: its size at rest times the icon's
-    // scale, laid out that big and shrunk back by the scale, so the scale and
-    // the shrink cancel and the text is drawn at the size it shows.
+    // scale. Restyled only when that changes by a pixel (or the text's length).
     _styleBadge() {
         if (!this._badgeSize || !this._badgeColors)
             return;
         const h = Math.max(1, Math.round(this._badgeSize * this._badgeScale));
-        this._badge.set_scale(1 / this._badgeScale, 1 / this._badgeScale);
-        if (h === this._badgeStyled && this._badge.text.length === this._badgeChars)
+        if (h === this._badgeStyled && this._badge.text.length === this._badgeChars) {
+            this._placeBadge();
             return;
+        }
         this._badgeStyled = h;
         this._badgeChars = this._badge.text.length;
         const [bg, fg] = this._badgeColors;
@@ -319,6 +315,25 @@ class JadeDockAppItem extends Item {
             ` font-size: ${Math.round(h * 0.6)}px; min-width: ${h}px; height: ${h}px;` +
             ` border-radius: ${Math.round(h / 2)}px; padding: 0 ${this._badge.text.length > 1 ? Math.round(h * 0.28) : 0}px;` +
             ` box-shadow: 0 ${Math.max(1, Math.round(h * 0.05))}px ${Math.round(h * 0.16)}px rgba(0, 0, 0, 0.35);`;
+        this._placeBadge();
+    }
+
+    // The badge's outer corner: a little beyond the icon's top right (top left
+    // right to left), carried through the icon's scale and bounce into the
+    // item's coordinates; it grows inward from there. Whole pixels keep the
+    // text sharp.
+    _placeBadge() {
+        if (!this._badge.visible || !this._badgeSize)
+            return;
+        const box = this.icon._iconContainer;
+        const rtl = this.get_text_direction() === Clutter.TextDirection.RTL;
+        const b = this._badgeSize;
+        const corner = box.apply_relative_transform_to_point(this,
+            new Graphene.Point3D({x: rtl ? -0.3 * b : box.width + 0.3 * b, y: -0.25 * b, z: 0}));
+        const [, width] = this._badge.get_preferred_width(-1);
+        const x = Math.round(rtl ? corner.x : corner.x - width), y = Math.round(corner.y);
+        if (x !== this._badge.x || y !== this._badge.y)  // (a move relayouts the item)
+            this._badge.set_position(x, y);
     }
 
     // An app's unread count, as on a Mac: a number, 99+ past 99.
