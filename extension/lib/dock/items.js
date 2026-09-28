@@ -251,11 +251,15 @@ class JadeDockAppItem extends Item {
         this._dot = new St.Widget({style_class: 'jade-dock-dot'});
         this.add_child(this._dot);
         // On the icon itself, so they grow with it: the count badge at its top
-        // right, the progress bar across its foot.
+        // right, the progress bar across its foot. The badge's text is laid out
+        // at the size it shows and the icon's scale undone on it (around its top
+        // right corner), or a magnified icon would stretch small text: blurry.
         this._badge = new St.Label({
             visible: false, x_expand: true, y_expand: true,
             x_align: Clutter.ActorAlign.END, y_align: Clutter.ActorAlign.START,
+            pivot_point: new Graphene.Point({x: 1, y: 0}),
         });
+        this._badgeScale = 1;
         this._badge.clutter_text.x_align = Clutter.ActorAlign.CENTER;
         this.icon._iconContainer.add_child(this._badge);
         this._progress = new St.Widget({
@@ -298,23 +302,30 @@ class JadeDockAppItem extends Item {
         this._syncProgress();
     }
 
+    // `h` is the badge's height on screen: its size at rest times the icon's
+    // scale, laid out that big and shrunk back by the scale, so the scale and
+    // the shrink cancel and the text is drawn at the size it shows.
     _styleBadge() {
-        const h = this._badgeSize;
-        if (!h || !this._badgeColors)
+        if (!this._badgeSize || !this._badgeColors)
             return;
+        const h = Math.max(1, Math.round(this._badgeSize * this._badgeScale));
+        this._badge.set_scale(1 / this._badgeScale, 1 / this._badgeScale);
+        if (h === this._badgeStyled && this._badge.text.length === this._badgeChars)
+            return;
+        this._badgeStyled = h;
+        this._badgeChars = this._badge.text.length;
         const [bg, fg] = this._badgeColors;
         this._badge.style = `background-color: ${bg}; color: ${fg}; font-weight: 700;` +
             ` font-size: ${Math.round(h * 0.6)}px; min-width: ${h}px; height: ${h}px;` +
             ` border-radius: ${Math.round(h / 2)}px; padding: 0 ${this._badge.text.length > 1 ? Math.round(h * 0.28) : 0}px;` +
-            ` box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);`;
+            ` box-shadow: 0 ${Math.max(1, Math.round(h * 0.05))}px ${Math.round(h * 0.16)}px rgba(0, 0, 0, 0.35);`;
     }
 
     // An app's unread count, as on a Mac: a number, 99+ past 99.
     setBadge(count) {
         this._badge.visible = count > 0;
-        const text = count > 99 ? '99+' : String(count);
-        if (count > 0 && text !== this._badge.text) {
-            this._badge.text = text;
+        if (count > 0) {
+            this._badge.text = count > 99 ? '99+' : String(count);
             this._styleBadge();  // a circle for one digit, a pill for more
         }
     }
@@ -335,6 +346,7 @@ class JadeDockAppItem extends Item {
 
     restyle(bar) {
         this._badgeColors = bar._badgeColors;
+        this._badgeStyled = 0;
         this._styleBadge();
         this._progress.style = bar._progressStyle;
         this._progressFill.style = bar._progressFillStyle;
@@ -352,7 +364,13 @@ class JadeDockAppItem extends Item {
 
     place(center, scale, fade) {
         this.translation_x = Math.round((center - this.span / 2) * 2) / 2;
-        this.icon.set_scale(scale * (0.5 + 0.5 * fade), scale * (0.5 + 0.5 * fade));
+        const iconScale = scale * (0.5 + 0.5 * fade);
+        this.icon.set_scale(iconScale, iconScale);
+        if (iconScale !== this._badgeScale) {
+            this._badgeScale = iconScale;
+            if (this._badge.visible)
+                this._styleBadge();
+        }
         this.opacity = Math.round(255 * fade);
         this.scale = scale;
     }
